@@ -1,0 +1,22 @@
+# 1.0.9 hand-written baseline profile (no device to record one). Compose/media3 libraries ship their own.
+# Startup + main screens of 一维相册: AOT-compile the app's own Kotlin on install via androidx.profileinstaller.
+HSPLcom/hark/shiguang/App;->**(**)**
+HSPLcom/hark/shiguang/MainActivity;->**(**)**
+HSPLcom/hark/shiguang/Store;->**(**)**
+HSPLcom/hark/shiguang/NasAccounts;->**(**)**
+HSPLcom/hark/shiguang/Dav;->**(**)**
+HSPLcom/hark/shiguang/DavLib;->**(**)**
+HSPLcom/hark/shiguang/DavThumb**;->**(**)**
+HSPLcom/hark/shiguang/data/FnClient;->**(**)**
+HSPLcom/hark/shiguang/data/Photo**;->**(**)**
+HSPLcom/hark/shiguang/ui/HomeKt**;->**(**)**
+HSPLcom/hark/shiguang/ui/TimelineKt**;->**(**)**
+HSPLcom/hark/shiguang/ui/ThemeKt**;->**(**)**
+HSPLcom/hark/shiguang/ui/ComponentsKt**;->**(**)**
+HSPLcom/hark/shiguang/ui/ScreensKt**;->**(**)**
+HSPLcom/hark/shiguang/ui/HomeState;->**(**)**
+HSPLcom/hark/shiguang/ui/C;->**(**)**
+HSPLcom/hark/shiguang/ui/LI;->**(**)**
+HSPLcom/hark/shiguang/ui/MoviesTabKt**;->**(**)**
+HSPLcom/hark/shiguang/ui/ViewerKt**;->**(**)**
+Lcom/hark/shiguang/**;
