@@ -1,0 +1,39 @@
+e: MainActivity.kt:108:48 Unresolved reference: CloudHomeScreen
+e: MainActivity.kt:109:53 Unresolved reference: CloudBrowseScreen
+e: MainActivity.kt:110:55 Unresolved reference: CloudTimelineScreen
+e: MainActivity.kt:111:45 Unresolved reference: BackupScreen
+e: MainActivity.kt:112:48 Unresolved reference: TransfersScreen
+e: MainActivity.kt:113:44 Unresolved reference: SmartScreen
+e: MainActivity.kt:114:49 Unresolved reference: DuplicatesScreen
+e: MainActivity.kt:115:49 Unresolved reference: FoldersScreen
+e: MainActivity.kt:116:46 Unresolved reference: MapScreen
+e: MainActivity.kt:117:46 Unresolved reference: RecycleScreen
+e: MainActivity.kt:118:48 Unresolved reference: UploadScreen
+e: MainActivity.kt:82:9 Unresolved reference: BackupScheduler
+e: data/Endpoint.kt:19:19 Type 'MutableState<TypeVariable(T)>' has no method 'getValue(Endpoint, KProperty<*>)' and thus it cannot serve as a delegate
+e: ui/HomeHeaders.kt:152:63 Unresolved reference: openAlbum
+e: ui/HomeHeaders.kt:164:99 Unresolved reference: openPerson
+e: ui/Screens.kt:373:13 Overload resolution ambiguity: 
+e: ui/Screens.kt:419:9 Unresolved reference: SelectionBar
+e: ui/Viewer.kt:154:140 Unresolved reference: playing
+e: ui/Viewer.kt:154:151 Unresolved reference: playing
+e: ui/Viewer.kt:154:35 Unresolved reference: playing
+e: ui/Viewer.kt:175:77 Unresolved reference: Actions
+e: ui/Viewer.kt:176:80 Unresolved reference: Actions
+e: ui/Viewer.kt:185:41 Unresolved reference: ConfirmDialog
+e: ui/Viewer.kt:190:31 Unresolved reference: Ops
+e: ui/Viewer.kt:194:31 Unresolved reference: toast
+e: ui/Viewer.kt:194:42 Unresolved reference: it
+e: ui/Viewer.kt:203:41 Unresolved reference: Actions
+e: ui/Viewer.kt:204:37 Unresolved reference: AlbumPicker
+e: ui/Viewer.kt:205:41 Unresolved reference: ConfirmDelete
+e: ui/Viewer.kt:208:13 Unresolved reference: Actions
+e: ui/Viewer.kt:208:41 Cannot infer a type for this parameter. Please specify it explicitly.
+e: ui/Viewer.kt:223:79 Unresolved reference: Ops
+e: ui/Viewer.kt:227:114 Unresolved reference: Ops
+e: ui/Viewer.kt:230:20 Unresolved reference: AlbumPicker
+e: ui/Viewer.kt:230:69 Cannot infer a type for this parameter. Please specify it explicitly.
+e: ui/Viewer.kt:232:124 Unresolved reference: toast
+e: ui/Viewer.kt:232:135 Unresolved reference: it
+e: ui/Viewer.kt:232:38 Unresolved reference: Ops
+e: ui/Viewer.kt:232:81 Unresolved reference: toast
