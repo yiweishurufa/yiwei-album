@@ -217,7 +217,9 @@ object AppUpdate {
                 .apply { if (p in 0..100 && ongoing) setProgress(100, p, false) }.build()) }
         }
         val ready = File(c.cacheDir, "update/YiWei-${r.version}.apk")
-        if (ready.exists() && (r.apk.size <= 0 || ready.length() == r.apk.size)) { withContext(Dispatchers.Main) { install(c, ready) }; return@withContext true }
+        // B37: a reused download is re-verified (magic + size + versionCode + SHA-256 when available),
+        // never trusted on size alone.
+        if (ready.exists() && verifyApk(c, ready, r) == null) { withContext(Dispatchers.Main) { install(c, ready) }; return@withContext true }
         try {
             lastCode = 0
             var hdr: Map<String, String> = emptyMap()
@@ -240,12 +242,7 @@ object AppUpdate {
                 } }
                 if (r.apk.size > 0 && got != r.apk.size) throw Exception("文件不完整")
             }
-            // a 123 「请登录」 HTML page would not start with the ZIP magic
-            val head = out.inputStream().use { val b = ByteArray(2); it.read(b); b }
-            if (!(head[0] == 'P'.code.toByte() && head[1] == 'K'.code.toByte())) throw Exception("下载的不是安装包")
-            // never hand an older build to the installer (it would fail with a downgrade error)
-            val vc = runCatching { @Suppress("DEPRECATION") c.packageManager.getPackageArchiveInfo(out.path, 0)?.versionCode ?: -1 }.getOrDefault(-1)
-            if (vc in 0..BuildInfo.code) { out.delete(); throw Exception("网盘里的安装包版本号（$vc）不比当前（${BuildInfo.code}）新") }
+            verifyApk(c, out, r)?.let { out.delete(); throw Exception(it) }
             note(100, "下载完成，点安装", false); progress = -1f
             withContext(Dispatchers.Main) { install(c, out) }
             true
@@ -258,6 +255,32 @@ object AppUpdate {
             }
             false
         }
+    }
+
+    /**
+     * B37: verifies a downloaded APK — ZIP magic ("PK"), size, versionCode newer than installed, and
+     * SHA-256 when the share listing's etag is a 64-hex SHA-256 (123's etag is usually an MD5-like value,
+     * so the hash check only runs when it actually looks like a SHA-256). Returns null when OK.
+     */
+    fun verifyApk(c: Context, f: File, r: Release): String? {
+        if (!f.exists() || f.length() == 0L) return "安装包不存在"
+        // a 123 「请登录」 HTML page would not start with the ZIP magic
+        val head = f.inputStream().use { val b = ByteArray(4); it.read(b); b }
+        if (!(head[0] == 'P'.code.toByte() && head[1] == 'K'.code.toByte())) return "下载的不是安装包"
+        if (r.apk.size > 0 && f.length() != r.apk.size) return "文件不完整（${f.length()} / ${r.apk.size}）"
+        val etag = r.apk.etag.trim().lowercase()
+        if (etag.matches(Regex("[0-9a-f]{64}"))) {
+            val sha = runCatching {
+                val md = java.security.MessageDigest.getInstance("SHA-256")
+                f.inputStream().use { ins -> val buf = ByteArray(64 * 1024); while (true) { val n = ins.read(buf); if (n < 0) break; md.update(buf, 0, n) } }
+                md.digest().joinToString("") { "%02x".format(it) }
+            }.getOrNull()
+            if (sha != null && sha != etag) return "安装包 SHA-256 校验失败"
+        }
+        // never hand an older build to the installer (it would fail with a downgrade error)
+        val vc = runCatching { @Suppress("DEPRECATION") c.packageManager.getPackageArchiveInfo(f.path, 0)?.versionCode ?: -1 }.getOrDefault(-1)
+        if (vc in 0..BuildInfo.code) return "网盘里的安装包版本号（$vc）不比当前（${BuildInfo.code}）新"
+        return null
     }
 
     fun install(c: Context, apk: File) {

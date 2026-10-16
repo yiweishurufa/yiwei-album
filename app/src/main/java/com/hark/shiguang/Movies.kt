@@ -545,18 +545,23 @@ object Tmdb {
         return scored
     }
 
-    /** Auto-accept only a clear winner. Returns (accepted, best guess). */
-    fun decide(scored: List<Scored>): Pair<Hit?, Hit?> {
+    /**
+     * Auto-accept only a clear winner. Returns (accepted, best guess).
+     * S13: the clear-winner margin is 0.10 (was 0.05), and a same-title hit whose year is off by > 1 is
+     * never auto-accepted — it goes to pending for the user to confirm (remake / re-release, same title).
+     */
+    fun decide(scored: List<Scored>, year: Int? = null): Pair<Hit?, Hit?> {
         val best = scored.firstOrNull() ?: return null to null
         val second = scored.getOrNull(1)
-        val clear = second == null || best.score - second.score >= 0.05 ||
+        val yearMismatch = year != null && best.hit.year != null && kotlin.math.abs(best.hit.year - year) > 1
+        val clear = second == null || best.score - second.score >= 0.10 ||
             (best.sim >= 0.95 && best.yearOk) || (best.sim >= 0.95 && best.hit.popularity > 5 * second.hit.popularity)
-        val ok = best.score >= 0.80 && best.sim >= 0.6 && clear
+        val ok = best.score >= 0.80 && best.sim >= 0.6 && clear && !yearMismatch
         return (if (ok) best.hit else null) to best.hit
     }
 
     /** Kept for callers of the 1.0.0 API: best hit or null. */
-    fun match(kind: String, title: String, year: Int?): Hit? = decide(rank(kind, NameParser.queries(title), year)).first
+    fun match(kind: String, title: String, year: Int?): Hit? = decide(rank(kind, NameParser.queries(title), year), year).first
 
     data class Detail(val title: String, val original: String, val year: Int?, val overview: String, val rating: Float?, val genres: List<String>,
                       val poster: String?, val backdrop: String?, val runtime: Int, val cast: List<Cast>, val seasons: List<Int>)
@@ -868,10 +873,10 @@ class MovieLib(val sourceKey: String) {
         if (forceId == null && fix != null && fix.first != m.kind) m = m.copy(kind = fix.first)
         var guess: Tmdb.Hit? = null
         val id = forceId ?: fix?.second ?: m.tmdbId ?: run {
-            var (hit, g) = withContext(Dispatchers.IO) { Tmdb.decide(Tmdb.rank(m.kind, NameParser.queries(m.query.ifEmpty { m.title }, m.altQuery), m.year)) }
+            var (hit, g) = withContext(Dispatchers.IO) { Tmdb.decide(Tmdb.rank(m.kind, NameParser.queries(m.query.ifEmpty { m.title }, m.altQuery), m.year), m.year) }
             if (hit == null && AiConfig.configured && (m.files.isNotEmpty() || m.kind == "tv")) {
                 aiParse(m)?.let { (t, y) ->
-                    val (h2, g2) = withContext(Dispatchers.IO) { Tmdb.decide(Tmdb.rank(m.kind, NameParser.queries(t), y ?: m.year)) }
+                    val (h2, g2) = withContext(Dispatchers.IO) { Tmdb.decide(Tmdb.rank(m.kind, NameParser.queries(t), y ?: m.year), y ?: m.year) }
                     hit = h2; if (g == null) g = g2
                 }
             }

@@ -125,8 +125,12 @@ object DanDan {
 
     /** MD5 of the first 16 MiB (dandanplay's file fingerprint) through a Range request; null when it can not be read. */
     fun fileHash(url: String, headers: Map<String, String>): String? = runCatching {
-        val rb = Request.Builder().url(url).header("Range", "bytes=0-16777215")
-        headers.forEach { (k, v) -> rb.header(k, v) }
+        // S17: resolve the redirect FIRST (PlayHttp.resolve strips auth on a cross-host hop) and only then
+        // decide which headers to send — a signed CDN url must never receive the WebDAV Authorization.
+        val (final, fh) = PlayHttp.resolve(url, headers, followRedirect = true)
+        if (final != url) Diag.log("DM", "fileHash: resolved redirect ${url.substringBefore('?')} -> ${final.substringBefore('?')}")
+        val rb = Request.Builder().url(final).header("Range", "bytes=0-16777215")
+        fh.forEach { (k, v) -> rb.header(k, v) }
         http.newBuilder().readTimeout(60, TimeUnit.SECONDS).build().newCall(rb.build()).execute().use { r ->
             if (!r.isSuccessful) return null
             val md = MessageDigest.getInstance("MD5")

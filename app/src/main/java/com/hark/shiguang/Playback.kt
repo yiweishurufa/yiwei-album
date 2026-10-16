@@ -7,6 +7,7 @@ import androidx.media3.common.C as MC
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Tracks
+import androidx.media3.common.TrackSelectionOverride
 import org.json.JSONObject
 
 /**
@@ -123,14 +124,42 @@ object DeviceCaps {
         }
     }.getOrDefault(emptyList())
 
+    /**
+     * B35: the P7 dual-layer (BL + EL) track choice on a non-DV phone. In a video group with several tracks
+     * where one is DV P7, the non-selected P7 tracks are the EL (enhancement) layer — keeping them lets the
+     * decoder try to decode EL and fail / garble. Returns overrides that keep the selected (BL) track plus
+     * any non-P7 track. P8 is single-layer and HDR10-compatible (nothing to drop); P5 has no HDR10 layer
+     * at all, so it can only be warned about via [hint].
+     */
+    fun elDisabledOverrides(t: Tracks): List<TrackSelectionOverride> {
+        if (dolbyVision) return emptyList()
+        val out = ArrayList<TrackSelectionOverride>()
+        for (g in t.groups) {
+            if (g.type != MC.TRACK_TYPE_VIDEO || g.length < 2) continue
+            val formats = (0 until g.length).map { g.getTrackFormat(it) }
+            if (formats.none { dvProfile(it) == 7 }) continue
+            val sel = (0 until g.length).firstOrNull { g.isTrackSelected(it) } ?: 0
+            val keep = (0 until g.length).filter { it == sel || dvProfile(formats[it]) != 7 }
+            if (keep.size < g.length) out += TrackSelectionOverride(g.mediaTrackGroup, keep)
+        }
+        return out
+    }
+
     /** A one-line hint when the file's HDR flavour will not look right here, else null. */
     fun hint(c: Context, badges: List<String>, dvProfile: Int? = null): String? {
         val screen = hdrTypes(c)
         val isDv = badges.any { it.startsWith("杜比视界") }
         val hasHdrLayer = badges.any { it.startsWith("HDR") || it == "HLG" }
         return when {
-            isDv && !dolbyVision && (dvProfile == 5 || (dvProfile == null && !hasHdrLayer)) ->
+            // B35: P5 / P7 / P8 get their own copy — the old single line hid that P8 plays fine as HDR10.
+            isDv && !dolbyVision && dvProfile == 5 ->
                 "这台手机不支持杜比视界，这个版本（Profile 5）颜色可能偏紫偏绿，建议选 HDR10 或普通版本"
+            isDv && !dolbyVision && dvProfile == 7 ->
+                "这个版本是杜比视界 Profile 7（双层），手机不支持杜比视界时只播基础层，画面约等于 HDR10；想看完整效果建议选 HDR10 版本"
+            isDv && !dolbyVision && dvProfile == 8 ->
+                "这个版本是杜比视界 Profile 8，与 HDR10 兼容，手机会按 HDR10 播放，颜色正常"
+            isDv && !dolbyVision && dvProfile == null && !hasHdrLayer ->
+                "这台手机不支持杜比视界，这个版本颜色可能偏紫偏绿，建议选 HDR10 或普通版本"
             isDv && !dolbyVision -> "手机不支持杜比视界，会按 HDR10 / 普通画面播放"
             (hasHdrLayer || isDv) && screen.isEmpty() -> "屏幕不支持 HDR，会按普通亮度显示，颜色可能偏淡"
             else -> null
@@ -164,7 +193,9 @@ object PlayPrefs {
 
 /** Shifts SRT / ASS / VTT timestamps by [ms] (used for the per-show subtitle offset on external subtitles). */
 object SubShift {
-    private val SRT = Regex("(\\d{1,2}):(\\d{2}):(\\d{2})[,.](\\d{3})")
+    /** S14: only a real timeline row ("00:01:02,000 --> 00:01:04,000") is shifted — a timestamp that
+     * appears inside subtitle TEXT (e.g. "约在 00:01:02 见面") used to be shifted too by the old global regex. */
+    private val SRT_LINE = Regex("(?m)^(\\d{1,2}):(\\d{2}):(\\d{2})[,.](\\d{3})(\\s*-->\\s*)(\\d{1,2}):(\\d{2}):(\\d{2})[,.](\\d{3})")
     private val ASS = Regex("^(Dialogue:\\s*[^,]*,)(\\d+):(\\d{2}):(\\d{2})\\.(\\d{2}),(\\d+):(\\d{2}):(\\d{2})\\.(\\d{2}),", RegexOption.MULTILINE)
 
     fun shift(text: String, ext: String, ms: Long): String {
@@ -174,11 +205,15 @@ object SubShift {
             val a = (g[2].toLong() * 3600_000 + g[3].toLong() * 60_000 + g[4].toLong() * 1000 + g[5].toLong() * 10 + ms).coerceAtLeast(0)
             val b = (g[6].toLong() * 3600_000 + g[7].toLong() * 60_000 + g[8].toLong() * 1000 + g[9].toLong() * 10 + ms).coerceAtLeast(0)
             g[1] + ass(a) + "," + ass(b) + ","
-        } else SRT.replace(text) { m ->
+        } else SRT_LINE.replace(text) { m ->
             val g = m.groupValues
-            val t = (g[1].toLong() * 3600_000 + g[2].toLong() * 60_000 + g[3].toLong() * 1000 + g[4].toLong() + ms).coerceAtLeast(0)
-            val sep = if (ext == "vtt") "." else ","
-            "%02d:%02d:%02d%s%03d".format(t / 3600_000, t / 60_000 % 60, t / 1000 % 60, sep, t % 1000)
+            fun shiftAt(h: Long, mi: Long, s: Long, f: Long): String {
+                val t = (h * 3600_000 + mi * 60_000 + s * 1000 + f + ms).coerceAtLeast(0)
+                val sep = if (ext == "vtt") "." else ","
+                return "%02d:%02d:%02d%s%03d".format(t / 3600_000, t / 60_000 % 60, t / 1000 % 60, sep, t % 1000)
+            }
+            shiftAt(g[1].toLong(), g[2].toLong(), g[3].toLong(), g[4].toLong()) + g[5] +
+                shiftAt(g[6].toLong(), g[7].toLong(), g[8].toLong(), g[9].toLong())
         }
     }
     private fun ass(t: Long) = "%d:%02d:%02d.%02d".format(t / 3600_000, t / 60_000 % 60, t / 1000 % 60, t % 1000 / 10)

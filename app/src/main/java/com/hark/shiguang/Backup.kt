@@ -38,20 +38,27 @@ object BackupRunner {
     private val lock = Mutex()
     var lastResult: String = ""
 
+    /** B23: enqueued (viaQueue — still in the transfer queue) vs actually uploaded are reported separately. */
+    data class Result(val enqueued: Int, val completed: Int, val failures: List<String>)
+
     private fun ensureClient() {
         if (FnClient.baseUrl.isEmpty() && Store.url.isNotEmpty()) {
             FnClient.setCredentials(Store.url, Store.user, Store.pass); FnClient.token = Store.token
         }
     }
 
-    /** Uploads everything added since the last backup. [viaQueue] shows each file in the transfer queue. */
-    suspend fun run(c: Context, viaQueue: Boolean): Int = lock.withLock {
+    /**
+     * Uploads everything added since the last backup. [viaQueue] shows each file in the transfer queue.
+     * B23: viaQueue used to count an enqueue as "done" at once — now the result separates enqueued from
+     * completed, lists failures, and [lastResult] never claims success when something failed.
+     */
+    suspend fun run(c: Context, viaQueue: Boolean): Result = lock.withLock {
         ensureClient()
-        if (FnClient.baseUrl.isEmpty()) return 0
+        if (FnClient.baseUrl.isEmpty()) { lastResult = "未连接飞牛"; return Result(0, 0, listOf("未连接飞牛")) }
         val since = Store.backupSince
         val items = LocalMediaReader.newSince(c, since)
         Diag.log("BACKUP", "found ${items.size} new since $since")
-        var done = 0
+        var enqueued = 0; var completed = 0; val failures = ArrayList<String>()
         for (m in items) {
             val work: suspend ((Float) -> Unit) -> Unit = { progress ->
                 NasX.upload(m.name, m.size, m.mime.ifEmpty { "application/octet-stream" },
@@ -61,14 +68,21 @@ object BackupRunner {
                 Store.backupSince = maxOf(Store.backupSince, m.taken)
             }
             if (viaQueue) {
-                Transfers.enqueue(m.name, true, "NAS 备份", work)
+                runCatching { Transfers.enqueue(m.name, true, "NAS 备份", work) }
+                    .onSuccess { enqueued++ }
+                    .onFailure { e -> Diag.e("BACKUP", e); failures += "${m.name}：${e.message}" }
             } else {
-                runCatching { work {} }.onFailure { Diag.e("BACKUP", it); lastResult = "失败：${it.message}"; return done }
+                runCatching { work {} }
+                    .onSuccess { completed++ }
+                    .onFailure { e -> Diag.e("BACKUP", e); failures += "${m.name}：${e.message}" }
             }
-            done++
         }
-        lastResult = "备份了 $done 项"
-        done
+        lastResult = when {
+            failures.isNotEmpty() -> "备份失败 ${failures.size} 项：${failures.take(3).joinToString("；")}"
+            viaQueue -> "已加入传输队列 $enqueued 项"
+            else -> "备份了 $completed 项"
+        }
+        Result(enqueued, completed, failures)
     }
 }
 
@@ -78,8 +92,9 @@ class BackupJob : JobService() {
     override fun onStartJob(params: JobParameters): Boolean {
         if (!Store.backupOn) return false
         job = scope.launch {
-            val ok = runCatching { BackupRunner.run(applicationContext, false) }.isSuccess
-            jobFinished(params, !ok)
+            // B23: reschedule only on a real failure (throw, or any file failed) — not on a partial queue.
+            val r = runCatching { BackupRunner.run(applicationContext, false) }.getOrNull()
+            jobFinished(params, r == null || r.failures.isNotEmpty())
         }
         return true
     }

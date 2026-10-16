@@ -528,7 +528,11 @@ fun BackupScreen() {
                     if (running) return@NavRow
                     running = true
                     scope.launch {
-                        runCatching { BackupRunner.run(ctx.applicationContext, true) }.onSuccess { n -> toast(ctx, if (n == 0) "没有新照片" else "已加入 $n 项到传输队列") }
+                        runCatching { BackupRunner.run(ctx.applicationContext, true) }.onSuccess { r -> toast(ctx, when {
+                            r.enqueued == 0 && r.failures.isEmpty() -> "没有新照片"
+                            r.failures.isNotEmpty() -> "已加入 ${r.enqueued} 项，${r.failures.size} 项入队失败"
+                            else -> "已加入 ${r.enqueued} 项到传输队列"
+                        }) }
                             .onFailure { toast(ctx, it.message ?: "失败") }
                         running = false; refreshPending()
                     }

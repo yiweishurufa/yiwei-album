@@ -58,9 +58,67 @@ sealed class Route {
 
 object Nav {
     val stack = mutableStateListOf<Route>()
-    fun push(r: Route) { stack.add(r) }
-    fun pop() { if (stack.size > 1) stack.removeAt(stack.lastIndex) }
-    fun reset(r: Route) { stack.clear(); stack.add(r) }
+    /** Set when the last saved top route could not be restored (its args are gone): UI falls back to Home and says so. */
+    var restoredFallback by mutableStateOf(false)
+    fun push(r: Route) { stack.add(r); save() }
+    fun pop() { if (stack.size > 1) stack.removeAt(stack.lastIndex); save() }
+    fun reset(r: Route) { stack.clear(); stack.add(r); save() }
+
+    /**
+     * B24: only restorable top-level routes are persisted (Home/tab + a simple Route type). Anything with
+     * args (Viewer / Collection / MoviePlay / …) is recorded as Home, so a restart never rebuilds a
+     * half-dead page from stale arguments.
+     */
+    private fun save() {
+        val top = stack.lastOrNull() ?: return
+        val key = when (top) {
+            is Route.Home -> "home"
+            is Route.Settings -> "settings"
+            is Route.Backup -> "backup"
+            is Route.Transfers -> "transfers"
+            is Route.Smart -> "smart"
+            is Route.Duplicates -> "duplicates"
+            is Route.MapView -> "map"
+            is Route.Recycle -> "recycle"
+            is Route.DavAccounts -> "davAccounts"
+            is Route.AiSettings -> "aiSettings"
+            is Route.CloudHome -> "cloudHome"
+            is Route.Search -> "search"
+            is Route.MusicSettings -> "musicSettings"
+            is Route.MusicNowPlaying -> "musicNowPlaying"
+            is Route.MovieLibrarySettings -> "movieLib"
+            else -> "home"
+        }
+        Store.putStr("nav.top", key)
+        Store.putStr("nav.tab", com.hark.shiguang.ui.HomeState.tab.toString())
+    }
+
+    /** Rebuilds the persisted top route (or Home). Returns true when the saved route itself was restored. */
+    fun restore(savedTop: String): Boolean {
+        val tab = Store.getStr("nav.tab").toIntOrNull() ?: 0
+        com.hark.shiguang.ui.HomeState.tab = tab
+        val r = when (savedTop) {
+            "settings" -> Route.Settings
+            "backup" -> Route.Backup
+            "transfers" -> Route.Transfers
+            "smart" -> Route.Smart
+            "duplicates" -> Route.Duplicates
+            "map" -> Route.MapView
+            "recycle" -> Route.Recycle
+            "davAccounts" -> Route.DavAccounts
+            "aiSettings" -> Route.AiSettings
+            "cloudHome" -> Route.CloudHome
+            "search" -> Route.Search
+            "musicSettings" -> Route.MusicSettings
+            "musicNowPlaying" -> Route.MusicNowPlaying
+            "movieLib" -> Route.MovieLibrarySettings
+            else -> null
+        }
+        if (r == null) { reset(Route.Home); restoredFallback = savedTop != "home"; return savedTop == "home" }
+        reset(Route.Home)
+        if (r != Route.Home) push(r)
+        return true
+    }
 }
 
 class MainActivity : ComponentActivity() {
@@ -88,12 +146,15 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         if (Nav.stack.isEmpty()) {
+            val savedTop = Store.getStr("nav.top")
             if (Store.token.isNotEmpty() && Store.url.isNotEmpty()) {
                 FnClient.setCredentials(Store.url, Store.user, Store.pass)
                 FnClient.token = Store.token
                 Nav.reset(Route.Home)
             } else if (Dav.accounts.isNotEmpty()) { Store.source = "dav"; HomeState.source = "dav"; Nav.reset(Route.Home) }
             else Nav.reset(Route.Login)
+            // B24: rebuild the persisted top-level route when the process was killed; deep pages fall back to Home.
+            if (Nav.stack.lastOrNull() == Route.Home && savedTop.isNotEmpty() && savedTop != "home") Nav.restore(savedTop)
         }
         if (Store.lockOn && android.os.Build.VERSION.SDK_INT >= 28 && savedInstanceState == null) AppLock.locked = true
         handleShare(intent)
@@ -108,6 +169,13 @@ class MainActivity : ComponentActivity() {
                     enableEdgeToEdge(statusBarStyle = st, navigationBarStyle = st)
                 }
                 com.hark.shiguang.ui.Onboarding.Hook()   // 1.0.1 #9 first-run wizard
+                // B24: the persisted page could not be rebuilt — say so instead of silently landing on Home.
+                LaunchedEffect(Nav.restoredFallback) {
+                    if (Nav.restoredFallback) {
+                        Nav.restoredFallback = false
+                        android.widget.Toast.makeText(this@MainActivity, "上次页面无法恢复，已回到首页", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }
                 val top = Nav.stack.lastOrNull() ?: Route.Login
                 BackHandler(enabled = Nav.stack.size > 1) { Nav.pop() }
                 // Home always stays composed underneath so scroll position survives.

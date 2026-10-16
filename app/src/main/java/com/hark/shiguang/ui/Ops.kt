@@ -58,6 +58,7 @@ fun toast(ctx: Context, msg: String) = Toast.makeText(ctx.applicationContext, ms
 object CloudPhotos {
     private val sources = ConcurrentHashMap<String, CloudSource>()
     private val entries = ConcurrentHashMap<String, CloudEntry>()   // photo.key -> entry
+    private val entryOwner = ConcurrentHashMap<String, String>()    // photo.key -> account id (for S22 forget)
     private val urlOwner = ConcurrentHashMap<String, String>()      // url -> account id
     @Volatile private var registered = false
 
@@ -66,7 +67,15 @@ object CloudPhotos {
         val a = CloudAccounts.get(accountId) ?: return null
         return CloudSources.create(a).also { sources[accountId] = it }
     }
-    fun forget(accountId: String) { sources.remove(accountId) }
+    /**
+     * S22: dropping an account also drops its cached entries + url owners, so a re-added account with the
+     * same urls never resolves auth through the old account's headers.
+     */
+    fun forget(accountId: String) {
+        sources.remove(accountId)
+        entryOwner.entries.filter { it.value == accountId }.map { it.key }.forEach { k -> entries.remove(k); entryOwner.remove(k) }
+        urlOwner.entries.removeIf { it.value == accountId }
+    }
 
     private fun ensureAuth() {
         if (registered) return
@@ -101,6 +110,7 @@ object CloudPhotos {
                     path = e.path, source = accountId, cloudPath = e.path,
                 )
                 entries[p.key] = e
+                entryOwner[p.key] = accountId
                 p
             }
         }.awaitAll().filterNotNull()
@@ -112,6 +122,24 @@ object Ops {
     private val app = MainScope()
 
     fun launch(block: suspend () -> Unit) { app.launch { block() } }
+
+    /**
+     * B26: the ONE logout path for 飞牛 — Home's account sheet and Settings used to duplicate it (and
+     * drift: one fell back to the WebDAV home, the other to Login). Removes the account, clears
+     * per-account state, and lands on Login — or the WebDAV home when DAV accounts remain.
+     */
+    fun logoutNas(id: String? = null) {
+        val target = id ?: com.hark.shiguang.NasAccounts.current?.id ?: return
+        HomeState.forget(target)
+        com.hark.shiguang.NasAccounts.remove(target)
+        HomeState.clear()
+        if (com.hark.shiguang.NasAccounts.current == null) {
+            Store.clear()
+            FnClient.token = ""
+            if (com.hark.shiguang.Dav.accounts.isNotEmpty()) { HomeState.useSource("dav"); Nav.reset(Route.Home) }
+            else Nav.reset(Route.Login)
+        } else Nav.reset(Route.Home)
+    }
 
     private fun nas(photos: List<Photo>) = photos.filter { !it.isCloud }
     private fun cloud(photos: List<Photo>) = photos.filter { it.isCloud }

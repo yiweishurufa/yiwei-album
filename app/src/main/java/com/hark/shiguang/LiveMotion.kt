@@ -28,7 +28,12 @@ object LivePairing {
     private val NAME_HINT = Regex("""(?i)^(mvimg_|pxl_).*\.jpe?g$|.*[._]mp\.jpe?g$|.*\.mp$""")
     fun motionNameHint(name: String) = NAME_HINT.matches(name)
 
-    /** Hides a .MOV that has a same-name photo in the same folder and marks the photo live (unless the MOV is known to be longer than 6 s). */
+    /**
+     * Hides a .MOV that has a same-name photo in the same folder and marks the photo live (unless the MOV
+     * is known to be longer than 6 s). S9: dur == 0 means "not analysed yet" — it does NOT pair; the pair
+     * is formed once the duration analysis lands (setPhotos/retime re-runs this), so a long MOV is never
+     * hidden on the assumption that it is short.
+     */
     fun pair(list: List<Photo>, meta: Map<String, Meta>): List<Photo> {
         val movs = HashMap<String, Photo>()
         for (p in list) if (p.isVideo && p.isCloud && ext(p.fileName) == "mov" && p.video != null) movs[parent(p.cloudPath) + "/" + base(p.fileName)] = p
@@ -38,7 +43,8 @@ object LivePairing {
         for (p in list) {
             if (!p.isVideo && p.isCloud && ext(p.fileName) in IMG) {
                 val mov = movs[parent(p.cloudPath) + "/" + base(p.fileName)]
-                if (mov != null && (meta[mov.cloudPath]?.dur ?: 0) <= 6) {
+                val dur = meta[mov?.cloudPath]?.dur ?: 0
+                if (mov != null && dur in 1..6) {
                     out.add(p.copy(isLive = true, liveType = 1, liveVideo = mov.video)); used.add(mov.cloudPath); continue
                 }
             }

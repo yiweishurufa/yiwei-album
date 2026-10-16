@@ -16,6 +16,9 @@ internal object PlayHttp {
     /** original url -> (final url, resolved at). WebDAV hosts like 123pan answer with a 302 to a signed CDN url. */
     val resolved = ConcurrentHashMap<String, Pair<String, Long>>()
 
+    /** B32: drop the cached redirect target for [url] — the next resolve() re-follows the redirect. */
+    fun invalidate(url: String) { if (url.isNotEmpty()) resolved.remove(url) }
+
     /**
      * Follows the WebDAV 302 once (cached 15 min) and returns the url to stream plus the headers to send to it.
      * A redirect to another host (the signed CDN url) must NOT carry the WebDAV Authorization header.
