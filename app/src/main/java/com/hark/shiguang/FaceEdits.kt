@@ -15,11 +15,14 @@ import java.io.File
  *    cluster that contains grouped faces follows the group of the majority, so newly detected faces of
  *    a merged person join it automatically. A grouped face always lands in its own group (manual wins).
  *  - [excluded]: faces removed from a person ("不是这个人"); never shown in any person again.
+ *  - [excludedFrom]: 第 4 批：被移出的脸属于哪个手动分组（移出时记下），「撤销移出」时按它恢复。
+ *    没有它，移出就是永久的（旧行为）。组 id 被合并改写后，恢复仍回到移出那一刻的组 id。
  *  - [hidden]: hidden groups (路人).
  */
 class FaceEdits(private val dir: File) {
     val group = HashMap<String, String>()
     val excluded = HashSet<String>()
+    val excludedFrom = HashMap<String, String>()
     val hidden = HashSet<String>()
     private var loaded = false
 
@@ -30,6 +33,7 @@ class FaceEdits(private val dir: File) {
             val o = JSONObject(File(dir, "edits.json").readText())
             o.optJSONObject("g")?.let { g -> g.keys().forEach { group[it] = g.getString(it) } }
             o.optJSONArray("x")?.let { a -> for (i in 0 until a.length()) excluded.add(a.getString(i)) }
+            o.optJSONObject("xf")?.let { x -> x.keys().forEach { excludedFrom[it] = x.getString(it) } }
             o.optJSONArray("h")?.let { a -> for (i in 0 until a.length()) hidden.add(a.getString(i)) }
         }
     }
@@ -37,10 +41,11 @@ class FaceEdits(private val dir: File) {
     @Synchronized fun save() = runCatching {
         dir.mkdirs()
         val g = JSONObject(); group.forEach { (k, v) -> g.put(k, v) }
-        File(dir, "edits.json").writeText(JSONObject().put("g", g).put("x", JSONArray(excluded.toList())).put("h", JSONArray(hidden.toList())).toString())
+        val xf = JSONObject(); excludedFrom.forEach { (k, v) -> xf.put(k, v) }
+        File(dir, "edits.json").writeText(JSONObject().put("g", g).put("x", JSONArray(excluded.toList())).put("xf", xf).put("h", JSONArray(hidden.toList())).toString())
     }
 
-    @Synchronized fun clear() { group.clear(); excluded.clear(); hidden.clear(); loaded = true }
+    @Synchronized fun clear() { group.clear(); excluded.clear(); excludedFrom.clear(); hidden.clear(); loaded = true }
 
     private fun newId() = "g" + java.util.UUID.randomUUID().toString().replace("-", "").take(10)
 
@@ -63,12 +68,49 @@ class FaceEdits(private val dir: File) {
         save(); return g
     }
 
-    /** Removes the faces of [p] found in [paths] from that person. */
+    /** Removes the faces of [p] found in [paths] from that person. 第 4 批：移出时记下原分组，[unexclude] 可撤销。 */
     @Synchronized fun removePhotos(p: FacePerson, paths: Set<String>) {
         load()
         ensureGroup(p)
-        p.faces.filter { it.path in paths }.forEach { excluded.add(it.id); group.remove(it.id) }
+        p.faces.filter { it.path in paths }.forEach { excluded.add(it.id); excludedFrom[it.id] = group[it.id].orEmpty(); group.remove(it.id) }
         save()
+    }
+
+    /** 第 4 批：撤销移出——把 [faceIds] 恢复到它们被移出时的分组。返回实际恢复的张数。 */
+    @Synchronized fun unexclude(faceIds: List<String>): Int {
+        load()
+        var n = 0
+        faceIds.forEach { id ->
+            if (excluded.remove(id)) {
+                excludedFrom.remove(id)?.takeIf { it.isNotEmpty() }?.let { group[id] = it }
+                n++
+            }
+        }
+        if (n > 0) save()
+        return n
+    }
+
+    /** 第 4 批：从 [groupId] 分组里被移出的脸 id（供人物页「撤销移出（N 张）」用）。 */
+    @Synchronized fun excludedForGroup(groupId: String): List<String> {
+        load()
+        if (groupId.isEmpty()) return emptyList()
+        return excluded.filter { excludedFrom[it] == groupId }
+    }
+
+    /**
+     * 第 4 批：拆分人物——把 [p] 里照片路径在 [paths] 中的脸拆成一个新人物（新分组 id）。
+     * 全选/空选时返回 0（不拆分）；拆完需调 cluster() 重新归类。移出（removePhotos）是「这张不是 TA」，
+     * 拆分是「这是另一个人」：被拆的脸仍属于某个人物，只是换了组。
+     */
+    @Synchronized fun splitFrom(p: FacePerson, paths: Set<String>): Int {
+        load()
+        ensureGroup(p)
+        val sel = p.faces.filter { it.path in paths && it.id !in excluded }
+        if (sel.isEmpty() || sel.size >= p.faces.size) return 0
+        val ng = newId()
+        sel.forEach { group[it.id] = ng }
+        save()
+        return sel.size
     }
 
     @Synchronized fun hide(p: FacePerson, on: Boolean) {
@@ -114,7 +156,12 @@ class FaceEdits(private val dir: File) {
     }
 }
 
-/** 飞牛 persons: only hiding is local (the NAS has no documented merge / remove API). */
+/**
+ * 飞牛 persons: only hiding is local (the NAS has no documented merge / remove API).
+ * 第 4 批：维持现状，不硬编接口。飞牛官方接口只覆盖人物列表/照片/隐藏相关调用，
+ * 没有找到「合并人物」「把某张照片移出人物」的公开接口；抓包确认前不在 App 里编一个假调用。
+ * 人物菜单里因此只给「隐藏（路人）」，并在「合并 / 移出」入口上用一句话说明原因，而不是假装能点。
+ */
 object FnPersonHide {
     private fun key() = "fn.hiddenPersons." + NasAccounts.currentId
     var version by androidx.compose.runtime.mutableIntStateOf(0)
