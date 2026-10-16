@@ -88,6 +88,7 @@ object Store {
     var timelineLevel: Int get() = sp.getInt("tlLevel", 2); set(v) = sp.edit().putInt("tlLevel", v).apply()
     fun getStr(k: String, d: String = ""): String = sp.getString(k, d) ?: d
     fun putStr(k: String, v: String) = sp.edit().putString(k, v).apply()
+    fun removeKey(k: String) = sp.edit().remove(k).apply()
     /** All non-secret settings, for QR / WebDAV sync. */
     /** All non-secret settings, for QR sync. */
     fun exportSettings(): org.json.JSONObject = org.json.JSONObject().apply {
@@ -107,6 +108,11 @@ object Store {
         if (j.has("scanNoCharge")) putStr("scan.nocharge", j.optString("scanNoCharge"))
         if (j.has("tlLevel")) timelineLevel = j.optInt("tlLevel", 2)
     }
+    /**
+     * B11: this clears ONLY the login credentials (pass/token) — NOT all settings, and NOT the
+     * per-account signing secrets (`sign.<user>@<url>`). Those are removed by [NasAccounts.remove]
+     * when an account is logged out / removed; do not rely on [clear] to wipe them.
+     */
     fun clear() = sp.edit().remove("pass").remove("token").apply()
 }
 
