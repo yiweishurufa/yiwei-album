@@ -41,9 +41,7 @@ object ScanWatch {
     fun resume(c: Context) {
         if (ScanPolicy.paused) return
         val lib = runCatching { Dav.lib() }.getOrNull() ?: return
-        if (lib.photos.isEmpty() || !Analyzer.canScan(c)) return
-        runCatching { Analyzer.start(c, lib, false) }
-        runCatching { Faces.start(c, lib, false) }
-        if (AiRunner.on) runCatching { AiRunner.startDav(c, lib) }
+        if (lib.photos.isEmpty()) return
+        ScanStarter.startAll(c, lib, manual = false)
     }
 }
