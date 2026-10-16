@@ -4,6 +4,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import androidx.compose.runtime.*
@@ -43,6 +44,8 @@ object AppUpdate {
 
     /** Shown by [com.hark.shiguang.ui.UpdateDialog]. */
     var offer by mutableStateOf<Release?>(null)
+    /** B5: set when a downloaded APK's signer differs from the installed app — shown as a dialog, installer never launched. */
+    var signatureMismatch by mutableStateOf<String?>(null)
     var progress by mutableFloatStateOf(-1f)
     var checking by mutableStateOf(false)
     /** Last download/info answer code (5112 = 「需要登录」: the share only downloads in the browser). */
@@ -217,7 +220,15 @@ object AppUpdate {
                 .apply { if (p in 0..100 && ongoing) setProgress(100, p, false) }.build()) }
         }
         val ready = File(c.cacheDir, "update/YiWei-${r.version}.apk")
-        if (ready.exists() && (r.apk.size <= 0 || ready.length() == r.apk.size)) { withContext(Dispatchers.Main) { install(c, ready) }; return@withContext true }
+        if (ready.exists() && (r.apk.size <= 0 || ready.length() == r.apk.size)) {
+            // B5: a cached APK is verified too — a stale / swapped file must never reach the installer.
+            try { checkSignature(c, ready) } catch (e: SignatureMismatch) {
+                Diag.log("UPD", "cached APK signature mismatch, installer NOT launched")
+                runCatching { ready.delete() }
+                return@withContext signatureMismatchAbort(c)
+            }
+            withContext(Dispatchers.Main) { install(c, ready) }; return@withContext true
+        }
         try {
             lastCode = 0
             var hdr: Map<String, String> = emptyMap()
@@ -246,9 +257,15 @@ object AppUpdate {
             // never hand an older build to the installer (it would fail with a downgrade error)
             val vc = runCatching { @Suppress("DEPRECATION") c.packageManager.getPackageArchiveInfo(out.path, 0)?.versionCode ?: -1 }.getOrDefault(-1)
             if (vc in 0..BuildInfo.code) { out.delete(); throw Exception("网盘里的安装包版本号（$vc）不比当前（${BuildInfo.code}）新") }
+            // B5: same-signer check before the installer ever sees the file.
+            checkSignature(c, out)
             note(100, "下载完成，点安装", false); progress = -1f
             withContext(Dispatchers.Main) { install(c, out) }
             true
+        } catch (e: SignatureMismatch) {
+            Diag.log("UPD", "download failed: signature mismatch, installer NOT launched")
+            progress = -1f; runCatching { nm?.cancel(4109) }
+            signatureMismatchAbort(c)
         } catch (e: Exception) {
             Diag.log("UPD", "download failed: ${e.message}")
             progress = -1f; runCatching { nm?.cancel(4109) }
@@ -258,6 +275,50 @@ object AppUpdate {
             }
             false
         }
+    }
+
+    /** Thrown when a downloaded APK is signed by a different key than the installed app. */
+    class SignatureMismatch : Exception("签名不一致，需先卸载旧版")
+
+    /** SHA-256 of the first signer certificate of an APK file, or null when it cannot be read. */
+    private fun apkSignerSha256(c: Context, apk: File): String? = runCatching {
+        @Suppress("DEPRECATION")
+        val info = c.packageManager.getPackageArchiveInfo(apk.path, PackageManager.GET_SIGNING_CERTIFICATES) ?: return@runCatching null
+        val certs = info.signingInfo?.apkContentsSigners ?: return@runCatching null
+        if (certs.isEmpty()) return@runCatching null
+        java.security.MessageDigest.getInstance("SHA-256").digest(certs[0].toByteArray()).joinToString("") { "%02x".format(it) }
+    }.getOrNull()
+
+    /** SHA-256 of the first signer certificate of the installed app, or null when it cannot be read. */
+    private fun currentSignerSha256(c: Context): String? = runCatching {
+        @Suppress("DEPRECATION")
+        val info = c.packageManager.getPackageInfo(c.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+        val certs = info.signingInfo?.apkContentsSigners ?: return@runCatching null
+        if (certs.isEmpty()) return@runCatching null
+        java.security.MessageDigest.getInstance("SHA-256").digest(certs[0].toByteArray()).joinToString("") { "%02x".format(it) }
+    }.getOrNull()
+
+    /**
+     * B5: the downloaded APK must be signed by the same key as the installed app, or the installer
+     * would refuse (or a swapped package could install). Fail-closed: an unreadable signature counts
+     * as a mismatch — the installer is never launched.
+     */
+    private fun checkSignature(c: Context, apk: File) {
+        val want = currentSignerSha256(c)
+        val got = apkSignerSha256(c, apk)
+        if (want == null || got == null || want != got) {
+            Diag.log("UPD", "signature mismatch (currentReadable=${want != null}, apkReadable=${got != null}), installer NOT launched")
+            throw SignatureMismatch()
+        }
+    }
+
+    /** B5: record + surface a signature mismatch (dialog via [signatureMismatch]); returns false for the caller. */
+    private suspend fun signatureMismatchAbort(c: Context): Boolean {
+        signatureMismatch = "签名不一致，需先卸载旧版"
+        withContext(Dispatchers.Main) {
+            android.widget.Toast.makeText(c, "签名不一致，需先卸载旧版", android.widget.Toast.LENGTH_LONG).show()
+        }
+        return false
     }
 
     fun install(c: Context, apk: File) {
