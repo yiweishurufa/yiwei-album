@@ -95,11 +95,22 @@ private fun PersonScreen(s: ExtScreen.Person) {
     fun regroup(done: String) { fl.cluster(lib); toast(ctx, done) }
     DisposableEffect(p?.key) {
         val cur = p
-        SelExtra.actions = if (cur == null) emptyList() else listOf(SelExtraAction(Icons.Rounded.PersonRemove, "移出人物") { l ->
-            group = fl.edits.ensureGroup(cur)
-            fl.edits.removePhotos(cur, l.map { it.cloudPath }.toSet())
-            Selection.clear(); regroup("已从「${cur.name.ifEmpty { "该人物" }}」移出 ${l.size} 张")
-        })
+        SelExtra.actions = if (cur == null) emptyList() else listOf(
+            SelExtraAction(Icons.Rounded.PersonRemove, "移出人物") { l ->
+                group = fl.edits.ensureGroup(cur)
+                fl.edits.removePhotos(cur, l.map { it.cloudPath }.toSet())
+                Selection.clear(); regroup("已从「${cur.name.ifEmpty { "该人物" }}」移出 ${l.size} 张")
+            },
+            // 第 4 批：拆分人物——选中照片里的脸拆成一个新人物（「这是另一个人」，不是「这张不是 TA」）。
+            // 全选时不拆（拆完原人物就空了）；拆完调 cluster() 重新归类。
+            SelExtraAction(Icons.Rounded.PersonAdd, "拆分为新人物") { l ->
+                val paths = l.map { it.cloudPath }.toSet()
+                if (paths.size >= cur.photos.size) { toast(ctx, "全选时不能拆分，请至少留一张"); return@SelExtraAction }
+                val n = fl.edits.splitFrom(cur, paths)
+                Selection.clear()
+                if (n > 0) regroup("已拆分为新人物（$n 张）") else toast(ctx, "拆分失败：选中的照片里没有这个人的脸")
+            },
+        )
         onDispose { SelExtra.actions = emptyList() }
     }
     Box(Modifier.fillMaxSize().background(C.Bg)) {
@@ -130,6 +141,13 @@ private fun PersonScreen(s: ExtScreen.Person) {
                 DropdownMenu(menu, { menu = false }, Modifier.background(C.Surface2)) {
                     DropdownMenuItem({ Text("命名", color = C.Text) }, { menu = false; renaming = true })
                     DropdownMenuItem({ Text("合并到其他人物…", color = C.Text) }, { menu = false; merging = true })
+                    // 第 4 批：撤销移出——移出时记下了原分组（FaceEdits.excludedFrom），这里按组恢复。以前移出是永久的，没有撤销入口。
+                    val undoIds = if (p.group.isNotEmpty()) fl.edits.excludedForGroup(p.group) else emptyList()
+                    if (undoIds.isNotEmpty()) DropdownMenuItem({ Text("撤销移出（${undoIds.size} 张）", color = C.Text) }, {
+                        menu = false
+                        val n = fl.edits.unexclude(undoIds)
+                        regroup("已恢复 $n 张")
+                    })
                     DropdownMenuItem({ Text(if (hidden) "取消隐藏" else "隐藏（路人）", color = C.Text) }, {
                         menu = false; group = fl.edits.ensureGroup(p); fl.edits.hide(p, !hidden)
                         regroup(if (hidden) "已取消隐藏" else "已隐藏，可在人物栏「已隐藏」里恢复")
