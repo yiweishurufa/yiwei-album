@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -141,8 +142,6 @@ fun HomeScreen() {
         }
     }
     }
-    if (HomeState.showConn) ConnectionSheet { HomeState.showConn = false }
-    if (HomeState.showDav) DavSheet { HomeState.showDav = false }
     if (HomeState.showDate) DateFilterDialog { HomeState.showDate = false }
     if (HomeState.showFaceCfg) FaceSettingsDialog { HomeState.showFaceCfg = false }
     HomeState.renameFace?.let { p ->
@@ -265,13 +264,8 @@ fun TopSwitch(extra: @Composable RowScope.() -> Unit = {}) {
                             onClick = { open = false; switchSource(ctx, s) })
                     }
                 }
-                HorizontalDivider(color = C.Line, modifier = Modifier.padding(vertical = 4.dp))
-                if (cur?.kind == "fn") DropdownMenuItem(leadingIcon = { Icon(LI.nas(), null, tint = C.Sub, modifier = Modifier.size(18.dp)) },
-                    text = { Text("连接与账号设置", color = C.Text, fontSize = 14.sp) }, onClick = { open = false; HomeState.showConn = true })
-                DropdownMenuItem(leadingIcon = { Icon(LI.plus(), null, tint = C.Sub, modifier = Modifier.size(18.dp)) },
-                    text = { Text("添加飞牛账号", color = C.Text, fontSize = 14.sp) }, onClick = { open = false; Nav.push(Route.Login) })
-                DropdownMenuItem(leadingIcon = { Icon(LI.drive(), null, tint = C.Sub, modifier = Modifier.size(18.dp)) },
-                    text = { Text("添加 / 管理 WebDAV", color = C.Text, fontSize = 14.sp) }, onClick = { open = false; Nav.push(Route.DavAccounts) })
+                // Only source switching lives here: account management is the Settings header card
+                // (飞牛 → 连接设置页, WebDAV → 账户管理页), so this menu can never offer a second path to it.
             }
         }
         Spacer(Modifier.weight(1f))
@@ -280,13 +274,6 @@ fun TopSwitch(extra: @Composable RowScope.() -> Unit = {}) {
         IconButton(onClick = { Nav.push(Route.Search) }) { Icon(LI.search(), null, tint = C.Text, modifier = Modifier.size(23.dp)) }
     }
 }
-
-/** Old second-row capsules: the source capsule above now does both jobs. Kept as no-ops so the tabs need no other change. */
-@Composable
-fun ConnCapsule() {}
-
-@Composable
-fun DavCapsule() {}
 
 @Composable
 private fun BigTitle(title: String, sub: String) {
@@ -346,9 +333,9 @@ private fun PhotosTab() {
     Box(Modifier.fillMaxSize()) {
         val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
         when {
-            tl.photos.isEmpty() && tl.loading -> Column { TopSwitch(); ConnCapsule(); SkeletonGrid(4, 20.dp) }
-            tl.photos.isEmpty() && tl.error != null -> Column { TopSwitch(); ConnCapsule(); Box(Modifier.weight(1f)) { StateMessage(LI.nas(), "连不上飞牛", tl.error!!, "重试") { scope.launch { runCatching { Endpoint.autoSelect() }; tl.refresh() } } } }
-            tl.photos.isEmpty() && tl.done -> Column { TopSwitch(); ConnCapsule(); Box(Modifier.weight(1f)) { StateMessage(LI.photos(), "还没有照片", "在飞牛相册里添加照片文件夹后，这里会自动出现。") } }
+            tl.photos.isEmpty() && tl.loading -> Column { TopSwitch(); SkeletonGrid(4, 20.dp) }
+            tl.photos.isEmpty() && tl.error != null -> Column { TopSwitch(); Box(Modifier.weight(1f)) { StateMessage(LI.nas(), "连不上飞牛", tl.error!!, "重试") { scope.launch { runCatching { Endpoint.autoSelect() }; tl.refresh() } } } }
+            tl.photos.isEmpty() && tl.done -> Column { TopSwitch(); Box(Modifier.weight(1f)) { StateMessage(LI.photos(), "还没有照片", "在飞牛相册里添加照片文件夹后，这里会自动出现。") } }
             level == Level.YEAR -> {
                 val cards = remember(tl.months, tl.photos.size) {
                     tl.months.groupBy { it.first.take(4).toInt() }.map { (y, ms) -> YearCard(y, ms.sumOf { it.second }, tl.photos.firstOrNull { it.day.startsWith("$y") }) }.sortedByDescending { it.year }
@@ -411,8 +398,8 @@ private fun DavPhotosTab() {
     val sub = listOf(yt, "${n(stills.size)} 张照片", ScanStatus.listing(lib)?.let { "正在扫描 ${it.done}/${it.total} 个文件夹" } ?: "").filter { it.isNotEmpty() }.joinToString(" · ")
     Box(Modifier.fillMaxSize()) {
         when {
-            lib.photos.isEmpty() && lib.scanning -> Column { TopSwitch(); DavCapsule(); SkeletonGrid(4, 20.dp) }
-            lib.photos.isEmpty() && lib.error != null -> Column { TopSwitch(); DavCapsule(); Box(Modifier.weight(1f)) { StateMessage(LI.drive(), "连不上 WebDAV", lib.error!!, "重试") { scope.launch { lib.scan() } } } }
+            lib.photos.isEmpty() && lib.scanning -> Column { TopSwitch(); SkeletonGrid(4, 20.dp) }
+            lib.photos.isEmpty() && lib.error != null -> Column { TopSwitch(); Box(Modifier.weight(1f)) { StateMessage(LI.drive(), "连不上 WebDAV", lib.error!!, "重试") { scope.launch { lib.scan() } } } }
             stills.isEmpty() -> Column { TopSwitch(); PhotoModeSwitch(); Box(Modifier.weight(1f)) { StateMessage(LI.photos(), "没有找到照片", "把照片放进这个 WebDAV 后下拉刷新。", "重新扫描") { scope.launch { lib.scan(full = true) } } } }
             else -> {
                 PhotoGrid(entries, adaptiveCols(level.cols.coerceAtMost(7)), lib.scanning, onEnd = {}, onOpen = { Nav.push(Route.Viewer(stills, it)) }, state = grid, top = 0.dp,
@@ -566,14 +553,14 @@ private fun DiscoverTab() {
     var menuPerson by remember { mutableStateOf<Person?>(null) }
     var menuPlace by remember { mutableStateOf<Place?>(null) }
     menuPerson?.let { p ->
-        GroupActions(p.name.ifEmpty { "未命名人物" }, "${p.count} 张照片", onDismiss = { menuPerson = null }, actions = listOf(
+        ActionListDialog(p.name.ifEmpty { "未命名人物" }, "${p.count} 张照片", onDismiss = { menuPerson = null }, actions = listOf(
             "命名" to { menuPerson = null; HomeState.renamePerson = p },
             "隐藏（路人）" to { menuPerson = null; FnPersonHide.set(p.id, true); toast(ctx, "已在本机隐藏") },
             "创建相册" to { menuPerson = null; makeNasAlbum(ctx, p.name.ifEmpty { "人物" }) { o, l -> Repo.personPhotos(p.id, o, l) } },
         ))
     }
     menuPlace?.let { pl ->
-        GroupActions(pl.city.ifEmpty { pl.country }, "${pl.count} 张照片", onDismiss = { menuPlace = null }, actions = listOf(
+        ActionListDialog(pl.city.ifEmpty { pl.country }, "${pl.count} 张照片", onDismiss = { menuPlace = null }, actions = listOf(
             "创建相册" to { menuPlace = null; makeNasAlbum(ctx, pl.city.ifEmpty { pl.country }) { o, l -> Repo.placePhotos(pl, o, l) } },
         ))
     }
@@ -693,7 +680,7 @@ private fun DavDiscoverTab() {
     LaunchedEffect(lib) {
         lib.ensure(); fl.cluster(lib)
         // 1.0.9: AI labelling starts together with analysis and faces; it waits for the ScanPolicy conditions by itself
-        if (!ScanPolicy.paused) { Analyzer.start(ctx, lib, false); Faces.start(ctx, lib, false); if (AiRunner.on) AiRunner.startDav(ctx, lib) }
+        if (!ScanPolicy.paused) ScanStarter.startAll(ctx, lib, manual = false)
     }
     val v = lib.metaVersion
     val places = remember(v, lib.photos.size) { lib.places() }
@@ -725,8 +712,8 @@ private fun DavDiscoverTab() {
                     if (ai.isEmpty()) base else if (lib.analyzing || fl.running) "$base\n$ai" else ai
                 },
                 onToggle = {
-                    if (lib.analyzing || fl.running || AiRunner.running) { Analyzer.stop(); Faces.stop(); AiRunner.pause() }
-                    else { ScanPolicy.paused = false; Analyzer.start(ctx, lib, true); Faces.start(ctx, lib, true); if (AiRunner.on) AiRunner.startDav(ctx, lib, manual = true) }
+                    if (lib.analyzing || fl.running || AiRunner.running) ScanPolicy.pauseAll()
+                    else ScanPolicy.resumeAll(ctx, startAiDav = AiRunner.on)
                 },
                 onSettings = { Nav.push(Route.Settings) },
             )
@@ -794,22 +781,21 @@ private fun DavDiscoverTab() {
         }
     }
     menuPerson?.let { p ->
-        GroupActions(p.name.ifEmpty { "未命名人物" }, "${p.photos.size} 张照片", onDismiss = { menuPerson = null }, actions = listOf(
+        ActionListDialog(p.name.ifEmpty { "未命名人物" }, "${p.photos.size} 张照片", onDismiss = { menuPerson = null }, actions = listOf(
             "命名" to { menuPerson = null; HomeState.renameFace = p },
             "合并到其他人物…" to { menuPerson = null; mergeFrom = p },
-            "隐藏（路人）" to { menuPerson = null; fl.edits.hide(p, true); fl.cluster(lib); toast(ctx, "已隐藏，可在人物栏「已隐藏」里恢复") },
+            "隐藏（路人）" to { menuPerson = null; FacePersonActions.hide(fl, lib, ctx, p) },
             "创建相册" to { menuPerson = null; makeDavAlbum(ctx, lib, p.name.ifEmpty { "人物" }, p.photos) },
         ))
     }
     mergeFrom?.let { p ->
         PersonPicker(fl, exclude = p.key, title = "把「${p.name.ifEmpty { "该人物" }}」合并到…", onDismiss = { mergeFrom = null }) { t ->
             mergeFrom = null
-            if (t.name.isEmpty() && p.name.isNotEmpty()) fl.rename(t, p.name)
-            fl.edits.merge(fl.persons.firstOrNull { it.key == t.key } ?: t, p); fl.cluster(lib); toast(ctx, "已合并")
+            FacePersonActions.merge(fl, lib, from = p, into = t); toast(ctx, "已合并")
         }
     }
     menuPlace?.let { pl ->
-        GroupActions(pl.first, "${pl.second.size} 张照片", onDismiss = { menuPlace = null }, actions = listOf(
+        ActionListDialog(pl.first, "${pl.second.size} 张照片", onDismiss = { menuPlace = null }, actions = listOf(
             "创建相册" to { menuPlace = null; makeDavAlbum(ctx, lib, pl.first, pl.second) },
         ))
     }
@@ -838,19 +824,6 @@ private fun makeNasAlbum(ctx: android.content.Context, name: String, load: suspe
             ids.size
         }.onSuccess { toast(ctx, "已创建相册「$name」，$it 张") }.onFailure { toast(ctx, it.message ?: "创建失败") }
     }
-}
-
-@Composable
-private fun GroupActions(title: String, sub: String, onDismiss: () -> Unit, actions: List<Pair<String, () -> Unit>>) {
-    AlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface, title = {
-        Column { Text(title, color = C.Text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold); Text(sub, color = C.Sub, fontSize = 13.sp) }
-    }, text = {
-        Column {
-            actions.forEach { (label, act) ->
-                Text(label, color = C.Text, fontSize = 16.sp, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { act() }.padding(vertical = 14.dp, horizontal = 4.dp))
-            }
-        }
-    }, confirmButton = {}, dismissButton = { TextButton(onClick = onDismiss) { Text("取消", color = C.Sub) } })
 }
 
 @Composable
@@ -964,38 +937,27 @@ fun FaceSettingsDialog(onDismiss: () -> Unit) {
         TextButton(onClick = {
             FaceConfig.conf = conf; FaceConfig.minPhotos = minP.toInt(); FaceConfig.diff = diff; FaceConfig.save()
             Dav.lib()?.let { Faces.lib(it.accountId).cluster(it) }
-            onDismiss()
+            onClose()
         }) { Text("保存并重新归类", color = C.Accent) }
     }, dismissButton = { TextButton(onClick = onDismiss) { Text("取消", color = C.Sub) } })
     if (confirmClear) ConfirmDialog("清除人脸识别结果？", "人物和名字都会清空，之后重新识别。", "清除", onDismiss = { confirmClear = false }) {
-        confirmClear = false; Faces.stop(); Dav.lib()?.let { Faces.lib(it.accountId).clear() }; onDismiss()
+        confirmClear = false; Faces.stop(); Dav.lib()?.let { Faces.lib(it.accountId).clear() }; onClose()
+    }
+}
+
+// ============================================================ connection settings page
+// Was ConnectionSheet (bottom sheet): same account / LAN-WAN / speed-test / mode content, now a
+// standalone page entered only from the Settings header card (TopSwitch no longer links here).
+
+@Composable
+fun ConnectionSettingsScreen() {
+    Page("连接设置", NasAccounts.current?.let { "飞牛 · ${it.title}" } ?: "") {
+        ConnectionSettingsContent(onClose = { Nav.pop() })
     }
 }
 
 @Composable
-private fun GroupPicker(title: String, groups: List<Pair<String, List<Photo>>>, onDismiss: () -> Unit) {
-    AlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface, title = { Text(title, color = C.Text) }, text = {
-        if (groups.isEmpty()) Text("还没有结果。", color = C.Sub)
-        else LazyColumn(Modifier.heightIn(max = 420.dp)) {
-            items(groups, key = { it.first }) { (name, ps) ->
-                Row(Modifier.fillMaxWidth().clickable {
-                    onDismiss(); Nav.push(Route.Collection(name, title, PhotoSource(pageSize = 100000) { o, _ -> if (o > 0) emptyList<Photo>() to false else ps to false }))
-                }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).background(C.Surface2)) { NetImage(ps.firstOrNull()?.thumbM, Modifier.fillMaxSize()) }
-                    Spacer(Modifier.width(12.dp))
-                    Text(name, color = C.Text, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                    Text("${ps.size}", color = C.Sub, fontSize = 13.sp)
-                }
-            }
-        }
-    }, confirmButton = {}, dismissButton = { TextButton(onClick = onDismiss) { Text("关闭", color = C.Sub) } })
-}
-
-// ============================================================ connection / accounts sheet
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ConnectionSheet(onDismiss: () -> Unit) {
+fun ConnectionSettingsContent(onClose: () -> Unit) {
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
     var editLan by remember { mutableStateOf(false) }
@@ -1004,21 +966,20 @@ fun ConnectionSheet(onDismiss: () -> Unit) {
     var renaming by remember { mutableStateOf(false) }
     var speedLan by remember { mutableStateOf<Endpoint.Speed?>(null) }
     var speedWan by remember { mutableStateOf<Endpoint.Speed?>(null) }
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = C.Surface, dragHandle = { BottomSheetDefaults.DragHandle(color = C.Faint) }) {
-        Column(Modifier.padding(bottom = 30.dp)) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 30.dp)) {
             Text("账号", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = 20.dp, bottom = 10.dp))
             LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 items(NasAccounts.list, key = { it.id }) { a ->
                     val cur = a.id == NasAccounts.currentId
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(68.dp).clickable {
-                        if (!cur || HomeState.source != "fn") { switchSource(ctx, Src("fn", a.id, a.title, "")); onDismiss() }
+                        if (!cur || HomeState.source != "fn") { switchSource(ctx, Src("fn", a.id, a.title, "")); onClose() }
                     }) {
                         Avatar(a.user, 52.dp, ring = cur)
                         Text(a.title, fontSize = 12.sp, color = if (cur) C.Text else C.Sub, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
                     }
                 }
                 item {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(68.dp).clickable { onDismiss(); Nav.push(Route.Login) }) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(68.dp).clickable { onClose(); Nav.push(Route.Login) }) {
                         Box(Modifier.size(52.dp).clip(CircleShape).border(1.dp, C.Line, CircleShape), contentAlignment = Alignment.Center) { Icon(LI.plus(), null, tint = C.Sub) }
                         Text("添加", fontSize = 12.sp, color = C.Sub, modifier = Modifier.padding(top = 6.dp))
                     }
@@ -1061,11 +1022,10 @@ fun ConnectionSheet(onDismiss: () -> Unit) {
                     testing = true; scope.launch { runCatching { Endpoint.autoSelect() }; testing = false }
                 }
                 NavRow(LI.close(), "退出这个账号", a.user, danger = true) {
-                    HomeState.forget(a.id); NasAccounts.remove(a.id); HomeState.clear(); onDismiss()
+                    HomeState.forget(a.id); NasAccounts.remove(a.id); HomeState.clear(); onClose()
                     if (NasAccounts.current == null) { Store.clear(); FnClient.token = ""; Nav.reset(Route.Login) }
                 }
             }
-        }
     }
     val a = NasAccounts.current
     if (a != null && renaming) InputDialog("重命名账号", a.title, "比如：家里的飞牛", "保存", onDismiss = { renaming = false }) { v ->
@@ -1081,30 +1041,6 @@ fun ConnectionSheet(onDismiss: () -> Unit) {
                 runCatching { Endpoint.autoSelect() }
                 toast(ctx, "已保存")
             }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun DavSheet(onDismiss: () -> Unit) {
-    val ctx = LocalContext.current
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = C.Surface, dragHandle = { BottomSheetDefaults.DragHandle(color = C.Faint) }) {
-        Column(Modifier.padding(bottom = 30.dp)) {
-            Text("WebDAV 账户", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = 20.dp, bottom = 6.dp))
-            Dav.accounts.forEach { a ->
-                val cur = a.id == Dav.current?.id
-                Row(Modifier.fillMaxWidth().clickable { switchSource(ctx, Src("dav", a.id, a.title, "")); onDismiss() }.padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(LI.drive(cur), null, tint = if (cur) C.Accent else C.Sub, modifier = Modifier.size(22.dp))
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(a.title, color = C.Text, fontSize = 15.sp, fontWeight = if (cur) FontWeight.SemiBold else FontWeight.Normal)
-                        Text(a.url, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    if (cur) Text("当前", color = C.Accent, fontSize = 12.sp)
-                }
-            }
-            NavRow(LI.settings(), "管理 WebDAV", "添加、编辑、移除") { onDismiss(); Nav.push(Route.DavAccounts) }
         }
     }
 }
