@@ -75,9 +75,7 @@ fun MusicTab() {
     val lib = remember(key) { Music.lib(key) }
     LaunchedEffect(key) {
         // first visit after a restart: pick up new files quietly (only new / changed files are read)
-        if (lib.dirs.isNotEmpty() && !lib.scanning && System.currentTimeMillis() - (Store.getStr("music.last.$key").toLongOrNull() ?: 0L) > 6 * 3600_000L) {
-            Store.putStr("music.last.$key", System.currentTimeMillis().toString()); lib.scan(); ScanService.ensure(App.ctx)
-        }
+        autoScanIfStale("music.last.$key", lib.dirs.isNotEmpty(), lib.scanning) { lib.scan(); ScanService.ensure(App.ctx) }
     }
     val v = lib.version
     val q = MusicUi.query.trim()
@@ -186,20 +184,7 @@ private fun PillButton(icon: ImageVector, text: String, modifier: Modifier = Mod
 }
 
 @Composable
-private fun MusicScanBar(lib: MusicLib) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(C.Surface).padding(horizontal = 14.dp, vertical = 12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(if (lib.scanning) lib.phase.ifEmpty { "正在扫描" } else "扫描遇到问题", color = C.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (lib.scanning && lib.total > 0) Text("${lib.done}/${lib.total}", color = C.Sub, fontSize = 12.sp)
-        }
-        if (lib.error != null && !lib.scanning) Text(lib.error!!, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
-        if (lib.scanning) {
-            val p = if (lib.total > 0) lib.done / lib.total.toFloat() else null
-            if (p == null) LinearProgressIndicator(color = C.Accent, trackColor = C.Surface2, modifier = Modifier.padding(top = 10.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)))
-            else LinearProgressIndicator(progress = { p }, color = C.Accent, trackColor = C.Surface2, modifier = Modifier.padding(top = 10.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)))
-        }
-    }
-}
+private fun MusicScanBar(lib: MusicLib) = LibraryScanBar(lib.phase, lib.done, lib.total, lib.error, lib.scanning)
 
 /** Format badge: lossless / DSD / formats played by the compatibility engine. */
 private fun badge(t: Track): String? = when (t.ext) {
@@ -529,26 +514,14 @@ fun MusicSettingsScreen() {
                 if (lib.dirs.isEmpty()) Text("和照片、影视分开设置。音乐文件夹里的文件不会出现在照片和视频页，影视扫描也会跳过它们。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
                 lib.dirs.forEachIndexed { i, d ->
                     if (i > 0) Div()
-                    Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(LI.folder(), null, tint = C.Text, modifier = Modifier.size(20.dp))
-                        Column(Modifier.padding(start = 12.dp).weight(1f)) {
-                            Text(d.name, color = C.Text, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(d.path.removePrefix("fm:"), color = C.Faint, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                        Text("移除", color = C.Danger, fontSize = 13.sp, modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { lib.saveDirs(lib.dirs - d) }.padding(6.dp))
-                    }
+                    LibraryDirRow(d.name, d.path.removePrefix("fm:")) { lib.saveDirs(lib.dirs - d) }
                 }
                 Div()
                 NavRow(LI.plus(), "添加文件夹", if (lib.kind == "fn") "飞牛请选「文件管理」里的文件夹（相册文件夹读不到音乐）" else "浏览这个 WebDAV") { picking = true }
             }
-            Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                GradientButton(if (lib.scanning) "扫描中…" else "立即扫描", Modifier.weight(1f), loading = lib.scanning) {
-                    if (lib.dirs.isEmpty()) toast(ctx, "先添加音乐文件夹") else { lib.scan(); ScanService.ensure(ctx); toast(ctx, "开始扫描，离开页面也会继续") }
-                }
-                Text("重新刮削", color = C.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1,
-                    modifier = Modifier.height(48.dp).clip(RoundedCornerShape(14.dp)).background(C.Surface).clickable(enabled = !lib.scanning) {
-                        if (lib.dirs.isEmpty()) toast(ctx, "先添加音乐文件夹") else { lib.scan(rescrape = true); ScanService.ensure(ctx); toast(ctx, "重新读取所有歌曲的标签") }
-                    }.padding(horizontal = 16.dp).wrapContentHeight(Alignment.CenterVertically))
+            LibraryScanRow(lib.scanning, lib.dirs.isNotEmpty(), "先添加音乐文件夹",
+                onScan = { lib.scan(); ScanService.ensure(ctx) }, redoLabel = "重新刮削", redoEnabled = !lib.scanning) {
+                if (lib.dirs.isEmpty()) toast(ctx, "先添加音乐文件夹") else { lib.scan(rescrape = true); ScanService.ensure(ctx); toast(ctx, "重新读取所有歌曲的标签") }
             }
             Section("刮削")
             Card {
