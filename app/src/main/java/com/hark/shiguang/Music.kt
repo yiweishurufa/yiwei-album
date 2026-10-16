@@ -19,6 +19,7 @@ import java.security.MessageDigest
  *   art/          cover images (embedded pictures, folder cover.jpg, online covers), named by md5 of the bytes
  *   lyrics/       <track id>.lrc — embedded, sidecar or online lyrics once read; <id>.none = nothing found (retry after 7 days)
  * Art and lyrics live under filesDir rather than cacheDir so a system cache purge does not blank the library.
+ * 第 4 批：两者都有上限 + LRU（[MusicLib.pruneCaches]：封面 200MB、歌词 50MB，只删曲库没引用的旧文件）。
  *
  * Access goes through [MovieFs] ([DavFs] / [FnFs]) — no separate WebDAV / 飞牛 code. On 飞牛 only folders from
  * 文件管理 ("fm:" paths) list audio files; 相册 folders only return photos and videos.
@@ -109,6 +110,33 @@ class MusicLib(val sourceKey: String) {
 
     fun track(id: String): Track? = tracks.firstOrNull { it.id == id }
 
+    /**
+     * 第 4 批：封面/歌词缓存上限 + LRU 清理。封面 art/ 200MB、歌词 lyrics/ 50MB（软上限）。
+     * 按最后修改时间从旧到新删，只删曲库没引用的文件（封面 artPath / 歌词 <id>.lrc|.none）；
+     * 如果全被引用、删无可删，就不硬删（曲库本身需要它们），只记一条日志。默认 10 分钟最多清一次。
+     */
+    fun pruneCaches(force: Boolean = false) {
+        if (!force && System.currentTimeMillis() - lastPrune < 10 * 60_000L) return
+        lastPrune = System.currentTimeMillis()
+        pruneDir(artDir, ART_CAP, tracks.mapNotNull { it.artPath }.map { File(it).name }.toSet())
+        pruneDir(lyricsDir, LYRICS_CAP, tracks.flatMap { listOf("${it.id}.lrc", "${it.id}.none") }.toSet())
+    }
+
+    private var lastPrune = 0L
+
+    private fun pruneDir(dir: File, cap: Long, keep: Set<String>) {
+        val files = dir.listFiles()?.filter { it.isFile } ?: return
+        var total = files.sumOf { it.length() }
+        if (total <= cap) return
+        var freed = 0L
+        files.filter { it.name !in keep }.sortedBy { it.lastModified() }.forEach { f ->
+            if (total <= cap) return@forEach
+            val len = f.length()
+            if (f.delete()) { total -= len; freed += len }
+        }
+        if (freed > 0) Diag.log("MUSIC", "prune ${dir.name}: freed ${freed / 1024} KB, now ${total / 1024} KB / cap ${cap / 1024} KB")
+    }
+
     fun clearCache() {
         job?.cancel(); tracks.clear(); File(dir, "library.json").delete(); artDir.deleteRecursively(); lyricsDir.deleteRecursively(); version++
     }
@@ -186,6 +214,7 @@ class MusicLib(val sourceKey: String) {
                 }
             } catch (e: CancellationException) { throw e } catch (e: Exception) { withContext(Dispatchers.Main) { error = e.message ?: "扫描失败" } }
             withContext(Dispatchers.Main) { scanning = false; phase = "" }
+            pruneCaches(force = true)
         }
     }
 
@@ -332,6 +361,7 @@ class MusicLib(val sourceKey: String) {
         if (b.size < 200) return null
         val f = File(artDir, md5(b).take(20) + ".img")
         if (!f.exists()) runCatching { f.writeBytes(b) }.onFailure { return null }
+        pruneCaches()
         return f.absolutePath
     }
 
@@ -340,16 +370,20 @@ class MusicLib(val sourceKey: String) {
     /** LRC text of [t]: cached → sidecar .lrc → online (when allowed). Null when there are none. */
     suspend fun lyrics(t: Track): String? = withContext(Dispatchers.IO) {
         val f = File(lyricsDir, "${t.id}.lrc")
-        if (f.exists() && f.length() > 0) return@withContext f.readText()
-        t.lrcPath?.let { p -> runCatching { fs.bytes(p) }.getOrNull()?.let { MusicTags.decodeText(it) }?.takeIf { it.isNotBlank() }?.let { f.writeText(it); return@withContext it } }
+        if (f.exists() && f.length() > 0) { runCatching { f.setLastModified(System.currentTimeMillis()) }; return@withContext f.readText() }
+        t.lrcPath?.let { p -> runCatching { fs.bytes(p) }.getOrNull()?.let { MusicTags.decodeText(it) }?.takeIf { it.isNotBlank() }?.let { f.writeText(it); pruneCaches(); return@withContext it } }
         val none = File(lyricsDir, "${t.id}.none")
         if (none.exists() && System.currentTimeMillis() - none.lastModified() < 7 * 86400_000L) return@withContext null
         if (!MusicPrefs.online) return@withContext null
         val l = runCatching { MusicOnline.lyrics(t) }.getOrNull()
-        if (l.isNullOrBlank()) { runCatching { none.writeText("") }; null } else { f.writeText(l); l }
+        if (l.isNullOrBlank()) { runCatching { none.writeText("") }; null } else { f.writeText(l); pruneCaches(); l }
     }
 
     companion object {
+        /** 第 4 批：封面缓存上限（见 [MusicLib.pruneCaches]）。 */
+        const val ART_CAP = 200L * 1024 * 1024
+        /** 第 4 批：歌词缓存上限（见 [MusicLib.pruneCaches]）。 */
+        const val LYRICS_CAP = 50L * 1024 * 1024
         fun md5(s: String) = md5(s.toByteArray())
         fun md5(b: ByteArray) = MessageDigest.getInstance("MD5").digest(b).joinToString("") { "%02x".format(it) }
     }
