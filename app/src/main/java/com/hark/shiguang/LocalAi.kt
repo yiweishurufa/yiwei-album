@@ -20,6 +20,10 @@ import java.util.concurrent.TimeUnit
  * stops. Results are marked 本地 ([AiLabel.local]) and are re-done by a model once one is available again.
  * The 400+ English labels of the base model (developers.google.com/ml-kit/vision/image-labeling/label-map)
  * are mapped onto the app's categories ([AiClient.CATS]) and translated into Chinese tags for search.
+ *
+ * 第 4 批（本地兜底增强）：标签只映射到 CATS 分类 + 中文 tags，不自造新分类；[AiLabel.faces] 恒为 -1——
+ * ML Kit Image Labeling 只给标签、不数人脸，人脸数只由人脸识别（Faces / ML Kit face-detection）给。
+ * 补了一批常见英文标签的映射（之前不在表里的会被丢掉，导致分类落到「其他」）。
  */
 object LocalAi {
     /** 「本地识别（离线）」 switch, default on. */
@@ -34,24 +38,27 @@ object LocalAi {
     /** label → category. Only labels that say something about the category are listed. */
     private val CAT: Map<String, String> = HashMap<String, String>().apply {
         fun add(cat: String, vararg ls: String) { for (l in ls) this[l] = cat }
-        add("人像", "Selfie", "Smile", "Beard", "Moustache", "Eyelash", "Hair", "Bangs", "Lipstick", "Baby", "Bride", "Groom", "Dude", "Model", "Laugh", "Skin", "Mouth", "Ear", "Veil", "Gown", "Tuxedo", "Person")
-        add("合照", "Crowd", "Team", "Crew", "Community", "Party", "Marriage", "Graduation", "Prom", "Class", "Army", "Militia", "Grandparent", "Interaction", "Picnic", "Event")
+        add("人像", "Selfie", "Smile", "Beard", "Moustache", "Eyelash", "Hair", "Bangs", "Lipstick", "Baby", "Bride", "Groom", "Dude", "Model", "Laugh", "Skin", "Mouth", "Ear", "Veil", "Gown", "Tuxedo", "Person", "Portrait", "Face", "Woman", "Man", "Girl", "Boy", "Child", "Family")
+        add("合照", "Crowd", "Team", "Crew", "Community", "Party", "Marriage", "Graduation", "Prom", "Class", "Army", "Militia", "Grandparent", "Interaction", "Picnic", "Event", "Group", "Audience")
         add("美食", "Food", "Cuisine", "Meal", "Lunch", "Supper", "Bento", "Cheeseburger", "Hot dog", "Fast food", "Pizza", "Sushi", "Cake", "Cookie", "Bread", "Pie", "Fruit", "Vegetable",
-            "Gelato", "Icing", "Juice", "Coffee", "Cappuccino", "Cola", "Wine", "Alcohol", "Couscous", "Pho", "Pasteles", "Tableware", "Cutlery", "Saucer", "Cup", "Eating", "Menu", "Steaming", "Cookware and bakeware")
+            "Gelato", "Icing", "Juice", "Coffee", "Cappuccino", "Cola", "Wine", "Alcohol", "Couscous", "Pho", "Pasteles", "Tableware", "Cutlery", "Saucer", "Cup", "Eating", "Menu", "Steaming", "Cookware and bakeware",
+            "Dinner", "Breakfast", "Brunch", "Snack", "Dessert", "Barbecue", "Seafood", "Noodle", "Rice", "Soup", "Salad", "Sandwich", "Ice cream", "Chocolate", "Tea", "Beer")
         add("宠物", "Pet", "Dog", "Cat", "Bird", "Shetland sheepdog", "Cairn terrier", "Basset hound", "Dalmatian", "Cavalier", "Shikoku", "Ragdoll", "Sphynx", "Pixie-bob", "Gerbil", "Turtle", "Duck",
-            "Horse", "Fur", "Penguin", "Butterfly", "Insect", "Bear", "Cattle", "Bull", "Herd", "Seal", "Crocodile", "Waterfowl", "Pomacentridae", "Aquarium")
+            "Horse", "Fur", "Penguin", "Butterfly", "Insect", "Bear", "Cattle", "Bull", "Herd", "Seal", "Crocodile", "Waterfowl", "Pomacentridae", "Aquarium", "Animal", "Puppy", "Kitten", "Rabbit", "Monkey", "Elephant", "Lion", "Tiger", "Deer", "Sheep", "Goat", "Pig", "Chicken", "Fish", "Snake", "Frog")
         add("风景", "Sky", "Sunset", "Mountain", "Beach", "Lake", "River", "Waterfall", "Glacier", "Iceberg", "Desert", "Dune", "Canyon", "Cliff", "Cave", "Forest", "Jungle", "Field", "Prairie", "Rainbow",
-            "Fog", "Storm", "Volcano", "Swamp", "Sand", "Rock", "Ice", "Icicle", "Reef", "Underwater", "Himalayan", "Park", "Farm", "Ranch", "Vacation", "Safari", "Camping", "Backpacking", "Pier", "Dam")
-        add("建筑", "Building", "Tower", "Church", "Cathedral", "Temple", "Mosque", "Castle", "Palace", "Monument", "Statue", "Museum", "Ruins", "Lighthouse", "Roof", "Barn", "Stairs", "Wall", "Brick", "Tile", "Factory")
-        add("城市", "Skyline", "Skyscraper", "Road", "Asphalt", "Infrastructure", "Bridge", "Construction", "Ferris wheel", "Stadium", "Playground", "Carnival", "Circus")
+            "Fog", "Storm", "Volcano", "Swamp", "Sand", "Rock", "Ice", "Icicle", "Reef", "Underwater", "Himalayan", "Park", "Farm", "Ranch", "Vacation", "Safari", "Camping", "Backpacking", "Pier", "Dam",
+            "Landscape", "Nature", "Outdoor", "Scenery", "Ocean", "Sea", "Coast", "Valley", "Hill", "Snow", "Sunrise", "Cloud", "Skyline")
+        add("建筑", "Building", "Tower", "Church", "Cathedral", "Temple", "Mosque", "Castle", "Palace", "Monument", "Statue", "Museum", "Ruins", "Lighthouse", "Roof", "Barn", "Stairs", "Wall", "Brick", "Tile", "Factory",
+            "House", "Apartment", "Villa", "Cottage", "Cabin", "Hotel", "School", "Hospital", "Library", "Theater", "Cinema", "Shop", "Market", "Station", "Airport")
+        add("城市", "Skyline", "Skyscraper", "Road", "Asphalt", "Infrastructure", "Bridge", "Construction", "Ferris wheel", "Stadium", "Playground", "Carnival", "Circus", "Street", "Downtown", "Traffic", "Parking")
         add("夜景", "Fireworks", "Sparkler", "Neon", "Moon", "Star", "Nebula", "Aurora", "Comet", "Lightning", "Nightclub", "Bonfire", "Fire", "Space")
-        add("植物", "Flower", "Plant", "Flora", "Petal", "Flowerpot", "Garden", "Twig", "Branch", "Wreath", "Centrepiece")
+        add("植物", "Flower", "Plant", "Flora", "Petal", "Flowerpot", "Garden", "Twig", "Branch", "Wreath", "Centrepiece", "Tree", "Leaf", "Grass", "Bush", "Rose", "Tulip", "Sunflower", "Cherry blossom", "Bamboo", "Cactus")
         add("交通", "Car", "Bus", "Train", "Airplane", "Airliner", "Aircraft", "Aviation", "Helicopter", "Bicycle", "Motorcycle", "Unicycle", "Boat", "Sailboat", "Speedboat", "Kayak", "Canoe", "Skiff",
-            "Brig", "Frigate", "Clipper", "Submarine", "Van", "Vehicle", "Tractor", "Wheel", "Tire", "Windshield", "Bumper", "Rickshaw", "Odometer", "Track", "Rocket", "Shipwreck")
+            "Brig", "Frigate", "Clipper", "Submarine", "Van", "Vehicle", "Tractor", "Wheel", "Tire", "Windshield", "Bumper", "Rickshaw", "Odometer", "Track", "Rocket", "Shipwreck", "Truck", "Taxi", "Subway", "Metro", "Tram", "Ferry", "Yacht", "Cruise")
         add("运动", "Sports", "Soccer", "Running", "Swimming", "Skiing", "Surfing", "Cycling", "Badminton", "Rugby", "Marathon", "Racing", "Race", "Gymnastics", "Skateboard", "Skateboarder", "Snowboarding",
             "Competition", "Pitch", "Softball", "Archery", "Rowing", "Rafting", "Windsurfing", "Wakeboarding", "Waterskiing", "Scuba diving", "Snorkeling", "Curling", "Boxer", "Polo", "Rodeo", "Bullfighting",
-            "Sledding", "Tubing", "Longboard", "Surfboard", "Jersey", "Helmet", "Fishing", "Dance", "Muscle", "Balance", "Pool")
-        add("文档", "Paper", "Receipt", "Newspaper", "News", "Passport", "Poster", "Whiteboard", "Blackboard", "Comics", "Presentation", "Money")
+            "Sledding", "Tubing", "Longboard", "Surfboard", "Jersey", "Helmet", "Fishing", "Dance", "Muscle", "Balance", "Pool", "Yoga", "Tennis", "Basketball", "Football", "Volleyball", "Golf", "Hiking", "Climbing", "Boxing", "Wrestling", "Skating", "Diving")
+        add("文档", "Paper", "Receipt", "Newspaper", "News", "Passport", "Poster", "Whiteboard", "Blackboard", "Comics", "Presentation", "Money", "Book", "Magazine", "Letter", "Card", "Ticket", "Certificate", "Document", "Map", "Calendar")
         add("截图", "Screenshot", "Web page", "Icon")
     }
 
@@ -80,6 +87,17 @@ object LocalAi {
         "Paper" to "纸张", "Receipt" to "小票", "Newspaper" to "报纸", "Passport" to "护照", "Poster" to "海报", "Whiteboard" to "白板", "Blackboard" to "黑板", "Comics" to "漫画", "Money" to "钱",
         "Screenshot" to "截图", "Web page" to "网页",
         "Christmas" to "圣诞", "Concert" to "演唱会", "Musician" to "乐手", "Musical instrument" to "乐器", "Piano" to "钢琴", "Toy" to "玩具", "Stuffed toy" to "玩偶", "Lego" to "乐高",
+        // 第 4 批：补与新增 CAT 映射对应的中文 tag（无中文的标签只影响分类，不进 tags）。
+        "Portrait" to "肖像", "Face" to "脸", "Woman" to "女士", "Man" to "男士", "Girl" to "女孩", "Boy" to "男孩", "Child" to "小孩", "Family" to "家人",
+        "Group" to "合影", "Audience" to "观众", "Animal" to "动物", "Puppy" to "小狗", "Kitten" to "小猫", "Rabbit" to "兔子", "Monkey" to "猴子",
+        "Elephant" to "大象", "Lion" to "狮子", "Tiger" to "老虎", "Deer" to "鹿", "Sheep" to "羊", "Goat" to "山羊", "Pig" to "猪", "Chicken" to "鸡", "Fish" to "鱼", "Snake" to "蛇", "Frog" to "青蛙",
+        "Landscape" to "风景", "Nature" to "自然", "Outdoor" to "户外", "Scenery" to "风景", "Ocean" to "海洋", "Sea" to "大海", "Coast" to "海岸", "Valley" to "山谷", "Hill" to "山丘", "Sunrise" to "日出", "Cloud" to "云",
+        "House" to "房子", "Apartment" to "公寓", "Villa" to "别墅", "Cottage" to "小屋", "Cabin" to "木屋", "Hotel" to "酒店", "School" to "学校", "Hospital" to "医院", "Library" to "图书馆", "Theater" to "剧院", "Cinema" to "电影院", "Shop" to "商店", "Market" to "市场", "Station" to "车站", "Airport" to "机场",
+        "Street" to "街道", "Downtown" to "市中心", "Dinner" to "晚餐", "Breakfast" to "早餐", "Brunch" to "早午餐", "Snack" to "零食", "Dessert" to "甜点", "Barbecue" to "烧烤", "Seafood" to "海鲜", "Noodle" to "面条", "Rice" to "米饭", "Soup" to "汤", "Salad" to "沙拉", "Sandwich" to "三明治", "Ice cream" to "冰淇淋", "Chocolate" to "巧克力", "Tea" to "茶", "Beer" to "啤酒",
+        "Tree" to "树", "Leaf" to "叶子", "Grass" to "草", "Bush" to "灌木", "Rose" to "玫瑰", "Tulip" to "郁金香", "Sunflower" to "向日葵", "Cherry blossom" to "樱花", "Bamboo" to "竹子", "Cactus" to "仙人掌",
+        "Truck" to "卡车", "Taxi" to "出租车", "Subway" to "地铁", "Metro" to "地铁", "Tram" to "电车", "Ferry" to "渡轮", "Yacht" to "游艇", "Cruise" to "游轮",
+        "Yoga" to "瑜伽", "Tennis" to "网球", "Basketball" to "篮球", "Football" to "足球", "Volleyball" to "排球", "Golf" to "高尔夫", "Hiking" to "徒步", "Climbing" to "攀岩", "Boxing" to "拳击", "Wrestling" to "摔跤", "Skating" to "滑冰", "Diving" to "跳水",
+        "Book" to "书", "Magazine" to "杂志", "Letter" to "信", "Card" to "卡片", "Ticket" to "票", "Certificate" to "证书", "Document" to "文件", "Map" to "地图", "Calendar" to "日历",
         "Balloon" to "气球", "Umbrella" to "雨伞", "Sunglasses" to "墨镜", "Glasses" to "眼镜", "Hat" to "帽子", "Dress" to "裙子", "Jeans" to "牛仔裤", "Shoe" to "鞋", "Sneakers" to "运动鞋",
         "Handbag" to "手提包", "Necklace" to "项链", "Ring" to "戒指", "Kitchen" to "厨房", "Bedroom" to "卧室", "Bathroom" to "浴室", "Room" to "房间", "Couch" to "沙发", "Desk" to "书桌",
         "Computer" to "电脑", "Mobile phone" to "手机", "Television" to "电视", "Clock" to "时钟", "Bench" to "长椅", "Flag" to "旗帜", "Tattoo" to "纹身", "Love" to "爱心", "Heart" to "爱心",
@@ -102,6 +120,8 @@ object LocalAi {
         else if (cat in setOf("风景", "建筑", "城市", "其他") && dark(bmp)) cat = "夜景"
         val tags = labels.sortedByDescending { it.confidence }.mapNotNull { ZH[it.text] }.distinct().take(6)
             .let { if (cat == "夜景" && "夜景" !in it) listOf("夜景") + it.take(5) else it }
+        // faces = -1（恒定）：本地不数人脸。ML Kit Image Labeling 只给标签；人脸数只由 Faces（ML Kit face-detection）给，
+        // 这里传任何非 -1 的数都会被误读成「已数过 N 张脸」，所以保持 -1。
         AiLabel(cat, tags, "本地识别" + if (tags.isNotEmpty()) "：" + tags.take(3).joinToString("、") else "", -1, local = true, model = "本地")
     }
 
