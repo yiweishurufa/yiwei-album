@@ -26,6 +26,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
+import androidx.compose.material3.pulltorefresh.pullRefresh
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -388,6 +391,7 @@ private fun PhotosTab() {
 
 // ============================================================ photos (WebDAV)
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DavPhotosTab() {
     val lib = Dav.lib()
@@ -397,6 +401,15 @@ private fun DavPhotosTab() {
         return
     }
     val scope = rememberCoroutineScope()
+    // 第 4 批：照片页下拉刷新。以前 Dav.kt 注释和空态文案都写着「下拉刷新」，实际没有实现，
+    // 只有「重新扫描」按钮（full 全量）。现在下拉触发 lib.scan() 增量扫描（默认增量，非 full）。
+    val ptr = rememberPullToRefreshState()
+    if (ptr.isRefreshing) {
+        LaunchedEffect(ptr.isRefreshing) {
+            runCatching { lib.scan() }
+            ptr.endRefresh()
+        }
+    }
     LaunchedEffect(lib) { lib.ensure(); if (!ScanPolicy.paused) { Analyzer.start(ctx, lib, false); if (AiRunner.on) AiRunner.startDav(ctx, lib) } }
     val grid = rememberMemGrid("dav-photos-" + lib.accountId)
     var level by remember { mutableStateOf(Level.DAY4) }
@@ -409,7 +422,7 @@ private fun DavPhotosTab() {
     val day = visibleDay(entries, grid, 1)
     val (mt, yt) = monthTitle(day)
     val sub = listOf(yt, "${n(stills.size)} 张照片", ScanStatus.listing(lib)?.let { "正在扫描 ${it.done}/${it.total} 个文件夹" } ?: "").filter { it.isNotEmpty() }.joinToString(" · ")
-    Box(Modifier.fillMaxSize()) {
+    Box(Modifier.fillMaxSize().pullRefresh(ptr, enabled = !lib.scanning)) {
         when {
             lib.photos.isEmpty() && lib.scanning -> Column { TopSwitch(); DavCapsule(); SkeletonGrid(4, 20.dp) }
             lib.photos.isEmpty() && lib.error != null -> Column { TopSwitch(); DavCapsule(); Box(Modifier.weight(1f)) { StateMessage(LI.drive(), "连不上 WebDAV", lib.error!!, "重试") { scope.launch { lib.scan() } } } }
@@ -420,6 +433,7 @@ private fun DavPhotosTab() {
                 AnimatedVisibility(scrolled, enter = fadeIn(), exit = fadeOut()) { CompactBar("$mt · $yt".trim(' ', '·')) }
             }
         }
+        PullToRefreshContainer(state = ptr, modifier = Modifier.align(Alignment.TopCenter))
         SelectionBar(Modifier.align(Alignment.BottomCenter), onChanged = { scope.launch { lib.scan() } })
     }
 }
@@ -569,6 +583,8 @@ private fun DiscoverTab() {
         GroupActions(p.name.ifEmpty { "未命名人物" }, "${p.count} 张照片", onDismiss = { menuPerson = null }, actions = listOf(
             "命名" to { menuPerson = null; HomeState.renamePerson = p },
             "隐藏（路人）" to { menuPerson = null; FnPersonHide.set(p.id, true); toast(ctx, "已在本机隐藏") },
+            // 第 4 批：飞牛暂未提供人物合并/移出接口（FnPersonHide），不硬编假调用；点开只说明原因，维持现状。
+            "合并 / 移出" to { menuPerson = null; toast(ctx, "飞牛暂未提供人物合并/移出接口，仅支持本机隐藏") },
             "创建相册" to { menuPerson = null; makeNasAlbum(ctx, p.name.ifEmpty { "人物" }) { o, l -> Repo.personPhotos(p.id, o, l) } },
         ))
     }
