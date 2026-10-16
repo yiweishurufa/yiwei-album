@@ -157,7 +157,7 @@ fun ViewerScreen(photosIn: List<Photo>, start: Int, slideshowStart: Boolean = fa
                 ) {
                     if (p != null) {
                         if (!p.isCloud) key(favTick, p.id) {
-                            BarAction(if (p.collected) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, if (p.collected) "已收藏" else "收藏", if (p.collected) C.Rose else Color.White) {
+                            BarAction(if (p.collected) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, if (p.collected) "已收藏" else "收藏", if (p.collected) C.Accent else Color.White) {
                                 val target = !p.collected
                                 p.collected = target; favTick++
                                 scope.launch { runCatching { Repo.setCollect(p.id, target) }.onFailure { p.collected = !target; favTick++ } }
@@ -408,7 +408,7 @@ private fun InfoSheet(p: Photo, onDismiss: () -> Unit) {
                 }
                 Spacer(Modifier.height(14.dp))
                 val mp = if (p.width > 0) "%.1f MP".format(p.width * p.height / 1_000_000f) else ""
-                Text(listOf(if (p.width > 0) "${p.width} × ${p.height}" else "", mp, fmtSize(p.size)).filter { it.isNotEmpty() }.joinToString("  ·  "), style = MaterialTheme.typography.bodySmall)
+                Text(listOf(if (p.width > 0) "${p.width} × ${p.height}" else "", mp, fmtBytes(p.size)).filter { it.isNotEmpty() }.joinToString("  ·  "), style = MaterialTheme.typography.bodySmall)
             }
             if (p.geo.isNotBlank()) InfoRow(Icons.Rounded.Place, p.geo)
             if (p.path.isNotBlank()) InfoRow(Icons.Rounded.Folder, p.path)
@@ -425,10 +425,5 @@ private fun InfoRow(icon: androidx.compose.ui.graphics.vector.ImageVector, text:
     }
 }
 
-private fun fmtSize(b: Long): String = when {
-    b <= 0 -> ""
-    b < 1 shl 20 -> "%.0f KB".format(b / 1024f)
-    b < 1 shl 30 -> "%.1f MB".format(b / 1048576f)
-    else -> "%.2f GB".format(b / 1073741824f)
-}
+
 
