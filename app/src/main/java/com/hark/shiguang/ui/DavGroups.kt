@@ -50,7 +50,7 @@ fun DavGroupsScreen(r: Route.DavGroups) {
     val lib = Dav.lib(r.accountId)
     val dup = r.kind == "dup"
     fun compute() = if (dup) lib.duplicates() else lib.similar()
-    // 1.0.2: this page never scans by itself. Detection (md5 / dHash) is part of the AI tab's 整理 (本地分析);
+    // 1.0.2: this page never scans by itself. Detection (headMd5 / dHash) is part of the AI tab's 整理 (本地分析);
     // here we only show what that analysis has found so far, and refresh when it adds more.
     var ready by remember { mutableStateOf(false) }
     val groups = remember { mutableStateListOf<List<Photo>>() }
@@ -75,10 +75,36 @@ fun DavGroupsScreen(r: Route.DavGroups) {
         if (list.isEmpty()) return
         busy = true
         Ops.launch {
-            runCatching { Ops.delete(list) }.onSuccess {
-                val keys = list.map { it.key }.toSet()
+            // B2: secondary confirmation for duplicates — full-file SHA-256 vs the kept photo of each group.
+            // A candidate whose full hash differs is excluded (head-only collision); one that cannot be
+            // verified (too large / unreadable) stays selected but is reported. The confirm dialog is unchanged.
+            var verified = list
+            if (dup) {
+                var excluded = 0; var unverified = 0
+                val keep = ArrayList<Photo>()
+                for (g in groups) {
+                    val best = Quality.best(g)
+                    val selected = g.filter { p -> p in list && p !== best }
+                    if (selected.isEmpty()) continue
+                    val bestHash = runCatching { lib.fullSha256(best.cloudPath) }.getOrNull()
+                    for (p in selected) {
+                        val h = runCatching { lib.fullSha256(p.cloudPath) }.getOrNull()
+                        when {
+                            h == null || bestHash == null -> { unverified++; keep.add(p) }
+                            h == bestHash -> keep.add(p)
+                            else -> excluded++
+                        }
+                    }
+                }
+                verified = keep
+                if (excluded > 0) toast(ctx, "全文校验排除了 $excluded 张（头部相同但全文不同）")
+                if (unverified > 0) toast(ctx, "$unverified 张未能全文校验（文件过大或读取失败），请自行确认")
+                if (verified.isEmpty()) { busy = false; return@launch }
+            }
+            runCatching { Ops.delete(verified) }.onSuccess {
+                val keys = verified.map { it.key }.toSet()
                 lib.photos.removeAll { it.key in keys }
-                after(); toast(ctx, "已删除 ${list.size} 张")
+                after(); toast(ctx, "已删除 ${verified.size} 张")
             }.onFailure { toast(ctx, it.message ?: "删除失败") }
             busy = false
         }
@@ -94,6 +120,7 @@ fun DavGroupsScreen(r: Route.DavGroups) {
                 }
                 Text("去 AI 页", color = C.Accent, fontSize = 13.sp)
             }
+            if (dup) Text("重复判定仅比对文件头部（前 128KB）+ 大小；删除前会做全文哈希二次校验，全文不同者自动排除。", color = C.Sub, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
             if (groups.isEmpty()) Box(Modifier.weight(1f)) {
                 StateMessage(if (dup) LI.copy() else LI.layers(), if (pending) "还没分析完" else "没有${if (dup) "重复" else "相似"}照片",
                     if (pending) "检测随 AI 页的整理一起进行，完成后结果会显示在这里" else "有新照片时会在 AI 整理里自动检测")
