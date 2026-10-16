@@ -187,6 +187,10 @@ class DavLib(val accountId: String) {
             setPhotos(CloudPhotos.toPhotos(accountId, all))
         }
         scanning = false
+        // 第 4 批：扫描完成自动触发后续整理（TODO #3「AI 随扫描自动启动、失败自动续跑」）。
+        // 以前新照片扫完可能长期未分析，直到 ScanWatch 或手动点；现在 listing 一结束就接力。
+        // 各 runner 自己做门控（ScanPolicy.paused / Wi-Fi·充电 / AiRunner.on），且 job 已在跑时直接返回，不会重复启动。
+        if (error == null) ScanFollowUp.afterScan(App.ctx, this)
     }
 
     suspend fun refreshFolders() { runCatching { src!!.list("/").filter { it.isDir && !it.name.startsWith(".") } }.onSuccess { folders = it }.onFailure { if (folders == null) folders = emptyList() } }
@@ -253,6 +257,20 @@ class DavLib(val accountId: String) {
         .groupBy { meta[it.cloudPath]!!.md5 + ":" + it.size }.values.filter { it.size > 1 }.sortedByDescending { it.size }
 
     fun similar(maxDist: Int = 6): List<List<Photo>> {
+        // 第 4 批：similar() 缓存 + 按 metaVersion 节流。大图库每次打开整理页都会调它，O(n·400) 重算很贵；
+        // meta 没变且照片集合没变时直接返回上次结果。key 是启发式的（metaVersion + 数量 + 首尾 + 已哈希数），不是精确失效——
+        // 最坏情况是新照片进来后一次展示用旧分组，下一次 metaVersion 变化即刷新。
+        val key = "$metaVersion|${photos.size}|${photos.firstOrNull()?.cloudPath}|${photos.lastOrNull()?.cloudPath}|${meta.values.count { it.hasHash }}"
+        if (key == similarCacheKey) return similarCache
+        val result = similarCompute(maxDist)
+        similarCacheKey = key; similarCache = result
+        return result
+    }
+
+    private var similarCacheKey = ""
+    private var similarCache: List<List<Photo>> = emptyList()
+
+    private fun similarCompute(maxDist: Int = 6): List<List<Photo>> {
         val items = photos.filter { !it.isVideo && meta[it.cloudPath]?.hasHash == true }.sortedBy { it.time }
         val h = items.map { meta[it.cloudPath]!!.dhash }
         val md = items.map { meta[it.cloudPath]!!.md5 + it.size }
@@ -365,6 +383,19 @@ object Dav {
     fun lib(id: String): DavLib = libs.getOrPut(id) { DavLib(id) }
     fun select(id: String) { currentId = id; Store.davId = id }
     fun forget(id: String) { libs.remove(id); CloudPhotos.forget(id) }
+}
+
+/**
+ * 第 4 批：扫描完成后的接力（TODO #3）。[DavLib.scan] 结束时调一次；各 runner 自带门控与「已在跑则返回」，
+ * 所以 ScanWatch / 页面 LaunchedEffect 再调也不会重复启动。失败不抛：任何一个 runner 挂了都不影响其余两个。
+ */
+object ScanFollowUp {
+    fun afterScan(c: Context, lib: DavLib) {
+        if (ScanPolicy.paused || lib.photos.isEmpty()) return
+        runCatching { Analyzer.start(c, lib, false) }
+        runCatching { Faces.start(c, lib, false) }
+        if (AiRunner.on) runCatching { AiRunner.startDav(c, lib) }
+    }
 }
 
 /** On-device analysis: EXIF GPS/time from the first 128 KB (HTTP Range), md5 of that head + size for duplicates, dHash from the EXIF thumbnail. */
