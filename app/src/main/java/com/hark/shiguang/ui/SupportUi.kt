@@ -47,4 +47,12 @@ fun AppOverlays() {
                 TextButton(enabled = p < 0f, onClick = { Store.putStr("upd.skip", r.skipKey); AppUpdate.offer = null }) { Text("以后再说", color = C.Sub) }
             } })
     }
+    // B5: the downloaded APK was signed by a different key — the installer was never launched.
+    AppUpdate.signatureMismatch?.let {
+        AlertDialog(onDismissRequest = { AppUpdate.signatureMismatch = null }, containerColor = C.Surface,
+            title = { Text("签名不一致", color = C.Text) },
+            text = { Text("下载的安装包签名与当前应用不一致，需先卸载旧版才能安装。本次安装已取消，安装包已删除。", color = C.Sub, fontSize = 14.sp) },
+            confirmButton = { TextButton({ AppUpdate.signatureMismatch = null }) { Text("知道了", color = C.Accent) } },
+            dismissButton = { TextButton({ AppUpdate.signatureMismatch = null; AppUpdate.openSharePage(ctx) }) { Text("打开分享页", color = C.Sub) } })
+    }
 }
