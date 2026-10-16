@@ -205,27 +205,41 @@ private fun render(b: Bitmap, crop: RectF, bright: Float, contrast: Float): Bitm
     return out
 }
 
-/** Downloads the original (max ~4096 px long side, EXIF orientation applied). */
+/**
+ * Downloads the original (max ~4096 px long side, EXIF orientation applied).
+ * B8: the old code held the whole file in memory (`body.bytes()` twice: decode + EXIF) and crashed
+ * with an NPE on an empty body (`body!!`). Now the response streams to a temp file (no full-file
+ * byte array), the body is null-checked, and decoding is two-pass from the file (bounds, then
+ * `inSampleSize`), with EXIF read from the file too.
+ */
 private suspend fun loadOriginal(p: Photo): Bitmap {
     val (url, headers) = if (p.isCloud) {
         val s = CloudPhotos.source(p.source) ?: error("网盘账户已移除")
         val e = CloudPhotos.entryOf(p) ?: CloudEntry(p.fileName, p.cloudPath, false, p.size, 0, null, true, false)
         val u = s.rawUrl(e); u to s.headers(u)
     } else p.original to NasX.streamHeaders(p.original)
-    val bytes = FnClient.http.newCall(Request.Builder().url(url).apply { headers.forEach { (k, v) -> header(k, v) } }.build()).execute().use { r ->
-        if (!r.isSuccessful) error("读取原图失败（HTTP ${r.code}）"); r.body!!.bytes()
+    val tmp = java.io.File(com.hark.shiguang.App.ctx.cacheDir, "edit-src-${java.util.UUID.randomUUID()}.tmp")
+    try {
+        FnClient.http.newCall(Request.Builder().url(url).apply { headers.forEach { (k, v) -> header(k, v) } }.build()).execute().use { r ->
+            if (!r.isSuccessful) error("读取原图失败（HTTP ${r.code}）")
+            val body = r.body ?: error("读取原图失败（空响应）")
+            body.byteStream().use { ins -> tmp.outputStream().use { out -> ins.copyTo(out) } }
+        }
+        if (!tmp.exists() || tmp.length() == 0L) error("读取原图失败（空响应）")
+        val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(tmp.path, o)
+        if (o.outWidth <= 0) error("这个格式暂不支持编辑")
+        var s = 1; while (max(o.outWidth, o.outHeight) / s > 4096) s *= 2
+        var b = BitmapFactory.decodeFile(tmp.path, BitmapFactory.Options().apply { inSampleSize = s }) ?: error("解码失败")
+        runCatching {
+            val ori = android.media.ExifInterface(tmp.path).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, 1)
+            val deg = when (ori) { 6 -> 90; 3 -> 180; 8 -> 270; else -> 0 }
+            if (deg != 0) b = rotate(b, deg)
+        }
+        return b
+    } finally {
+        runCatching { tmp.delete() }
     }
-    val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
-    if (o.outWidth <= 0) error("这个格式暂不支持编辑")
-    var s = 1; while (max(o.outWidth, o.outHeight) / s > 4096) s *= 2
-    var b = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = s }) ?: error("解码失败")
-    runCatching {
-        val ori = android.media.ExifInterface(java.io.ByteArrayInputStream(bytes)).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, 1)
-        val deg = when (ori) { 6 -> 90; 3 -> 180; 8 -> 270; else -> 0 }
-        if (deg != 0) b = rotate(b, deg)
-    }
-    return b
 }
 
 /** Writes the JPEG next to the original. Returns the new file name. */
