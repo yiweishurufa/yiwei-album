@@ -138,7 +138,9 @@ fun ViewerScreen(photosIn: List<Photo>, start: Int, slideshowStart: Boolean = fa
                     if (p != null) Column(Modifier.weight(1f)) {
                         val (t, w) = dayTitle(p.day)
                         Text("$t $w", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-                        Text(p.time.drop(11).take(5) + (if (p.isLive) "  ·  实况" else ""), color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
+                        // 第 4 批：飞牛实况 type-1 的独立视频流映射未验证（FnExtra.motionVideo），这里标注「未验证」，不要宣称已验证。
+                        // WebDAV 的 MOV 配对也用 liveType=1，但 isCloud=true，不受影响。
+                        Text(p.time.drop(11).take(5) + (if (p.isLive) "  ·  实况" + (if (!p.isCloud && p.liveType == 1) "（未验证）" else "") else ""), color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
                     }
                     Text("${pager.currentPage + 1} / ${photos.size}", color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp,
                         modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(Color(0x40000000)).padding(horizontal = 9.dp, vertical = 4.dp))
