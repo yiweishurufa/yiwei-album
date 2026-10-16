@@ -101,7 +101,7 @@ fun SettingsScreen() {
 
         // ---- 当前来源的账号
         Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp).fillMaxWidth().clip(RoundedCornerShape(C.Card)).background(C.Surface)
-            .clickable { if (dav) HomeState.showDav = true else HomeState.showConn = true }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            .clickable { if (dav) Nav.push(Route.DavAccounts) else Nav.push(Route.ConnectionSettings) }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Avatar(if (dav) davAcc?.title ?: "W" else nas?.user ?: "我", 48.dp)
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
@@ -173,23 +173,23 @@ fun SettingsScreen() {
         // ---- 整理与 AI
         Section("整理与 AI")
         Card {
+            NavRow(LI.sparkle(), "大模型", if (AiConfig.configured) AiProviders.of(AiConfig.provider).name +
+                (if (dav) "" else if (AiConfig.nasToo) " · 飞牛照片也整理" else "")
+            else if (dav) "未配置，配置后自动分类和智能搜索" else "未配置，可用于智能搜索") { Nav.push(Route.AiSettings) }
             if (dav) {
-                NavRow(LI.sparkle(), "大模型", if (AiConfig.configured) AiProviders.of(AiConfig.provider).name else "未配置，配置后自动分类和智能搜索") { Nav.push(Route.AiSettings) }
                 Div()
                 NavRow(LI.person(), "人脸识别", "置信度 ${"%.2f".format(FaceConfig.conf)} · 至少 ${FaceConfig.minPhotos} 张 · 差异 ${"%.2f".format(FaceConfig.diff)}") { HomeState.showFaceCfg = true }
-            } else {
-                NavRow(LI.sparkle(), "大模型", if (AiConfig.configured) AiProviders.of(AiConfig.provider).name + if (AiConfig.nasToo) " · 飞牛照片也整理" else "" else "未配置，可用于智能搜索") { Nav.push(Route.AiSettings) }
             }
         }
 
         // ---- 网络与电量：扫描、人脸、AI 分类、手机备份共用一套规则
         Section("网络与电量")
         Card {
-            ToggleRow(LI.swap(), "允许使用移动网络", "本地分析、人脸识别、AI 分类和手机备份都会读取或上传照片，产生流量", cell) {
+            ToggleRow(LI.swap(), "允许使用移动网络", ScanPolicy.CELLULAR_DESC, cell) {
                 cell = it; ScanPolicy.allowCellular = it; BackupScheduler.schedule(ctx); if (it) ScanWatch.resume(ctx)
             }
             Div()
-            ToggleRow(LI.clock(), "不充电时也整理", "关掉更省电：本地分析、人脸识别和 AI 分类只在充电时继续", noCharge) {
+            ToggleRow(LI.clock(), "不充电时也整理", ScanPolicy.NO_CHARGE_DESC, noCharge) {
                 noCharge = it; ScanPolicy.allowNoCharge = it; if (it) ScanWatch.resume(ctx)
             }
             Div()
@@ -239,12 +239,11 @@ fun SettingsScreen() {
             Card { NavRow(LI.close(), "退出「${nas.title}」", nas.user, danger = true) { confirmLogout = true } }
         }
     }
-    if (syncOpen) AlertDialog(onDismissRequest = { syncOpen = false }, containerColor = C.Surface, title = { Text("同步设置", color = C.Text) }, text = {
-        Column {
-            listOf("显示设置二维码" to { syncOpen = false; showQr = true }, "从截图识别二维码" to { syncOpen = false; pickQr.launch("image/*") }, "粘贴设置码导入" to { syncOpen = false; importOpen = true })
-                .forEach { (t, f) -> Text(t, color = C.Text, fontSize = 16.sp, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { f() }.padding(vertical = 13.dp, horizontal = 4.dp)) }
-        }
-    }, confirmButton = {}, dismissButton = { TextButton(onClick = { syncOpen = false }) { Text("取消", color = C.Sub) } })
+    if (syncOpen) ActionListDialog("同步设置", onDismiss = { syncOpen = false }, actions = listOf(
+        "显示设置二维码" to { syncOpen = false; showQr = true },
+        "从截图识别二维码" to { syncOpen = false; pickQr.launch("image/*") },
+        "粘贴设置码导入" to { syncOpen = false; importOpen = true },
+    ))
     if (confirmLogout) ConfirmDialog("退出「${nas?.title}」？", "会从本机移除这个账号的登录信息。", "退出", onDismiss = { confirmLogout = false }) {
         confirmLogout = false
         NasAccounts.current?.let { NasAccounts.remove(it.id) }
@@ -284,6 +283,7 @@ fun SettingsScreen() {
     }
 }
 
+/** Settings group label (small grey text). Deliberately NOT [SectionTitle]: that one is a titleMedium row with a trailing count for content lists — merging them would restyle every Settings section. */
 @Composable
 fun Section(t: String) {
     Text(t, color = C.Sub, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(start = 22.dp, top = 24.dp, bottom = 8.dp))
