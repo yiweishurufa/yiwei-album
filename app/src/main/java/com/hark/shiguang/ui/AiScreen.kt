@@ -174,6 +174,14 @@ private fun PoolList() {
     val v = AiPool.version
     val cands = remember(v, AiConfig.provider, AiConfig.model, AiConfig.key, AiPool.autoSwitch, AiConfig.enabled) { AiPool.candidates() }
     Column(Modifier.padding(horizontal = 18.dp, vertical = 6.dp)) {
+        // 第 4 批：冷却按平台/错误类型拆分后的卡片提示（余额不足 / 模型下线），与 AI 卡片上的 AiPool.topHint 同源。
+        if (AiPool.balanceInsufficient) Text("余额不足，请充值：付费模型已长冷 7 天；可换成免费模型，或充值后点「清除冷却」立即重试。",
+            color = C.Danger, fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.padding(bottom = 4.dp))
+        if (AiPool.modelOffline) Text("有模型已下线，请换模型：点「获取免费模型」重新选，或在上方改模型名。",
+            color = C.Danger, fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.padding(bottom = 4.dp))
+        AiRunner.skippedSummary().takeIf { it.isNotEmpty() }?.let {
+            Text("本轮$it（下一轮会重新尝试）", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 4.dp))
+        }
         if (cands.isEmpty()) Text("还没有可用的模型：填好 Key 并点「测试连接」或「保存并开始」。", style = MaterialTheme.typography.bodySmall)
         else if (!AiPool.autoSwitch) Text("已关闭：只用上面选的模型，出错时等待后重试。", style = MaterialTheme.typography.bodySmall)
         else {
