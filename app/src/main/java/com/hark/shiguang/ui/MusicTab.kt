@@ -187,18 +187,14 @@ private fun PillButton(icon: ImageVector, text: String, modifier: Modifier = Mod
 
 @Composable
 private fun MusicScanBar(lib: MusicLib) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(C.Surface).padding(horizontal = 14.dp, vertical = 12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(if (lib.scanning) lib.phase.ifEmpty { "正在扫描" } else "扫描遇到问题", color = C.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (lib.scanning && lib.total > 0) Text("${lib.done}/${lib.total}", color = C.Sub, fontSize = 12.sp)
-        }
-        if (lib.error != null && !lib.scanning) Text(lib.error!!, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
-        if (lib.scanning) {
-            val p = if (lib.total > 0) lib.done / lib.total.toFloat() else null
-            if (p == null) LinearProgressIndicator(color = C.Accent, trackColor = C.Surface2, modifier = Modifier.padding(top = 10.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)))
-            else LinearProgressIndicator(progress = { p }, color = C.Accent, trackColor = C.Surface2, modifier = Modifier.padding(top = 10.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)))
-        }
-    }
+    // 第 4 批：复用共用 ScanProgressCard（与影视共用一份实现，样式与旧版一致）。
+    ScanProgressCard(
+        title = if (lib.scanning) lib.phase.ifEmpty { "正在扫描" } else "扫描遇到问题",
+        countText = if (lib.scanning && lib.total > 0) "${lib.done}/${lib.total}" else null,
+        scanning = lib.scanning,
+        error = lib.error,
+        progress = if (lib.scanning && lib.total > 0) lib.done / lib.total.toFloat() else null,
+    )
 }
 
 /** Format badge: lossless / DSD / formats played by the compatibility engine. */
