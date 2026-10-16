@@ -42,10 +42,8 @@ object DavThumb {
 
     fun mark(raw: String) = raw + MARK
 
-    private fun md5(s: String) = MessageDigest.getInstance("MD5").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
-
     suspend fun file(url: String): File = withContext(Dispatchers.IO) {
-        val f = File(dir, md5(url) + ".jpg")
+        val f = File(dir, HashUtil.md5(url) + ".jpg")
         if (f.length() > 0) { if (System.currentTimeMillis() - f.lastModified() > 86_400_000L) f.setLastModified(System.currentTimeMillis()); return@withContext f }
         gate.withPermit {
             if (f.length() > 0) return@withPermit f
