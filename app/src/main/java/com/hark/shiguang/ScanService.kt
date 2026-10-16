@@ -57,25 +57,12 @@ class ScanService : Service() {
 
     override fun onDestroy() { scope.cancel(); looping = false; super.onDestroy() }
 
-    private fun pauseAll() {
-        ScanPolicy.paused = true
-        runCatching { AiRunner.pause() }
-        runCatching { Analyzer.stop() }
-        runCatching { Faces.stop() }
-    }
+    // Notification pause / resume: the coordination lives in ScanPolicy so the card toggle and the
+    // notification can never drift apart; the service only adds the notification refresh (status loop).
+    private fun pauseAll() = ScanPolicy.pauseAll()
 
-    private fun resumeAll() {
-        ScanPolicy.paused = false
-        runCatching { AiRunner.resume() }
-        val lib = runCatching { Dav.lib() }.getOrNull()
-        if (lib != null && lib.photos.isNotEmpty()) {
-            // like 「立即继续」 on the AI card: the user asked for it, so Wi-Fi / charging rules do not hold it back
-            runCatching { Analyzer.start(this, lib, true) }
-            runCatching { Faces.start(this, lib, true) }
-            if (AiConfig.configured) runCatching { AiRunner.startDav(this, lib, manual = true) }
-        }
-        if (AiConfig.nasToo && AiConfig.configured) runCatching { AiRunner.startNas(this, com.hark.shiguang.ui.HomeState.timeline.photos.toList()) }
-    }
+    private fun resumeAll() =
+        ScanPolicy.resumeAll(this, startAiDav = AiConfig.configured, nasPhotos = com.hark.shiguang.ui.HomeState.timeline.photos.toList())
 
     private fun hasWorkLeft(): Boolean {
         val lib = runCatching { Dav.lib() }.getOrNull() ?: return AiConfig.configured
