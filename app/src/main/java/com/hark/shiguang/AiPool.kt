@@ -53,6 +53,24 @@ object AiPool {
     fun reason(ep: AiEndpoint): String = synchronized(until) { why[ep.id].takeIf { (until[ep.id] ?: 0) > System.currentTimeMillis() } ?: why[ep.provider + "|*"].orEmpty() }
     fun clear() { synchronized(until) { until.clear(); why.clear() }; switched = ""; persist() }
 
+    /**
+     * 第 4 批：按冷却原因派生的卡片提示（从已持久化的 ai.cool 里读，重启后仍在）。
+     * 余额不足 = 某个付费模型因 402/欠费被长冷；模型下线 = 某个模型因 404 被冷 24h。
+     */
+    private fun activeReasons(): List<String> = synchronized(until) {
+        val now = System.currentTimeMillis()
+        until.filter { it.value > now }.keys.mapNotNull { why[it] }
+    }
+    /** 有付费模型因余额不足被长冷 → 卡片显示「余额不足，请充值」。 */
+    val balanceInsufficient: Boolean get() = activeReasons().any { it.startsWith("余额不足") }
+    /** 有模型因 404（不存在/已下线）被冷 → 卡片提示换模型。 */
+    val modelOffline: Boolean get() = activeReasons().any { it.contains("已下线") }
+    /** AI 卡片的冷却提示行（余额 / 下线），空 = 无需提示。 */
+    val topHint: String get() = listOf(
+        if (balanceInsufficient) "余额不足，请充值" else "",
+        if (modelOffline) "有模型已下线，请换模型" else "",
+    ).filter { it.isNotEmpty() }.joinToString(" · ")
+
     private fun cool(key: String, ms: Long, reason: String) {
         synchronized(until) { until[key] = System.currentTimeMillis() + ms; why[key] = reason }
         persist()
@@ -98,6 +116,13 @@ object AiPool {
     }
 
     private const val MIN = 60_000L
+    /**
+     * 第 4 批：冷却按平台/错误类型拆分（旧版把免费额度和付费欠费混成同一个「余额/免费额度用完」）。
+     *  - 免费额度（免费模型 402 / 429-daily）：冷到午夜（OpenRouter 按 UTC 午夜即北京时间 8 点，国内平台按本地午夜）。
+     *  - 付费欠费（付费模型 402 / insufficient / 余额 / 欠费）：长冷 7 天 + 整提供商冷却（同一账号余额共用）+ 卡片提示「余额不足，请充值」。
+     *  - 401：12h，整提供商（Key 整个账号有问题）。
+     *  - 404（模型不存在/已下线）：24h + 提示换模型。
+     */
     fun verdict(e: Throwable, ep: AiEndpoint): Verdict {
         val http = e as? AiClient.AiHttpException
         val code = http?.code ?: 0
@@ -105,11 +130,14 @@ object AiPool {
         val ra = http?.retryAfterMs ?: 0L
         fun has(vararg w: String) = w.any { msg.contains(it.lowercase()) }
         val daily = has("per-day", "per day", "daily", "每日", "每天", "今日", "free-models-per-day", "quota", "额度", "1308", "1310")
+        val noBalance = code == 402 || has("insufficient", "余额", "欠费", "1113", "balance")
         return when {
             code == 401 || code == 403 -> Verdict.Cool(12 * 60 * MIN, "Key 无效或无权限", wholeProvider = true)
-            code == 402 || has("insufficient", "余额", "欠费", "1113", "balance") -> Verdict.Cool(if (ra > 0) ra else msUntilReset(ep), "余额/免费额度用完")
+            noBalance && ep.free -> Verdict.Cool(if (ra > 0) ra else msUntilReset(ep), "免费额度用完，午夜后恢复")
+            noBalance -> Verdict.Cool(7 * 24 * 60 * MIN, "余额不足，请充值", wholeProvider = true)
             code == 404 || has("1211", "模型不存在", "model not found", "does not exist", "not a valid model", "no endpoints found", "model_not_found") ->
-                Verdict.Cool(24 * 60 * MIN, "模型不存在或已下线")
+                Verdict.Cool(24 * 60 * MIN, "模型不存在或已下线，请换模型")
+            code == 429 && daily && ep.free -> Verdict.Cool(if (ra > 0) ra else msUntilReset(ep), "今日免费额度用完，午夜后恢复")
             code == 429 && daily -> Verdict.Cool(if (ra > 0) ra else msUntilReset(ep), "今日额度用完")
             code == 429 -> Verdict.Cool(if (ra > 0) ra.coerceAtLeast(MIN) else 10 * MIN, "被限流")
             code == 1301 || has("1301", "敏感", "sensitive", "content_filter", "data_inspection") -> Verdict.PerImage
