@@ -51,6 +51,14 @@ class DavScanProgress {
 }
 
 /**
+ * Result of [scanIncremental]: the new folder cache plus whether the listing covered the whole tree.
+ * [complete] = false when the scan hit a cap ([maxItems] media, [CloudMedia.MAX_SCAN_DIRS] folders or
+ * [CloudMedia.MAX_SCAN_DEPTH] depth) with folders still unvisited — the caller must NOT overwrite the stored
+ * index, the folder cache or the last-scan timestamps with a truncated result (see B1).
+ */
+data class DavScanResult(val cache: DavFolderCache, val complete: Boolean)
+
+/**
  * Lists [root] breadth-first, [CloudMedia.SCAN_PARALLEL] folders at a time, emitting each folder's media as soon as it
  * is known. [previous] = the old index (for reuse), [old] = folder tags of the last scan, [full] = ignore tags.
  * Returns the new folder cache (complete only when the root listing succeeded; a root failure is thrown).
@@ -135,5 +143,9 @@ suspend fun WebDavSource.scanIncremental(
         }
         level = ArrayList(next); depth++
     }
-    return out
+    // B1: the loop can also exit with folders still unvisited (media / folder / depth cap). Treat hitting the
+    // media cap as truncated even when every folder was visited: emit() drops media past the cap, so the
+    // index would be missing entries from already-listed folders.
+    val truncated = emitted.get() >= maxItems || level.isNotEmpty()
+    return DavScanResult(out, complete = !truncated)
 }
