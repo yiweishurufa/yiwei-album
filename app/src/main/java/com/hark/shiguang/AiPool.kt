@@ -112,8 +112,10 @@ object AiPool {
                 Verdict.Cool(24 * 60 * MIN, "模型不存在或已下线")
             code == 429 && daily -> Verdict.Cool(if (ra > 0) ra else msUntilReset(ep), "今日额度用完")
             code == 429 -> Verdict.Cool(if (ra > 0) ra.coerceAtLeast(MIN) else 10 * MIN, "被限流")
-            code == 1301 || has("1301", "敏感", "sensitive", "content_filter", "data_inspection") -> Verdict.PerImage
-            code in setOf(400, 413, 415, 422) -> Verdict.PerImage
+            code == 1301 || has("1301", "敏感", "sensitive", "content_filter", "content filter", "data_inspection") -> Verdict.PerImage
+            // B10: any other 4xx (401/402/403/404/429 matched above and cool the model) is a per-image
+            // rejection — skip this photo instead of blocking the queue on it.
+            code in 400..499 -> Verdict.PerImage
             code >= 500 -> Verdict.Cool(if (ra > 0) ra else 15 * MIN, "服务暂时不可用（$code）")
             e is java.net.SocketTimeoutException || has("timeout", "timed out") -> Verdict.Cool(15 * MIN, "超时")
             e is java.net.UnknownHostException || e is java.net.ConnectException || e is javax.net.ssl.SSLException || e is java.io.IOException ->
