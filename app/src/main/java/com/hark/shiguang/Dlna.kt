@@ -106,10 +106,15 @@ object Dlna {
     }
 }
 
-/** Tiny HTTP server on the LAN IP that forwards GET/HEAD (with Range) to an authenticated upstream. */
+/** Tiny HTTP server that forwards GET/HEAD (with Range) to an authenticated upstream. */
 object CastProxy {
     private var server: ServerSocket? = null
-    private val routes = ConcurrentHashMap<String, Pair<String, Map<String, String>>>()
+    private var localServer: ServerSocket? = null
+    /** B3: routes expire after [ROUTE_TTL_MS]; [localOnly] routes are only served to loopback peers. */
+    private data class Route(val url: String, val headers: Map<String, String>, val localOnly: Boolean, val expiresAt: Long)
+    private val routes = ConcurrentHashMap<String, Route>()
+    /** B3: 10-minute route TTL — a leaked / guessed URL stops working on its own. */
+    const val ROUTE_TTL_MS = 10 * 60 * 1000L
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val http by lazy { FnClient.http.newBuilder().readTimeout(60, TimeUnit.SECONDS).followRedirects(true).followSslRedirects(true).build() }
 
@@ -119,26 +124,46 @@ object CastProxy {
             .flatMap { it.inetAddresses.toList() }.firstOrNull { it is Inet4Address && it.isSiteLocalAddress }?.hostAddress
     }.getOrNull()
 
+    private fun pruneExpired() {
+        val now = System.currentTimeMillis()
+        routes.entries.removeIf { it.value.expiresAt <= now }
+    }
+
+    private fun register(url: String, headers: Map<String, String>, localOnly: Boolean): String {
+        pruneExpired()
+        val id = java.util.UUID.randomUUID().toString().replace("-", "").take(16)
+        routes[id] = Route(url, headers, localOnly, System.currentTimeMillis() + ROUTE_TTL_MS)
+        return id
+    }
+
     /** Registers [url] (+ [headers]) and returns the LAN url a TV can open. */
     fun serve(url: String, headers: Map<String, String>, name: String): String {
         val ip = lanIp() ?: throw Exception("没连上局域网（Wi-Fi）")
         val s = server ?: ServerSocket(0, 50, InetAddress.getByName("0.0.0.0")).also { server = it; loop(it) }
-        val id = java.util.UUID.randomUUID().toString().replace("-", "").take(16)
-        routes[id] = url to headers
+        val id = register(url, headers, localOnly = false)
         val ext = NameParser.ext(name).ifEmpty { "mp4" }
         return "http://$ip:${s.localPort}/v/$id.$ext"
     }
 
-    /** 1.0.10: same proxy on loopback, for the in-app libVLC fallback player (VLC can't send our auth headers itself). */
+    /**
+     * 1.0.10: loopback-only proxy for the in-app libVLC fallback player (VLC can't send our auth headers itself).
+     * B3: served by a dedicated socket bound to 127.0.0.1 (never 0.0.0.0), and [handle] refuses non-loopback
+     * peers for these routes, so another device on the LAN cannot pull the authenticated stream.
+     */
     fun serveLocal(url: String, headers: Map<String, String>, name: String): String {
-        val s = server ?: ServerSocket(0, 50, InetAddress.getByName("0.0.0.0")).also { server = it; loop(it) }
-        val id = java.util.UUID.randomUUID().toString().replace("-", "").take(16)
-        routes[id] = url to headers
+        val s = localServer ?: ServerSocket(0, 50, InetAddress.getByName("127.0.0.1")).also { localServer = it; loop(it) }
+        val id = register(url, headers, localOnly = true)
         val ext = NameParser.ext(name).ifEmpty { "mp4" }
         return "http://127.0.0.1:${s.localPort}/v/$id.$ext"
     }
 
-    fun stop() { runCatching { server?.close() }; server = null; routes.clear() }
+    /** Removes the route behind a URL returned by [serve] / [serveLocal] (call when playback ends / the engine stops). */
+    fun revoke(url: String) {
+        val id = url.substringAfter("/v/", "").substringBefore('.').substringBefore('?')
+        if (id.isNotEmpty()) routes.remove(id)
+    }
+
+    fun stop() { runCatching { server?.close() }; runCatching { localServer?.close() }; server = null; localServer = null; routes.clear() }
 
     private fun loop(ss: ServerSocket) = scope.launch {
         while (!ss.isClosed) {
@@ -162,8 +187,12 @@ object CastProxy {
         val id = first.getOrNull(1)?.substringAfter("/v/")?.substringBefore('.') ?: ""
         val out = sock.getOutputStream()
         val route = routes[id] ?: return respond(out, "404 Not Found")
+        // B3: expired routes are gone; loopback-only routes never answer a non-loopback peer (even if the
+        // id leaked, another device on the LAN gets 403 instead of the authenticated upstream).
+        if (route.expiresAt <= System.currentTimeMillis()) { routes.remove(id); return respond(out, "410 Gone") }
+        if (route.localOnly && sock.inetAddress?.isLoopbackAddress != true) return respond(out, "403 Forbidden")
         val range = lines.firstOrNull { it.startsWith("range:", true) }?.substringAfter(':')?.trim()
-        val rb = Request.Builder().url(route.first).apply { route.second.forEach { (k, v) -> header(k, v) }; if (range != null) header("Range", range) }
+        val rb = Request.Builder().url(route.url).apply { route.headers.forEach { (k, v) -> header(k, v) }; if (range != null) header("Range", range) }
         if (method == "HEAD") rb.head()
         http.newCall(rb.build()).execute().use { r ->
             val h = StringBuilder("HTTP/1.1 ${r.code} ${r.message.ifEmpty { "OK" }}\r\n")
