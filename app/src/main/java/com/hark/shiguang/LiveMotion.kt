@@ -101,8 +101,8 @@ object LiveMotion {
     }
 
     private fun davMp4(s: WebDavSource, p: Photo, mv: Long): ByteArray? {
-        if (mv > 0 && p.size > mv) s.tailBytes(p.cloudPath, p.size - mv)?.let { if (LivePairing.isMp4(it)) return it }
-        val all = s.allBytes(p.cloudPath) ?: return null
+        if (mv > 0 && p.size > mv) s.tailBytes(p.cloudPath, p.size - mv, 256 * 1024 * 1024)?.let { if (LivePairing.isMp4(it)) return it }
+        val all = s.allBytes(p.cloudPath, 256L * 1024 * 1024) ?: return null
         return LivePairing.findMp4(all)
     }
 
