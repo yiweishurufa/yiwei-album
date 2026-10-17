@@ -94,6 +94,8 @@ fun SettingsScreen() {
     var noCharge by remember { mutableStateOf(ScanPolicy.allowNoCharge) }
     var forever by remember { mutableStateOf(Store.getStr("nas.deleteForever") == "1") }
     var syncOpen by remember { mutableStateOf(false) }
+    var davFolderSel by remember { mutableStateOf(Dav.lib()?.getSelectedDirs() ?: emptyList()) }
+    var showDavFolders by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().background(C.Bg).verticalScroll(rememberScrollState()).navigationBarsPadding().padding(bottom = 110.dp)) {
         if (Nav.stack.size > 1) Row(Modifier.statusBarsPadding().padding(start = 6.dp, top = 8.dp)) { IconButton(onClick = { Nav.pop() }) { Icon(LI.back(), null, tint = C.Text) } }
         else TopSwitch()
@@ -147,6 +149,10 @@ fun SettingsScreen() {
             // 1.0.9: WebDAV 账户 lives only in the header card (「切换与管理」)
             if (!dav) { NavRow(LI.backup(), "手机备份", if (Store.backupOn) "已开启，自动传到飞牛" else "未开启") { Nav.push(Route.Backup) }; Div() }
             NavRow(LI.swap(), "传输队列", if (Transfers.active > 0) "${Transfers.active} 个进行中" else "上传和下载记录") { Nav.push(Route.Transfers) }
+            if (dav) {
+                Div()
+                NavRow(LI.folder(), "WebDAV 照片文件夹", if (davFolderSel.isEmpty()) "全部文件夹" else "已选 ${davFolderSel.size} 个文件夹") { showDavFolders = true }
+            }
             if (!dav) {
                 Div()
                 ToggleRow(LI.trash(), "彻底删除", if (forever) "删除时跳过飞牛回收站，无法恢复" else "删除的照片先进飞牛回收站，30 天内可恢复", forever) {
@@ -282,6 +288,77 @@ fun SettingsScreen() {
             }) { Text("导入", color = C.Accent) } },
             dismissButton = { TextButton({ importOpen = false }) { Text("取消", color = C.Sub) } })
     }
+    if (showDavFolders) {
+        DavFolderSelectDialog(
+            initial = davFolderSel,
+            onDismiss = { showDavFolders = false },
+            onSave = { sel ->
+                val lib = Dav.lib()
+                if (lib != null) {
+                    lib.setSelectedDirs(sel)
+                    davFolderSel = sel
+                    scope.launch { lib.scan() }
+                }
+                showDavFolders = false
+                Toast.makeText(ctx, "已保存，将只显示选中文件夹的照片", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+}
+
+@Composable
+fun DavFolderSelectDialog(initial: List<String>, onDismiss: () -> Unit, onSave: (List<String>) -> Unit) {
+    val lib = Dav.lib()
+    var selected by remember { mutableStateOf(initial.toSet()) }
+    val folders = lib?.folders
+    LaunchedEffect(Unit) {
+        val l = lib ?: return@LaunchedEffect
+        if (l.folders == null) l.refreshFolders()
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = C.Surface,
+        title = { Text("WebDAV 照片文件夹", color = C.Text) },
+        text = {
+            Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                Text("不选 = 全部文件夹；勾选后只显示选中文件夹里的照片。", style = MaterialTheme.typography.bodySmall, color = C.Sub)
+                Spacer(Modifier.height(12.dp))
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { selected = emptySet() }.padding(vertical = 10.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = selected.isEmpty(), onCheckedChange = { if (it) selected = emptySet() })
+                    Spacer(Modifier.width(8.dp))
+                    Text("全部文件夹", color = C.Text, fontSize = 15.sp)
+                }
+                HorizontalDivider(color = C.Line, thickness = 0.6.dp, modifier = Modifier.padding(vertical = 6.dp))
+                when {
+                    lib == null -> Text("还没有 WebDAV", color = C.Sub, fontSize = 14.sp)
+                    folders == null -> Text("正在加载文件夹…", color = C.Sub, fontSize = 14.sp)
+                    folders.isEmpty() -> Text("根目录下没有文件夹", color = C.Sub, fontSize = 14.sp)
+                    else -> folders.sortedBy { it.name }.forEach { f ->
+                        val checked = f.path in selected
+                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable {
+                            selected = if (checked) selected - f.path else selected + f.path
+                        }.padding(vertical = 8.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = checked, onCheckedChange = { on ->
+                                selected = if (on) selected + f.path else selected - f.path
+                            })
+                            Spacer(Modifier.width(8.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(f.name, color = C.Text, fontSize = 15.sp, maxLines = 1)
+                                Text(f.path, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = { selected = (folders ?: emptyList()).map { it.path }.toSet() }) { Text("全选", color = C.Accent) }
+                    TextButton(onClick = { selected = emptySet() }) { Text("清空", color = C.Accent) }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSave(selected.toList()) }) { Text("保存", color = C.Accent) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消", color = C.Sub) } }
+    )
 }
 
 @Composable
