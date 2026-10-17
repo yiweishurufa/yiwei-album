@@ -85,13 +85,12 @@ class DavLib(val accountId: String) {
             }
         }
         fullyLoaded = true
-        val last = Store.getStr("dav.lastScan.$accountId").toLongOrNull() ?: 0L
-        // 1.0.8: a full re-list only when there is no index yet or it is older than 6 h; pull-to-refresh / 重新扫描 still forces one.
-        val stale = cachedCount == 0 || System.currentTimeMillis() - last > 6 * 3600_000L
+        // 首次扫描后不再自动扫：只有缓存为空（第一次）才自动扫；之后只手动触发（下拉刷新 / 重新扫描）。
+        val needFirstScan = cachedCount == 0
         coroutineScope {
             launch { refreshFolders() }
             launch { refreshAlbums() }
-            if (stale) launch { scan() }
+            if (needFirstScan) launch { scan() }
         }
     }
 
@@ -161,23 +160,41 @@ class DavLib(val accountId: String) {
         var cache: DavFolderCache? = null
         var complete = false
         val t0 = System.currentTimeMillis()
-        runCatching {
-            val res = withContext(Dispatchers.IO) {
-                s.scanIncremental("/", MAX_ITEMS, previous, old, doFull, prog) { b ->
-                    val snap: List<CloudEntry>? = synchronized(all) {
-                        all.addAll(b)
-                        val now = System.currentTimeMillis()
-                        // show progress: at most every 1.5 s (only if nothing cached yet or it grew past the cache)
-                        if (now - lastShow > 1500 && all.size >= photos.size) { lastShow = now; ArrayList(all) } else null
-                    }
-                    if (snap != null) uiScope.launch { val ps = CloudPhotos.toPhotos(accountId, snap); if (scanning) setPhotos(ps) }
-                }
+        val selected = getSelectedDirs()
+        val roots = if (selected.isEmpty()) listOf("/") else topSelectedDirs(selected)
+        val onBatch: (List<CloudEntry>) -> Unit = { b ->
+            val snap: List<CloudEntry>? = synchronized(all) {
+                all.addAll(b)
+                val now = System.currentTimeMillis()
+                // show progress: at most every 1.5 s (only if nothing cached yet or it grew past the cache)
+                if (now - lastShow > 1500 && all.size >= photos.size) { lastShow = now; ArrayList(all) } else null
             }
-            cache = res.cache; complete = res.complete
+            if (snap != null) uiScope.launch { val ps = CloudPhotos.toPhotos(accountId, snap); if (scanning) setPhotos(ps) }
+        }
+        runCatching {
+            cache = withContext(Dispatchers.IO) {
+                val merged = DavFolderCache()
+                var allComplete = true
+                for (root in roots) {
+                    runCatching {
+                        val res = s.scanIncremental(root, MAX_ITEMS, previous, old, doFull, prog, onBatch)
+                        merged.dirs.putAll(res.cache.dirs)
+                        if (!res.complete) allComplete = false
+                    }.onFailure { e ->
+                        // 单个选中根目录列表失败：保留该目录的旧索引，避免该目录照片突然消失；多根时继续扫其余目录。
+                        allComplete = false
+                        val fallback = previous.filter { it.path == root || (root != "/" && it.path.startsWith(root + "/")) }
+                        if (fallback.isNotEmpty()) onBatch(fallback)
+                        if (roots.size == 1) throw e else Diag.log("DAV", "scan root $root failed: ${e.message}")
+                    }
+                }
+                complete = allComplete
+                merged
+            }
         }.onFailure { error = it.message }
         ticker.cancel()
         scanListed = prog.listed.get(); scanKnown = prog.known.get(); scanFound = prog.found.get()
-        Diag.log("DAV", "scan ${if (doFull) "full" else "incremental"}: ${prog.listed.get()} folders (${prog.skipped.get()} unchanged, skipped), ${all.size} media, complete=$complete, ${System.currentTimeMillis() - t0} ms")
+        Diag.log("DAV", "scan ${if (doFull) "full" else "incremental"} roots=$roots: ${prog.listed.get()} folders (${prog.skipped.get()} unchanged, skipped), ${all.size} media, complete=$complete, ${System.currentTimeMillis() - t0} ms")
         // B1: only a complete, error-free scan may overwrite the index / folder cache / timestamps. A truncated
         // scan (caps hit) or a failed scan keeps the previous index; the next scan re-lists from it. A failed
         // index write also blocks the timestamp update and is reported via [error].
@@ -203,6 +220,26 @@ class DavLib(val accountId: String) {
     }
 
     suspend fun refreshFolders() { runCatching { src!!.list("/").filter { it.isDir && !it.name.startsWith(".") } }.onSuccess { folders = it }.onFailure { if (folders == null) folders = emptyList() } }
+
+    // ---------------------------------------------------------------- WebDAV 照片文件夹选择（空 = 全部文件夹）
+    /** 用户选中的 WebDAV 照片文件夹（规范化后的绝对路径）；空列表表示全部文件夹。 */
+    fun getSelectedDirs(): List<String> = runCatching {
+        val raw = Store.getStr("dav.selectedDirs.$accountId")
+        if (raw.isBlank()) emptyList()
+        else JSONArray(raw).let { a -> (0 until a.length()).map { a.optString(it) } }
+            .map { CloudPath.norm(it) }.filter { it.isNotEmpty() }.distinct().sorted()
+    }.getOrDefault(emptyList())
+
+    fun setSelectedDirs(dirs: List<String>) {
+        val norm = dirs.map { CloudPath.norm(it) }.filter { it.isNotEmpty() }.distinct().sorted()
+        Store.putStr("dav.selectedDirs.$accountId", JSONArray(norm).toString())
+    }
+
+    /** 去掉被父目录覆盖的子目录（选了 /照片 就不用再单独选 /照片/2024）。 */
+    private fun topSelectedDirs(selected: List<String>): List<String> {
+        val sorted = selected.sortedBy { it.length }
+        return sorted.filter { d -> sorted.none { other -> other != d && d.startsWith(other + "/") } }
+    }
 
     // ---------------------------------------------------------------- index cache (1.0.10: per-month segments, see IndexStore)
     private fun readIndex(): List<CloudEntry> = IndexStore.read(dir, IndexStore.months(dir))
