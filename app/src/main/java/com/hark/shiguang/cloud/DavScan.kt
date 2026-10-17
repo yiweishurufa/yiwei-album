@@ -71,7 +71,7 @@ suspend fun WebDavSource.scanIncremental(
     full: Boolean,
     progress: DavScanProgress = DavScanProgress(),
     onBatch: (List<CloudEntry>) -> Unit,
-): DavFolderCache {
+): DavScanResult {
     val byDir: Map<String, List<CloudEntry>> = previous.groupBy { CloudPath.parent(it.path) }
     val out = DavFolderCache()
     val emitted = AtomicInteger(0)
