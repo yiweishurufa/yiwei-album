@@ -60,10 +60,25 @@ object NasAccounts {
 
     fun update(a: NasAccount) { list = list.map { if (it.id == a.id) a else it }; persist(); if (a.id == currentId) apply(a) }
 
+    /**
+     * B11: logging out / removing an account also deletes its signing secrets (`sign.<user>@<url>`,
+     * all address variants — the login-time address is the key) and, when no account remains, clears
+     * the current url/user plus the in-memory credentials. Both logout paths (Home / Settings) share
+     * this; callers still run [Store.clear] for pass/token afterwards.
+     */
     fun remove(id: String) {
+        val gone = list.firstOrNull { it.id == id }
         list = list.filter { it.id != id }
         if (currentId == id) currentId = list.firstOrNull()?.id ?: ""
-        persist(); current?.let { apply(it) }
+        persist()
+        gone?.let { a ->
+            listOf(a.url, a.lanUrl, a.wanUrl).filter { it.isNotEmpty() }.forEach { Store.removeKey("sign.${a.user}@$it") }
+        }
+        if (current == null) {
+            Store.url = ""; Store.user = ""
+            FnClient.token = ""
+            com.hark.shiguang.data.NasX.signSecretB64 = ""
+        } else current?.let { apply(it) }
     }
 
     /** Switches the active account: credentials, addresses and per-account caches. */
