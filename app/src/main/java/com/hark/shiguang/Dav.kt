@@ -19,7 +19,8 @@ import java.security.MessageDigest
 /** Per-photo results of on-device analysis (+ optional AI labels). */
 data class Meta(
     var time: String = "", var lat: Double = Double.NaN, var lng: Double = Double.NaN, var city: String = "",
-    var md5: String = "", var dhash: Long = 0L, var hasHash: Boolean = false, var done: Boolean = false,
+    /** B2: MD5 of the first 128 KB (head) only — NOT a full-file hash. Grouping on it is a head-only match. */
+    var headMd5: String = "", var dhash: Long = 0L, var hasHash: Boolean = false, var done: Boolean = false,
     var aiCat: String = "", var aiTags: List<String> = emptyList(), var aiCaption: String = "", var aiFaces: Int = -1,
     /** Camera "Make Model" from EXIF (1.0.9; photos analysed before that have none). */
     var cam: String = "",
@@ -32,7 +33,7 @@ data class Meta(
     /** 1.0.1: the motion-photo XMP check ran for this photo (new analyses, or the name-based backfill). */
     var mvChecked: Boolean = false,
 ) {
-    fun json(): JSONObject = JSONObject().put("t", time).put("c", city).put("m", md5).put("d", done).put("ac", aiCat).put("ap", aiCaption)
+    fun json(): JSONObject = JSONObject().put("t", time).put("c", city).put("m", headMd5).put("d", done).put("ac", aiCat).put("ap", aiCaption)
         .put("ag", JSONArray(aiTags)).put("af", aiFaces).apply { if (cam.isNotEmpty()) put("cm", cam); if (camChecked) put("ck", true); if (dur != 0) put("du", dur); if (mv != 0L) put("mv", mv); if (mvChecked) put("mk", true) }.apply { if (!lat.isNaN()) { put("la", lat); put("lo", lng) }; if (hasHash) put("h", dhash) }
     companion object {
         fun of(o: JSONObject) = Meta(o.optString("t"), o.optDouble("la", Double.NaN), o.optDouble("lo", Double.NaN), o.optString("c"), o.optString("m"),
@@ -117,7 +118,7 @@ class DavLib(val accountId: String) {
             // 1.0.10: from the stored index (not [photos], which may still be partial during a cold start)
             writeIndex(readIndex().filter { it.path !in set })
             val fl = Faces.lib(accountId)
-            set.forEach { fl.faces.remove(it); fl.scanned.remove(it) }
+            set.forEach { fl.faces.remove(it); fl.scanned.remove(it); fl.failed.remove(it) }
             fl.save()
         }
         withContext(Dispatchers.Main) { Faces.lib(accountId).cluster(this@DavLib) }
@@ -157,6 +158,7 @@ class DavLib(val accountId: String) {
         val prog = DavScanProgress()
         val ticker = uiScope.launch { while (isActive) { scanListed = prog.listed.get(); scanKnown = prog.known.get(); scanFound = prog.found.get(); delay(700) } }
         var cache: DavFolderCache? = null
+        var complete = false
         val t0 = System.currentTimeMillis()
         val selected = getSelectedDirs()
         val roots = if (selected.isEmpty()) listOf("/") else topSelectedDirs(selected)
@@ -172,33 +174,47 @@ class DavLib(val accountId: String) {
         runCatching {
             cache = withContext(Dispatchers.IO) {
                 val merged = DavFolderCache()
+                var allComplete = true
                 for (root in roots) {
                     runCatching {
-                        val c = s.scanIncremental(root, MAX_ITEMS, previous, old, doFull, prog, onBatch)
-                        merged.dirs.putAll(c.dirs)
+                        val res = s.scanIncremental(root, MAX_ITEMS, previous, old, doFull, prog, onBatch)
+                        merged.dirs.putAll(res.cache.dirs)
+                        if (!res.complete) allComplete = false
                     }.onFailure { e ->
                         // 单个选中根目录列表失败：保留该目录的旧索引，避免该目录照片突然消失；多根时继续扫其余目录。
+                        allComplete = false
                         val fallback = previous.filter { it.path == root || (root != "/" && it.path.startsWith(root + "/")) }
                         if (fallback.isNotEmpty()) onBatch(fallback)
                         if (roots.size == 1) throw e else Diag.log("DAV", "scan root $root failed: ${e.message}")
                     }
                 }
+                complete = allComplete
                 merged
             }
         }.onFailure { error = it.message }
         ticker.cancel()
         scanListed = prog.listed.get(); scanKnown = prog.known.get(); scanFound = prog.found.get()
-        Diag.log("DAV", "scan ${if (doFull) "full" else "incremental"} roots=$roots: ${prog.listed.get()} folders (${prog.skipped.get()} unchanged, skipped), ${all.size} media, ${System.currentTimeMillis() - t0} ms")
-        if (all.isNotEmpty() || error == null) {
-            withContext(Dispatchers.IO) {
-                writeIndex(all)
-                cache?.let { c -> runCatching { folderFile.writeText(c.json()) } }
+        Diag.log("DAV", "scan ${if (doFull) "full" else "incremental"} roots=$roots: ${prog.listed.get()} folders (${prog.skipped.get()} unchanged, skipped), ${all.size} media, complete=$complete, ${System.currentTimeMillis() - t0} ms")
+        // B1: only a complete, error-free scan may overwrite the index / folder cache / timestamps. A truncated
+        // scan (caps hit) or a failed scan keeps the previous index; the next scan re-lists from it. A failed
+        // index write also blocks the timestamp update and is reported via [error].
+        if (complete && error == null) {
+            val written = withContext(Dispatchers.IO) {
+                val ok = writeIndex(all)
+                if (ok) cache?.let { c -> runCatching { folderFile.writeText(c.json()) } }
+                ok
             }
-            if (error == null) {
+            if (written) {
                 Store.putStr("dav.lastScan.$accountId", System.currentTimeMillis().toString())
                 if (doFull) Store.putStr("dav.lastFull.$accountId", System.currentTimeMillis().toString())
+                setPhotos(CloudPhotos.toPhotos(accountId, all))
+            } else {
+                error = "索引保存失败，时间戳未更新"
+                Diag.log("DAV", "scan: writeIndex failed, timestamps NOT updated")
             }
-            setPhotos(CloudPhotos.toPhotos(accountId, all))
+        } else if (!complete && error == null) {
+            error = "扫描未完成（超出上限被截断），索引未覆盖，下次扫描会继续"
+            Diag.log("DAV", "scan truncated: index NOT overwritten, timestamps NOT updated")
         }
         scanning = false
     }
@@ -228,7 +244,8 @@ class DavLib(val accountId: String) {
     // ---------------------------------------------------------------- index cache (1.0.10: per-month segments, see IndexStore)
     private fun readIndex(): List<CloudEntry> = IndexStore.read(dir, IndexStore.months(dir))
 
-    private fun writeIndex(l: List<CloudEntry>) = runCatching { IndexStore.write(dir, l) }
+    /** B1: returns false when the index could not be persisted — the caller must not update timestamps then. */
+    private fun writeIndex(l: List<CloudEntry>): Boolean = runCatching { IndexStore.write(dir, l) }.isSuccess
 
     private fun loadMeta() = runCatching {
         val o = JSONObject(File(dir, "meta.json").readText())
@@ -283,13 +300,23 @@ class DavLib(val accountId: String) {
     fun places(): List<Pair<String, List<Photo>>> = Hidden.visible(photos).filter { meta[it.cloudPath]?.city?.isNotEmpty() == true }
         .groupBy { meta[it.cloudPath]!!.city }.toList().sortedByDescending { it.second.size }
 
-    fun duplicates(): List<List<Photo>> = photos.filter { !it.isVideo && meta[it.cloudPath]?.md5?.isNotEmpty() == true }
-        .groupBy { meta[it.cloudPath]!!.md5 + ":" + it.size }.values.filter { it.size > 1 }.sortedByDescending { it.size }
+    /** B2: groups by head-MD5 + size (head-only match). Deletion must pass [fullSha256] secondary confirmation first. */
+    fun duplicates(): List<List<Photo>> = photos.filter { !it.isVideo && meta[it.cloudPath]?.headMd5?.isNotEmpty() == true }
+        .groupBy { meta[it.cloudPath]!!.headMd5 + ":" + it.size }.values.filter { it.size > 1 }.sortedByDescending { it.size }
+
+    /**
+     * B2: full-file SHA-256 of one photo — the secondary confirmation before deleting a "duplicate".
+     * Returns null when the file cannot be read or exceeds [maxBytes]: unverified, never "equal".
+     */
+    suspend fun fullSha256(path: String, maxBytes: Long = 256L * 1024 * 1024): String? = withContext(Dispatchers.IO) {
+        val bytes = src?.allBytes(path, maxBytes) ?: return@withContext null
+        MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+    }
 
     fun similar(maxDist: Int = 6): List<List<Photo>> {
         val items = photos.filter { !it.isVideo && meta[it.cloudPath]?.hasHash == true }.sortedBy { it.time }
         val h = items.map { meta[it.cloudPath]!!.dhash }
-        val md = items.map { meta[it.cloudPath]!!.md5 + it.size }
+        val md = items.map { meta[it.cloudPath]!!.headMd5 + it.size }
         val parent = IntArray(items.size) { it }
         fun find(x: Int): Int { var a = x; while (parent[a] != a) { parent[a] = parent[parent[a]]; a = parent[a] }; return a }
         for (i in items.indices) for (j in i + 1 until minOf(items.size, i + 400)) {
@@ -401,7 +428,7 @@ object Dav {
     fun forget(id: String) { libs.remove(id); CloudPhotos.forget(id) }
 }
 
-/** On-device analysis: EXIF GPS/time from the first 128 KB (HTTP Range), md5 of that head + size for duplicates, dHash from the EXIF thumbnail. */
+/** On-device analysis: EXIF GPS/time from the first 128 KB (HTTP Range), headMd5 (MD5 of that head) + size for duplicates, dHash from the EXIF thumbnail. */
 object Analyzer {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var job: Job? = null
@@ -539,7 +566,7 @@ object Analyzer {
     private fun analyze(c: Context, s: WebDavSource, p: Photo, lib: DavLib) {
         val m = lib.meta[p.cloudPath] ?: Meta()
         val head = s.headBytes(p.cloudPath) ?: return
-        m.md5 = MessageDigest.getInstance("MD5").digest(head).joinToString("") { "%02x".format(it) }.take(16)
+        m.headMd5 = MessageDigest.getInstance("MD5").digest(head).joinToString("") { "%02x".format(it) }.take(16)
         if (LivePairing.motionCandidateExt(p.fileName)) { m.mv = LivePairing.motionOffset(head); m.mvChecked = true }
         runCatching {
             val ex = ExifInterface(ByteArrayInputStream(head))

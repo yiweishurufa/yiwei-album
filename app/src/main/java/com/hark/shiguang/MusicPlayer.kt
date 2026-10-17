@@ -81,6 +81,8 @@ class MusicPlayer(private val ctx: Context) : SimpleBasePlayer(Looper.getMainLoo
     }
     private var vlcLib: LibVLC? = null
     private var vlc: org.videolan.libvlc.MediaPlayer? = null
+    /** B3: loopback proxy URL the current VLC track reads through (revoked when the engine stops). */
+    private var vlcProxyUrl: String? = null
     private var vlcPos = 0L; private var vlcLen = 0L; private var vlcPlaying = false
 
     private val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -191,7 +193,10 @@ class MusicPlayer(private val ctx: Context) : SimpleBasePlayer(Looper.getMainLoo
     }
 
     override fun handleRelease(): ListenableFuture<*> {
-        stopEngines(); runCatching { exo.release() }; runCatching { vlcLib?.release() }; vlcLib = null; scope.cancel()
+        stopEngines(); runCatching { exo.release() }
+        // B7: the VLC MediaPlayer leaked — release it (listener detached + stopped first), not just the LibVLC.
+        runCatching { vlc?.setEventListener(null); vlc?.stop(); vlc?.release() }; vlc = null
+        runCatching { vlcLib?.release() }; vlcLib = null; scope.cancel()
         return Futures.immediateVoidFuture()
     }
 
@@ -268,7 +273,8 @@ class MusicPlayer(private val ctx: Context) : SimpleBasePlayer(Looper.getMainLoo
         runCatching {
             val lib = vlcLib ?: LibVLC(ctx.applicationContext, arrayListOf("--no-video", "--network-caching=3000", "--http-reconnect", "--no-stats")).also { vlcLib = it }
             val mp = vlc ?: org.videolan.libvlc.MediaPlayer(lib).also { vlc = it }
-            val src = if (h.isEmpty()) url else CastProxy.serveLocal(url, h, "a.$ext")
+            vlcProxyUrl = null
+            val src = if (h.isEmpty()) url else CastProxy.serveLocal(url, h, "a.$ext").also { vlcProxyUrl = it }
             val m = Media(lib, Uri.parse(src))
             m.addOption(":no-video")
             if (startMs > 0) m.addOption(":start-time=${startMs / 1000}")
@@ -363,6 +369,8 @@ class MusicPlayer(private val ctx: Context) : SimpleBasePlayer(Looper.getMainLoo
         if (engine == 1) runCatching { exo.stop(); exo.clearMediaItems() }
         if (engine == 2) runCatching { vlc?.setEventListener(null); vlc?.stop() }
         if (engine == 2) { abandonFocus(); locks(false) }
+        // B3: playback ended / engine stopped — the loopback route must not outlive the track.
+        vlcProxyUrl?.let { runCatching { CastProxy.revoke(it) } }; vlcProxyUrl = null
         engine = 0; vlcPlaying = false
     }
 

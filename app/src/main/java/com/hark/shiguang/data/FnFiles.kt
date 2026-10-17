@@ -28,6 +28,8 @@ import javax.crypto.spec.SecretKeySpec
  *  - every later frame is `base64(HMAC-SHA256(secret, json)) + json`; secret = login secret AES-decrypted (= [NasX.signSecretB64])
  *  - `user.authToken {main:true, token, si}` re-uses the photo login's token on this new socket
  *  - `file.ls {path}` → {files:[{name,size,dir:1,v,uid,mtim}]}; path null = user root, else "vol{v}/{uid}/sub/dir"
+ * File bytes (降级实现：/multiple-download 的请求体未经真实抓包确认，是照博客抓包推测的；
+ * 抓不到真实抓包就不声称修好。失败时 [lastError] 写明“飞牛下载需抓包确认，当前为降级实现”，调用方应原样展示)。
  * File bytes (UNVERIFIED, from a blog's capture of the web UI, nobb.cc/archives/3776.html):
  *  POST {base}/multiple-download (cookie fnos-token=<token>) returns a download token,
  *  GET  {base}/multiple-download?token=<t> (same cookie) streams the file (Range assumed).
@@ -45,6 +47,8 @@ object FnFiles {
 
     /** 1.0.10: logins from before 1.0.9 have no signing secret stored; file.ls / download cannot be signed without it. */
     const val RELOGIN = "请退出飞牛账号并重新登录一次"
+    /** B4: 飞牛下载（/multiple-download）未经抓包确认的降级实现说明；失败时进 [lastError]，由调用方展示给用户。 */
+    const val DOWNLOAD_UNVERIFIED = "飞牛下载需抓包确认，当前为降级实现"
     val missingSecret: Boolean get() = FnClient.baseUrl.isNotEmpty() && FnClient.token.isNotEmpty() && NasX.signSecretB64.isEmpty()
     @Volatile private var reloginShown = false
     /** Sets [lastError] and shows the hint once per app run (a toast, so it surfaces from any caller). */
@@ -138,7 +142,12 @@ object FnFiles {
 
     private val tokens = ConcurrentHashMap<String, Pair<String, Long>>()
 
-    /** UNVERIFIED: download token for one file via POST /multiple-download; cached 10 min. */
+    /**
+     * B4 降级实现：download token for one file via POST /multiple-download; cached 10 min.
+     * The request bodies below are guessed from a blog capture, NOT verified against a real NAS packet
+     * capture — do not treat a failure here as a fixed implementation. On failure [lastError] carries
+     * [DOWNLOAD_UNVERIFIED] so the UI can say so.
+     */
     fun downloadUrl(path: String): String? {
         tokens[path]?.let { (u, t) -> if (System.currentTimeMillis() - t < 600_000) return u }
         if (missingSecret) { relogin(); return null }
@@ -165,7 +174,8 @@ object FnFiles {
                 return u
             }
         }
-        com.hark.shiguang.Diag.log("FNFILE", "multiple-download gave no token")
+        lastError = DOWNLOAD_UNVERIFIED
+        com.hark.shiguang.Diag.log("FNFILE", "multiple-download gave no token; $DOWNLOAD_UNVERIFIED")
         return null
     }
 

@@ -57,6 +57,8 @@ class FaceLib(val accountId: String) {
     private val dir: File get() = File(App.ctx.filesDir, "dav/$accountId/faces").apply { mkdirs() }
     val faces = java.util.concurrent.ConcurrentHashMap<String, MutableList<FaceRec>>()   // photo path -> faces
     val scanned = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    /** B9: photos whose detection failed (download / decode), with the failure time — retried on the next start, never marked scanned. */
+    val failed = java.util.concurrent.ConcurrentHashMap<String, Long>()
     val names = HashMap<String, String>()     // face id (anchor) -> name
     var persons by mutableStateOf<List<FacePerson>>(emptyList())
     /** Persons the user hid (路人). */
@@ -80,6 +82,7 @@ class FaceLib(val accountId: String) {
             // embeddings from before 1.0.8 used a loose crop; they must be recomputed with the aligned crop
             if (o.optInt("v", 1) < ALG) return@runCatching
             o.optJSONArray("scanned")?.let { a -> for (i in 0 until a.length()) scanned.add(a.getString(i)) }
+            o.optJSONObject("failed")?.let { f -> f.keys().forEach { failed[it] = f.optLong(it) } }
             o.optJSONObject("names")?.let { n -> n.keys().forEach { names[it] = n.getString(it) } }
             val fa = o.optJSONArray("faces") ?: JSONArray()
             for (i in 0 until fa.length()) {
@@ -100,7 +103,8 @@ class FaceLib(val accountId: String) {
             fa.put(JSONObject().put("i", r.id).put("p", r.path).put("c", r.conf.toDouble()).put("e", android.util.Base64.encodeToString(bb.array(), android.util.Base64.NO_WRAP)))
         }
         val nm = JSONObject(); names.forEach { (k, v) -> nm.put(k, v) }
-        File(dir, "faces.json").writeText(JSONObject().put("scanned", JSONArray(scanned.toList())).put("names", nm).put("faces", fa).put("v", ALG).toString())
+        val fl = JSONObject(); failed.forEach { (k, v) -> fl.put(k, v) }
+        File(dir, "faces.json").writeText(JSONObject().put("scanned", JSONArray(scanned.toList())).put("names", nm).put("faces", fa).put("failed", fl).put("v", ALG).toString())
     }
 
     fun rename(p: FacePerson, name: String) {
@@ -109,7 +113,7 @@ class FaceLib(val accountId: String) {
         save(); persons = persons.map { if (it.key == p.key) it.copy(name = name.trim()) else it }
     }
 
-    fun clear() { faces.clear(); scanned.clear(); names.clear(); persons = emptyList(); hiddenPersons = emptyList(); edits.clear(); dir.deleteRecursively() }
+    fun clear() { faces.clear(); scanned.clear(); failed.clear(); names.clear(); persons = emptyList(); hiddenPersons = emptyList(); edits.clear(); dir.deleteRecursively() }
 
     /**
      * Clustering on the saved faces with the current three settings:
@@ -224,8 +228,11 @@ object Faces {
                 if (!manual && !Analyzer.canScan(c)) { fl.status = ScanPolicy.waitingText(); return@forEach }
                 chunk.map { p -> async {
                     gate.acquire()
-                    try { runCatching { scanOne(c, s, p, fl) } } finally { gate.release() }
-                    fl.scanned.add(p.cloudPath)
+                    // B9: only a completed detection attempt marks the photo scanned. Download / decode
+                    // failures go to failed (+failedAt) and are retried on the next start.
+                    val ok = try { runCatching { scanOne(c, s, p, fl) }.getOrDefault(false) } finally { gate.release() }
+                    if (ok) { fl.scanned.add(p.cloudPath); fl.failed.remove(p.cloudPath) }
+                    else fl.failed[p.cloudPath] = System.currentTimeMillis()
                 } }.awaitAll()
                 fl.done += chunk.size
                 if (fl.done % 48 < 12) { fl.save(); withContext(Dispatchers.Main) { fl.cluster(lib) } }
@@ -251,12 +258,13 @@ object Faces {
         return b
     }
 
-    private fun scanOne(c: Context, s: com.hark.shiguang.cloud.WebDavSource, p: Photo, fl: FaceLib) {
-        if (p.size > 40_000_000) return
-        val bytes = s.allBytes(p.cloudPath) ?: return
-        val bmp = decode(bytes, 1280) ?: return
+    /** Returns true when the detection attempt completed (even with zero faces found); false on download / decode failure. */
+    private fun scanOne(c: Context, s: com.hark.shiguang.cloud.WebDavSource, p: Photo, fl: FaceLib): Boolean {
+        if (p.size > 40_000_000) return false
+        val bytes = s.allBytes(p.cloudPath, 40_000_000L) ?: return false
+        val bmp = decode(bytes, 1280) ?: return false
         val found = detect(bmp)
-        if (found.isEmpty()) return
+        if (found.isEmpty()) return true
         val list = mutableListOf<FaceRec>()
         found.forEachIndexed { i, (box, roll, conf) ->
             val crop = (markMap.remove(box)?.let { alignByMarks(bmp, it) } ?: align(bmp, box, roll)) ?: return@forEachIndexed
@@ -270,6 +278,7 @@ object Faces {
             list.add(FaceRec(id, p.cloudPath, conf, emb))
         }
         if (list.isNotEmpty()) fl.faces[p.cloudPath] = list
+        return true
     }
 
     /** Eye / mouth landmarks in bitmap pixels (null when the detector gave none). */

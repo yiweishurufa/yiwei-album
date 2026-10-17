@@ -452,7 +452,7 @@ object AiRunner {
             }
         }
         if (p.size <= 25_000_000) {
-            src.allBytes(p.cloudPath)?.let { return it }
+            src.allBytes(p.cloudPath, 25_000_000L)?.let { return it }
             readErr = src.lastError
         } else readErr = "文件超过 25 MB"
         runCatching {
@@ -537,9 +537,15 @@ object AiRunner {
                     if (e != null) {
                         if (e is CancellationException) throw e
                         backoff++
-                        // a request the API rejects for this image only (400/413/415/422) must not block the queue
+                        // B10: a request the API rejects for this image only must not block the queue —
+                        // skip it at once (no backoff, no delay). 429 / 401 / 402 / 403 / 404 are NOT
+                        // per-image: they are rate / key / model errors and keep the backoff path below.
                         val code = (e as? AiClient.AiHttpException)?.code ?: Regex("HTTP (\\d{3})").find(e.message.orEmpty())?.groupValues?.get(1)?.toIntOrNull() ?: 0
-                        if (code in setOf(400, 413, 415, 422) && backoff >= 2) { skip(p); i++; backoff = 0; continue }
+                        val msgLower = (e.message ?: "").lowercase()
+                        val perImage = code !in setOf(401, 402, 403, 404, 429) &&
+                            (code == 1301 || code in 400..499 ||
+                                listOf("1301", "敏感", "sensitive", "content_filter", "content filter", "data_inspection").any { msgLower.contains(it) })
+                        if (perImage) { skip(p); i++; backoff = 0; Diag.log("AI", "per-image skip: ${e.message?.take(120)}"); continue }
                         var wait = (15_000L shl (backoff - 1).coerceAtMost(5)).coerceAtMost(600_000L)
                         // 429 (free-tier per-minute / daily limit): honour the server's reset time, up to 6 h
                         val ra = (e as? AiClient.AiHttpException)?.takeIf { it.code == 429 || it.code == 503 }?.retryAfterMs ?: 0L

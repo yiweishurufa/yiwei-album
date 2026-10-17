@@ -256,21 +256,50 @@ class WebDavSource(a: CloudAccount) : CloudSource {
         }
     }.getOrNull()
 
-    /** 1.0.1: bytes [from]..end of a file (HTTP Range "bytes=from-"), e.g. the MP4 at the end of a Motion Photo. Null when the server ignores Range. */
+    /**
+     * B6: stream a byte range into memory with a hard cap. The old code trusted Content-Length
+     * (len == -1 bypassed the check) and then called `body.bytes()` unbounded — a lying / chunked
+     * server could OOM the app. Now the stream is copied with a running total and aborted past [max].
+     */
+    private fun readCapped(ins: java.io.InputStream, max: Long): ByteArray? {
+        val out = java.io.ByteArrayOutputStream()
+        val buf = ByteArray(16384)
+        var total = 0L
+        while (true) {
+            val k = ins.read(buf)
+            if (k < 0) break
+            total += k
+            if (total > max) return null
+            out.write(buf, 0, k)
+        }
+        return out.toByteArray()
+    }
+
+    /** 1.0.1: bytes [from]..end of a file (HTTP Range "bytes=from-"), e.g. the MP4 at the end of a Motion Photo. Null when the server ignores Range, or the tail exceeds [max]. */
     fun tailBytes(path: String, from: Long, max: Int = 64 * 1024 * 1024): ByteArray? = runCatching {
         val rq = req(urlOf(path, false)).header("Range", "bytes=$from-").get().build()
         CloudHttp.client.newCall(rq).execute().use { r ->
-            if (r.code != 206) return null
-            val len = r.body?.contentLength() ?: -1L
-            if (len > max) return null
-            r.body?.bytes()
+            if (r.code != 206) return@runCatching null
+            val body = r.body ?: return@runCatching null
+            // B6: Content-Length is advisory only (chunked answers -1); the stream itself is capped.
+            if (body.contentLength() > max) return@runCatching null
+            body.byteStream().use { readCapped(it, max.toLong()) }
         }
     }.getOrNull()
 
-    /** Whole file bytes (used for hashing when the head is not enough). */
-    fun allBytes(path: String): ByteArray? = runCatching {
+    /**
+     * B6: whole file bytes, capped at [maxBytes] (streamed with a running total, never `body.bytes()`).
+     * Callers must pass an explicit cap for their use; null = unreadable, over the cap, or failed.
+     */
+    fun allBytes(path: String, maxBytes: Long = 64L * 1024 * 1024): ByteArray? = runCatching {
         CloudHttp.client.newCall(req(urlOf(path, false)).get().build()).execute().use { r ->
-            if (r.isSuccessful) r.body?.bytes().also { lastError = "" } else { lastError = "HTTP ${r.code}"; null }
+            if (!r.isSuccessful) { lastError = "HTTP ${r.code}"; return@runCatching null }
+            val body = r.body ?: return@runCatching null
+            if (body.contentLength() > maxBytes) { lastError = "文件超过上限"; return@runCatching null }
+            val bytes = body.byteStream().use { readCapped(it, maxBytes) }
+            if (bytes == null) lastError = "文件超过上限"
+            else lastError = ""
+            bytes
         }
     }.onFailure { lastError = it.javaClass.simpleName + (it.message?.let { m -> ": " + m.take(60) } ?: "") }.getOrNull()
 
