@@ -128,7 +128,7 @@ class DavFs(private val accountId: String) : MovieFs {
         return s.list(path).map { FsEntry(it.name, it.path, it.isDir, it.size, mtime = it.modified) }
     }
     override suspend fun readText(path: String): String? = withContext(Dispatchers.IO) { runCatching { src?.readText(path) }.getOrNull() }
-    override suspend fun bytes(path: String): ByteArray? = withContext(Dispatchers.IO) { src?.allBytes(path) }
+    override suspend fun bytes(path: String): ByteArray? = withContext(Dispatchers.IO) { src?.allBytes(path, 32L * 1024 * 1024) }
     override fun playUrl(f: MediaFile): String? = runBlocking { runCatching { src?.rawUrl(CloudEntry(f.name, f.path, false, f.size, 0, null, false, true)) }.getOrNull() }
     override fun headers(url: String): Map<String, String> = src?.headers(url) ?: emptyMap()
 }
@@ -137,7 +137,7 @@ class DavFs(private val accountId: String) : MovieFs {
  * 飞牛. Two kinds of paths:
  *  - "fm:vol1/1000/影视/…" — any NAS folder through fnOS 文件管理 ([FnFiles], 1.0.9; UNVERIFIED on a real NAS): lists
  *    videos plus nfo/posters/subtitles; streams through the photo-library id when the folder is also in 相册,
- *    otherwise through /multiple-download (UNVERIFIED).
+ *    otherwise through /multiple-download (B4 降级实现：未经抓包确认，失败时提示“飞牛下载需抓包确认”).
  *  - "/vol1/…" — folders inside the 相册 library (folder_view, the 1.0.8 behaviour and the fallback): videos only.
  */
 class FnFs : MovieFs {
