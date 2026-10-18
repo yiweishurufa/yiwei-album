@@ -514,8 +514,6 @@ fun BackupScreen() {
 fun kindName(k: CloudKind) = "WebDAV"
 
 @Composable
-
-@Composable
 fun DavAccountsScreen() {
     val ctx = LocalContext.current
     var accounts by remember { mutableStateOf(Dav.accounts) }

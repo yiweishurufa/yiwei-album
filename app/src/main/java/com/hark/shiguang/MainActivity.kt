@@ -77,11 +77,9 @@ object Nav {
             is Route.Transfers -> "transfers"
             is Route.Smart -> "smart"
             is Route.Duplicates -> "duplicates"
-            is Route.MapView -> "map"
             is Route.Recycle -> "recycle"
             is Route.DavAccounts -> "davAccounts"
             is Route.AiSettings -> "aiSettings"
-            is Route.CloudHome -> "cloudHome"
             is Route.Search -> "search"
             is Route.MusicSettings -> "musicSettings"
             is Route.MusicNowPlaying -> "musicNowPlaying"
@@ -102,11 +100,9 @@ object Nav {
             "transfers" -> Route.Transfers
             "smart" -> Route.Smart
             "duplicates" -> Route.Duplicates
-            "map" -> Route.MapView
             "recycle" -> Route.Recycle
             "davAccounts" -> Route.DavAccounts
             "aiSettings" -> Route.AiSettings
-            "cloudHome" -> Route.CloudHome
             "search" -> Route.Search
             "musicSettings" -> Route.MusicSettings
             "musicNowPlaying" -> Route.MusicNowPlaying
