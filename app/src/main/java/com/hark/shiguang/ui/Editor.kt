@@ -43,9 +43,12 @@ import kotlin.math.min
 
 /**
  * 简单编辑 (1.0.9): crop (free / 1:1 / 4:3 / 16:9), rotate 90°, brightness, contrast.
- * Saves a copy next to the original (the original is never touched): WebDAV "<name>_edit.jpg" (numbered if taken),
+ * Saves a copy next to the original: WebDAV "<name>_edit.jpg" (numbered if taken),
  * 飞牛 "<name>_edit_yyyyMMddHHmmss.jpg" with overwrite off:
  * WebDAV = PUT into the same folder; 飞牛 = the official upload path into the same folder (folder view).
+ * S11: no promise is made that the original can never be overwritten — the save uses a NEW name and
+ * (for 飞牛 folders) Trim-Overwrite=0, but the server-side behaviour is UNVERIFIED (no packet capture);
+ * every save is logged with its stored path so a wrong-target save is visible.
  */
 @Composable
 fun EditScreen(p: Photo) {
@@ -254,10 +257,11 @@ private suspend fun save(p: Photo, out: Bitmap): String {
         var name = "${stem}_edit.jpg"; var i = 2
         while (lib.photos.any { it.cloudPath == "${dir.trimEnd('/')}/$name" }) name = "${stem}_edit$i.jpg".also { i++ }
         s.upload(dir, name, bytes.size.toLong()) { java.io.ByteArrayInputStream(bytes) }
+        com.hark.shiguang.Diag.log("EDIT", "dav save-as stored=$dir/$name")
         runCatching { lib.addLocal(CloudEntry(name, "${dir.trimEnd('/')}/$name", false, bytes.size.toLong(), System.currentTimeMillis(), null, true, false)) }
         return name
     }
-    // 1.0.10 飞牛 save-as — the original is never overwritten:
+    // 1.0.10 飞牛 save-as — the INTENT is never to overwrite the original (S11: not a guarantee, see the file KDoc):
     //  * always a NEW name "<stem>_edit_yyyyMMddHHmmss.jpg" (unique per second) and Trim-Overwrite=0, so even a name clash cannot replace a file;
     //  * into the photo's own folder through the folder-view upload (same path the share-in upload uses for folders).
     // UNVERIFIED (no NAS reachable, no packet capture): p.path is showFilePath, assumed to be the real NAS path; the folder-view

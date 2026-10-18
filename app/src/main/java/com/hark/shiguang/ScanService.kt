@@ -72,9 +72,10 @@ class ScanService : Service() {
             // like 「立即继续」 on the AI card: the user asked for it, so Wi-Fi / charging rules do not hold it back
             runCatching { Analyzer.start(this, lib, true) }
             runCatching { Faces.start(this, lib, true) }
-            if (AiConfig.configured) runCatching { AiRunner.startDav(this, lib, manual = true) }
+            // B31: same gate as Home / ScanWatch — AiRunner.on covers the on-device fallback, not just a configured model.
+            if (AiRunner.on) runCatching { AiRunner.startDav(this, lib, manual = true) }
         }
-        if (AiConfig.nasToo && AiConfig.configured) runCatching { AiRunner.startNas(this, com.hark.shiguang.ui.HomeState.timeline.photos.toList()) }
+        if (AiConfig.nasToo && AiRunner.on) runCatching { AiRunner.startNas(this, com.hark.shiguang.ui.HomeState.timeline.photos.toList()) }
     }
 
     private fun hasWorkLeft(): Boolean {

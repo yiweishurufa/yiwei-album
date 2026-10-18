@@ -10,6 +10,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 import java.net.Inet4Address
@@ -188,8 +190,13 @@ object Endpoint {
         return v.startsWith("wan") && System.currentTimeMillis() - t < 12 * 3600_000L
     }
 
+    /** S20: a single in-flight autoSelect — concurrent callers (MainActivity + speed test + settings) share one run. */
+    private val autoSelectMutex = Mutex()
+
     /** Applies the network mode (auto / lan / wan). Updates FnClient.baseUrl. */
-    suspend fun autoSelect(): String? = coroutineScope {
+    suspend fun autoSelect(): String? = autoSelectMutex.withLock { autoSelectLocked() }
+
+    private suspend fun autoSelectLocked(): String? = coroutineScope {
         val lan = Store.lanUrl; val wan = Store.wanUrl
         val mode = Store.netMode
         val chosen: String? = when {
