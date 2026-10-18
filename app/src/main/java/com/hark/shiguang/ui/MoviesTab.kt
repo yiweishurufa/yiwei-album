@@ -65,10 +65,11 @@ fun MoviesTab() {
     val cont = remember(v, lib.items.size) { lib.continueWatching() }
     val counts = remember(v, lib.items.size) { lib.items.count { it.kind == "movie" } to lib.items.count { it.kind == "tv" } }
 
-    LazyVerticalGrid(GridCells.Fixed(3), state = grid, modifier = Modifier.fillMaxSize(),
+    // 第 4 批：平板/折叠屏——Adaptive 替代 Fixed(3)：手机上仍约 3 列（110dp 下限），平板自动变多列；通栏行用 maxLineSpan。
+    LazyVerticalGrid(GridCells.Adaptive(110.dp), state = grid, modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = 120.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item(span = { GridItemSpan(3) }) { Box(Modifier.bleed(14.dp)) { TopSwitch() } }
-        item(span = { GridItemSpan(3) }) {
+        item(span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.bleed(14.dp)) { TopSwitch() } }
+        item(span = { GridItemSpan(maxLineSpan) }) {
             Row(Modifier.padding(top = 6.dp, start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("影音", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = C.Text, letterSpacing = (-0.4).sp, modifier = Modifier.weight(1f))
                 if (lib.dirs.isNotEmpty()) {
@@ -77,25 +78,25 @@ fun MoviesTab() {
                 IconButton(onClick = { Nav.push(Route.MovieLibrarySettings) }) { Icon(LI.settings(), null, tint = C.Text, modifier = Modifier.size(22.dp)) }
             }
         }
-        item(span = { GridItemSpan(3) }) { Row(Modifier.padding(start = 2.dp)) { MediaAreaSwitch() } }
+        item(span = { GridItemSpan(maxLineSpan) }) { Row(Modifier.padding(start = 2.dp)) { MediaAreaSwitch() } }
         if (lib.dirs.isEmpty()) {
-            item(span = { GridItemSpan(3) }) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
                 Box(Modifier.fillMaxWidth().height(460.dp)) {
                     StateMessage(LI.film(), "还没有影视目录", "电影和剧集通常不和照片放在一起。选好它们所在的文件夹，我来扫描并配上海报和简介。", "选择影视文件夹") { Nav.push(Route.MovieLibrarySettings) }
                 }
             }
             return@LazyVerticalGrid
         }
-        item(span = { GridItemSpan(3) }) {
+        item(span = { GridItemSpan(maxLineSpan) }) {
             Row(Modifier.padding(start = 2.dp, top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 Segmented(listOf("电影 ${counts.first.takeIf { it > 0 } ?: ""}".trim(), "剧集 ${counts.second.takeIf { it > 0 } ?: ""}".trim()), MoviesState.seg) { MoviesState.seg = it }
                 Spacer(Modifier.weight(1f))
                 SortMenu()
             }
         }
-        if (lib.scanning || lib.error != null) item(span = { GridItemSpan(3) }) { ScanBar(lib) }
+        if (lib.scanning || lib.error != null) item(span = { GridItemSpan(maxLineSpan) }) { ScanBar(lib) }
         if (cont.isNotEmpty()) {
-            item(span = { GridItemSpan(3) }) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
                 Column {
                     Text("继续观看", color = C.Text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 2.dp, bottom = 10.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -106,7 +107,7 @@ fun MoviesTab() {
         }
         if (shown.isEmpty()) {
             if (lib.scanning) items(9) { PosterSkeleton() }
-            else item(span = { GridItemSpan(3) }) {
+            else item(span = { GridItemSpan(maxLineSpan) }) {
                 Text(if (kind == "movie") "这些文件夹里还没找到电影。剧集文件夹可以在设置里标成「剧集」。" else "还没找到剧集。文件名里带 S01E02、第1集 这类写法就能认出来。",
                     style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(vertical = 60.dp, horizontal = 24.dp))
             }
@@ -149,23 +150,17 @@ private fun SortMenu() {
  * row takes explicit [onScan] / [onRedo] lambdas instead of a shared scan call; nothing may drop a parameter.
  */
 @Composable
-fun LibraryScanBar(phase: String, done: Int, total: Int, error: String?, scanning: Boolean) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(C.Surface).padding(horizontal = 14.dp, vertical = 12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(if (scanning) (phase.ifEmpty { "正在扫描" }) else "扫描遇到问题", color = C.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (scanning && total > 0) Text("$done/$total", color = C.Sub, fontSize = 12.sp)
-        }
-        if (error != null && !scanning) Text(error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
-        if (scanning) {
-            val p = if (total > 0) done / total.toFloat() else null
-            if (p == null) LinearProgressIndicator(color = C.Accent, trackColor = C.Surface2, modifier = Modifier.padding(top = 10.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)))
-            else LinearProgressIndicator(progress = { p }, color = C.Accent, trackColor = C.Surface2, modifier = Modifier.padding(top = 10.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)))
-        }
-    }
+private fun ScanBar(lib: MovieLib) {
+    // 第 4 批：复用共用 ScanProgressCard（与音乐共用一份实现，样式与旧版一致）。
+    ScanProgressCard(
+        title = if (lib.scanning) lib.phase.ifEmpty { "正在扫描" } else "扫描遇到问题",
+        countText = if (lib.scanning && lib.total > 0) "${lib.done}/${lib.total}" else null,
+        scanning = lib.scanning,
+        error = lib.error,
+        progress = if (lib.scanning && lib.total > 0) lib.done / lib.total.toFloat() else null,
+    )
 }
 
-@Composable
-private fun ScanBar(lib: MovieLib) = LibraryScanBar(lib.phase, lib.done, lib.total, lib.error, lib.scanning)
 
 /** First visit after a restart: pick up new files quietly when the last scan is over 6 h old. */
 fun autoScanIfStale(storeKey: String, hasDirs: Boolean, scanning: Boolean, onScan: () -> Unit) {

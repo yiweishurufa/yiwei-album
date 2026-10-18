@@ -382,8 +382,21 @@ object AiRunner {
     var usingLocal by mutableStateOf(false)
     /** 「AI 分类 · glm-4.6v-flash」 / 「AI 分类 · 本地」 on the progress card: who is labelling. */
     val rowLabel: String get() = "AI 分类" + (if (usingLocal) " · 本地" else AiPool.active?.label?.let { " · $it" } ?: "")
-    /** Why it waits + 「已自动切换到 …」 for the AI card. */
-    val cardNote: String get() = listOf(note.takeIf { it != "已暂停" }.orEmpty(), AiPool.switched).filter { it.isNotEmpty() }.distinct().joinToString(" · ")
+    /** Why it waits + 「已自动切换到 …」 for the AI card. 第 4 批：追加冷却提示（余额不足 / 模型下线）与跳过统计。 */
+    val cardNote: String get() = listOf(note.takeIf { it != "已暂停" }.orEmpty(), AiPool.switched, AiPool.topHint, skippedSummary()).filter { it.isNotEmpty() }.distinct().joinToString(" · ")
+
+    /**
+     * 第 4 批：本轮被跳过的照片（路径/id → 原因），只做观测，不改跳过逻辑。
+     * 跳过仍由 loop() 里的 skip() 决定（读不到、本地识别失败、模型反复拒这张图）；这里只记原因供 AI 卡片显示「跳过 N 张 + 原因」。
+     * 跳过原因不持久化：新一轮 startDav/startNas 开始时清空；跳过的照片下一轮会重新尝试。
+     */
+    val skipped = androidx.compose.runtime.mutableStateMapOf<String, String>()
+    /** 「跳过 N 张 · <最常见原因>」，0 张时为空。 */
+    fun skippedSummary(): String {
+        if (skipped.isEmpty()) return ""
+        val top = skipped.values.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key.orEmpty()
+        return "跳过 ${skipped.size} 张" + if (top.isNotEmpty()) " · $top" else ""
+    }
 
     /** 「暂停」 on the AI tab: stops now; automatic starts are ignored until a manual start (see [ScanPolicy.paused]). */
     fun pause() { ScanPolicy.paused = true; pauseDav(); pauseNas(); running = false; note = "已暂停" }
@@ -403,23 +416,24 @@ object AiRunner {
         // B30: skip carries a timestamp — a skipped photo returns to the todo list on the next pass
         // (10 min later), instead of being skipped for the rest of this job.
         val skipAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
-        fun skipped(path: String): Boolean {
+        fun isSkipped(path: String): Boolean {
             val at = skipAt[path] ?: return false
             return System.currentTimeMillis() - at < 600_000
         }
         val marks = LocalMarks.of("dav-" + lib.accountId)
+        skipped.clear()
         davJob = scope.launch {
             loop(c, manual,
                 // unlabelled photos first; photos labelled on the phone (本地) are re-done once a model is available
                 todo = {
                     val llm = AiConfig.configured && AiPool.usable()
-                    lib.photos.filter { !it.isVideo && !skipped(it.cloudPath) && (lib.meta[it.cloudPath]?.aiCat.isNullOrEmpty() || llm && marks.has(it.cloudPath)) }
+                    lib.photos.filter { !it.isVideo && !isSkipped(it.cloudPath) && (lib.meta[it.cloudPath]?.aiCat.isNullOrEmpty() || llm && marks.has(it.cloudPath)) }
                         .sortedBy { marks.has(it.cloudPath) }
                 },
                 isLocal = { p -> marks.has(p.cloudPath) },
                 localLeft = { marks.size },
                 fetch = { p -> davImage(lib, p) },
-                skip = { p -> skipAt[p.cloudPath] = System.currentTimeMillis() },
+                skip = { p, why -> skipAt[p.cloudPath] = System.currentTimeMillis(); skipped[p.cloudPath] = why },
                 store = { p, l ->
                     val m = lib.meta[p.cloudPath] ?: Meta()
                     m.aiCat = l.cat; m.aiTags = l.tags; m.aiCaption = l.caption; m.aiFaces = l.faces; lib.meta[p.cloudPath] = m
@@ -471,7 +485,7 @@ object AiRunner {
      * the job is cancelled (pause / source switch), or the AI config was removed.
      */
     private suspend fun loop(c: Context, manual: Boolean, todo: () -> List<Photo>, isLocal: (Photo) -> Boolean, localLeft: () -> Int,
-                             fetch: suspend (Photo) -> ByteArray?, skip: (Photo) -> Unit, store: (Photo, AiLabel) -> Unit, flush: () -> Unit) {
+                             fetch: suspend (Photo) -> ByteArray?, skip: (Photo, String) -> Unit, store: (Photo, AiLabel) -> Unit, flush: () -> Unit) {
         var backoff = 0
         var pass = 0
         try {
@@ -522,7 +536,7 @@ object AiRunner {
                         if (le != null) {
                             if (le is CancellationException) throw le
                             Diag.log("AI", "local label failed: ${le.message}")
-                            skip(p); i++; continue
+                            skip(p, "本地识别失败"); i++; continue
                         }
                         usingLocal = true
                         if (AiConfig.configured && note.isEmpty()) note = "大模型暂不可用，先用本地识别" +
@@ -549,7 +563,7 @@ object AiRunner {
                         val perImage = code !in setOf(401, 402, 403, 404, 429) &&
                             (code == 1301 || code in 400..499 ||
                                 listOf("1301", "敏感", "sensitive", "content_filter", "content filter", "data_inspection").any { msgLower.contains(it) })
-                        if (perImage) { skip(p); i++; backoff = 0; Diag.log("AI", "per-image skip: ${e.message?.take(120)}"); continue }
+                        if (perImage) { skip(p, e.message?.take(120) ?: "模型拒绝这张照片"); i++; backoff = 0; Diag.log("AI", "per-image skip: ${e.message?.take(120)}"); continue }
                         var wait = (15_000L shl (backoff - 1).coerceAtMost(5)).coerceAtMost(600_000L)
                         // 429 (free-tier per-minute / daily limit): honour the server's reset time, up to 6 h
                         val ra = (e as? AiClient.AiHttpException)?.takeIf { it.code == 429 || it.code == 503 }?.retryAfterMs ?: 0L
@@ -613,6 +627,7 @@ object AiRunner {
         // B30: same skip-with-timestamp as the DAV job.
         val skipAt = java.util.concurrent.ConcurrentHashMap<Int, Long>()
         val snapshot = photos.toList()
+        skipped.clear()
         nasJob = scope.launch {
             loop(c, manual,
                 todo = {
@@ -627,7 +642,7 @@ object AiRunner {
                     FnClient.http.newCall(Request.Builder().url(url).apply { NasX.streamHeaders(url).forEach { (k, v) -> header(k, v) }; header("accesstoken", FnClient.token) }.build())
                         .execute().use { if (it.isSuccessful) it.body?.bytes() else null }
                 },
-                skip = { p -> skipAt[p.id] = System.currentTimeMillis() },
+                skip = { p, why -> skipAt[p.id] = System.currentTimeMillis(); skipped[p.id.toString()] = why },
                 store = { p, l -> synchronized(meta) { meta.put(p.id.toString(), JSONObject().put("c", l.cat).put("t", JSONArray(l.tags)).put("p", l.caption).apply { if (l.local) put("l", 1) }) } },
                 flush = { synchronized(meta) { runCatching { file.writeText(meta.toString()) } } })
         }

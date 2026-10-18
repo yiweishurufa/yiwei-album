@@ -56,8 +56,9 @@ fun MovieDetailScreen(r: Route.MovieDetail) {
     }
     val resumeEp = m.episodes.firstOrNull { it.path == resume?.first }
 
-    Box(Modifier.fillMaxSize().background(C.Bg)) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 60.dp)) {
+    // 第 4 批：平板/折叠屏——详情内容最大宽度 720dp 居中，宽屏不再通栏拉伸（头图随内容一起居中）。
+    Box(Modifier.fillMaxSize().background(C.Bg), contentAlignment = Alignment.TopCenter) {
+        LazyColumn(Modifier.widthIn(max = 720.dp).fillMaxHeight(), contentPadding = PaddingValues(bottom = 60.dp)) {
             item {
                 Box(Modifier.fillMaxWidth().height(300.dp)) {
                     val bd = m.backdrop ?: m.poster

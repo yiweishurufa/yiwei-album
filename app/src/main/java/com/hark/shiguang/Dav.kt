@@ -258,6 +258,10 @@ class DavLib(val accountId: String) {
             Diag.log("DAV", "scan truncated: index NOT overwritten, timestamps NOT updated")
         }
         scanning = false
+        // 第 4 批：扫描完成自动触发后续整理（TODO #3「AI 随扫描自动启动、失败自动续跑」）。
+        // 以前新照片扫完可能长期未分析，直到 ScanWatch 或手动点；现在 listing 一结束就接力。
+        // 各 runner 自己做门控（ScanPolicy.paused / Wi-Fi·充电 / AiRunner.on），且 job 已在跑时直接返回，不会重复启动。
+        if (error == null) ScanFollowUp.afterScan(App.ctx, this)
     }
 
     suspend fun refreshFolders() { runCatching { src!!.list("/").filter { it.isDir && !it.name.startsWith(".") } }.onSuccess { folders = it }.onFailure { if (folders == null) folders = emptyList() } }
@@ -547,7 +551,20 @@ object Dav {
     }
 }
 
-/** On-device analysis: EXIF GPS/time from the first 128 KB (HTTP Range), headMd5 (MD5 of that head) + size for duplicates, dHash from the EXIF thumbnail. */
+    /**
+     * 第 4 批：扫描完成后的接力（TODO #3）。[DavLib.scan] 结束时调一次；各 runner 自带门控与「已在跑则返回」，
+     * 所以 ScanWatch / 页面 LaunchedEffect 再调也不会重复启动。失败不抛：任何一个 runner 挂了都不影响其余两个。
+     */
+    object ScanFollowUp {
+        fun afterScan(c: Context, lib: DavLib) {
+            if (ScanPolicy.paused || lib.photos.isEmpty()) return
+            runCatching { Analyzer.start(c, lib, false) }
+            runCatching { Faces.start(c, lib, false) }
+            if (AiRunner.on) runCatching { AiRunner.startDav(c, lib) }
+        }
+    }
+
+    /** On-device analysis: EXIF GPS/time from the first 128 KB (HTTP Range), headMd5 (MD5 of that head) + size for duplicates, dHash from the EXIF thumbnail. */
 object Analyzer {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     /** B28: one job per account — analysing account A never cancels / blocks account B. */
