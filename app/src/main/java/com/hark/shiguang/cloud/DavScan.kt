@@ -1,5 +1,6 @@
 package com.hark.shiguang.cloud
 
+import com.hark.shiguang.Diag
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -23,9 +24,13 @@ import java.util.concurrent.atomic.AtomicInteger
 class DavFolderCache(val dirs: MutableMap<String, Entry> = ConcurrentHashMap()) {
     class Entry(val tag: String?, val subdirs: List<String>)
 
+    /** B13: dirs whose listing failed this pass — the caller keeps their old index + old cache, never drops them. */
+    val unknown = ConcurrentHashMap.newKeySet<String>()
+
     fun json(): String {
         val o = JSONObject()
         dirs.forEach { (k, v) -> o.put(k, JSONObject().apply { v.tag?.let { put("t", it) }; put("d", JSONArray(v.subdirs)) }) }
+        if (unknown.isNotEmpty()) o.put("u", JSONArray(unknown.toList()))
         return o.toString()
     }
 
@@ -34,11 +39,14 @@ class DavFolderCache(val dirs: MutableMap<String, Entry> = ConcurrentHashMap()) 
             val o = JSONObject(f.readText())
             val m = ConcurrentHashMap<String, Entry>()
             o.keys().forEach { k ->
+                if (k == "u") return@forEach
                 val e = o.getJSONObject(k)
                 val d = e.optJSONArray("d")
                 m[k] = Entry(e.optString("t").ifEmpty { null }, if (d == null) emptyList() else (0 until d.length()).map { d.getString(it) })
             }
-            DavFolderCache(m)
+            DavFolderCache(m).also { c ->
+                o.optJSONArray("u")?.let { u -> for (i in 0 until u.length()) c.unknown.add(u.optString(i)) }
+            }
         }.getOrDefault(DavFolderCache())
     }
 }
@@ -114,7 +122,12 @@ suspend fun WebDavSource.scanIncremental(
         coroutineScope {
             dirs.forEach { (dir, tag) ->
                 val prev = old.dirs[dir]
-                if (!full && tag != null && prev != null && prev.tag == tag && prev.subdirs.isEmpty() && byDir.containsKey(dir)) {
+                // S1: periodic full spot-check — ~1 in 20 unchanged leaves is listed anyway, so a server
+                // that silently changes files without changing the folder tag is caught. The subdir-count
+                // check stays: a leaf that gained sub folders is never skipped.
+                val spotCheck = (dir.hashCode() and 0x7fffffff) % 20 == 0
+                if (spotCheck) Diag.log("DAV", "spot-check leaf $dir (tag unchanged, listing anyway)")
+                if (!full && !spotCheck && tag != null && prev != null && prev.tag == tag && prev.subdirs.isEmpty() && byDir.containsKey(dir)) {
                     // unchanged leaf: no request
                     out.dirs[dir] = prev
                     emit(byDir[dir].orEmpty())
@@ -127,8 +140,13 @@ suspend fun WebDavSource.scanIncremental(
                         if (emitted.get() >= maxItems) return@launch
                         val items = runCatching { listBlocking(dir) }.getOrNull()
                         if (items == null) {
-                            // keep what we had: old media of this folder, and walk its old sub folders (tags unknown)
+                            // B13: listing failed — keep the old media, walk the old sub folders (tags unknown),
+                            // and mark the branch unknown so the caller keeps the old index/cache for it.
+                            // When there is no old cache entry at all (prev == null) we cannot even know the
+                            // sub folders: the branch is still marked unknown and the caller merges the old
+                            // index by parent path instead of dropping the photos.
                             emit(byDir[dir].orEmpty())
+                            out.unknown.add(dir)
                             prev?.let { p -> out.dirs[dir] = DavFolderCache.Entry(null, p.subdirs); next.addAll(p.subdirs.map { it to null }); progress.known.addAndGet(p.subdirs.size) }
                         } else {
                             emit(items.filter { !it.isDir && (it.isImage || it.isVideo) })

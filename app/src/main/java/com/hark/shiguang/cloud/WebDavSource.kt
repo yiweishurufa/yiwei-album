@@ -112,7 +112,10 @@ class WebDavSource(a: CloudAccount) : CloudSource {
             var psType: String? = null
             var psTag: String? = null
             var psModRaw: String? = null
-            var psOk = true
+            // S3: a propstat WITHOUT a <status> is not applied (a missing status used to default to true,
+            // so a 404 propstat's stale values could overwrite the good ones from another propstat).
+            var psOk = false
+            var psHasStatus = false
             var ev = p.eventType
             while (ev != XmlPullParser.END_DOCUMENT) {
                 if (ev == XmlPullParser.START_TAG) {
@@ -120,12 +123,13 @@ class WebDavSource(a: CloudAccount) : CloudSource {
                         "response" -> cur = Item()
                         "href" -> if (cur != null && cur.href.isEmpty()) cur.href = p.nextText().trim()
                         "propstat" -> {
-                            psDir = false; psSize = -1L; psMod = 0L; psType = null; psTag = null; psModRaw = null; psOk = true
+                            psDir = false; psSize = -1L; psMod = 0L; psType = null; psTag = null; psModRaw = null; psOk = false; psHasStatus = false
                         }
                         "status" -> {
                             val s = p.nextText()
+                            psHasStatus = true
                             val code = Regex("""\s(\d{3})""").find(s)?.groupValues?.get(1)?.toIntOrNull()
-                            psOk = code == null || code in 200..299
+                            psOk = code in 200..299
                         }
                         "collection" -> psDir = true
                         "getcontentlength" -> psSize = p.nextText().trim().toLongOrNull() ?: -1L
@@ -136,12 +140,14 @@ class WebDavSource(a: CloudAccount) : CloudSource {
                 } else if (ev == XmlPullParser.END_TAG) {
                     when (p.name.lowercase()) {
                         "propstat" -> cur?.let { c ->
-                            if (psOk) {
+                            if (psHasStatus && psOk) {
                                 if (psDir) c.isDir = true
                                 if (psSize >= 0) c.size = psSize
                                 if (psMod > 0) c.modified = psMod
                                 if (psType != null) c.type = psType
-                                (psTag ?: psModRaw?.ifEmpty { null })?.let { c.tag = it }
+                                // S3: tags carry their source — an etag and a lastmodified that happen to
+                                // look alike must never compare equal across scans.
+                                (psTag?.let { "etag:$it" } ?: psModRaw?.ifEmpty { null }?.let { "lastmodified:$it" })?.let { c.tag = it }
                             }
                         }
                         "response" -> {
@@ -187,19 +193,20 @@ class WebDavSource(a: CloudAccount) : CloudSource {
             raw = raw.substringBefore('?').substringBefore('#')
         }
         val decoded = CloudHttp.pctDecode(raw)
-        val noSlash = decoded.trimEnd('/')
+        // B21: longest match of the fully decoded path against basePath; a double-encoded href gets one
+        // more decode attempt before it is treated as a mismatch.
+        val effective = if (decoded.startsWith(basePath)) decoded
+            else CloudHttp.pctDecode(decoded).takeIf { it.startsWith(basePath) } ?: decoded
+        val noSlash = effective.trimEnd('/')
         return when {
             (noSlash + "/") == basePath || noSlash.isEmpty() && basePath == "/" -> "/"
-            decoded.startsWith(basePath) -> CloudPath.norm("/" + decoded.substring(basePath.length))
-            !decoded.startsWith("/") -> CloudPath.join(listedDir, noSlash)  // relative href
+            effective.startsWith(basePath) -> CloudPath.norm("/" + effective.substring(basePath.length))
+            !effective.startsWith("/") -> CloudPath.join(listedDir, noSlash)  // relative href
             else -> {
-                // Server answered with a different prefix (e.g. alternative encoding): keep the last segment.
-                val seg = noSlash.substringAfterLast('/')
-                when {
-                    seg.isEmpty() -> null
-                    href.endsWith("/") && listedDir != "/" && seg == CloudPath.name(listedDir) -> listedDir
-                    else -> CloudPath.join(listedDir, seg)
-                }
+                // B21: a href that does not match the base path is DROPPED (never guessed from the last
+                // segment — that could map a file into the wrong folder). The drop is in the diag log.
+                com.hark.shiguang.Diag.log("WEBDAV", "href prefix mismatch, dropped: $href (base=$basePath dir=$listedDir)")
+                null
             }
         }
     }
@@ -249,6 +256,13 @@ class WebDavSource(a: CloudAccount) : CloudSource {
         val rq = req(urlOf(path, false)).header("Range", "bytes=0-${n - 1}").get().build()
         CloudHttp.client.newCall(rq).execute().use { r ->
             if (!r.isSuccessful) return null
+            // S2: a server that ignores Range answers 200 with the whole file — only trust that when the
+            // whole file fits in the head; otherwise require 206 + a Content-Range starting at byte 0.
+            if (r.code == 200) {
+                val len = r.body?.contentLength() ?: -1L
+                if (len < 0 || len > n) return null
+            } else if (r.code != 206) return null
+            else if (!r.header("Content-Range").orEmpty().startsWith("bytes 0-")) return null
             val ins = r.body?.byteStream() ?: return null
             val out = java.io.ByteArrayOutputStream(); val buf = ByteArray(16384); var t = 0
             while (t < n) { val k = ins.read(buf); if (k < 0) break; out.write(buf, 0, minOf(k, n - t)); t += k }

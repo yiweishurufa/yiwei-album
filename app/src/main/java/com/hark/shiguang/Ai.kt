@@ -366,8 +366,11 @@ object AiClient {
  */
 object AiRunner {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private var job: Job? = null
-    private var jobKey = ""
+    /** B27: DAV / NAS each hold their own job — starting one never cancels the other. */
+    private var davJob: Job? = null
+    private var nasJob: Job? = null
+    private var davJobKey = ""
+    private var nasJobKey = ""
     /** Last progress / outcome line ("已整理 12 / 300", "完成"). */
     var status by mutableStateOf("")
     /** True only while actually sending photos to the model. */
@@ -377,7 +380,7 @@ object AiRunner {
     var done by mutableIntStateOf(0)
     var total by mutableIntStateOf(0)
     /** Job alive (working or waiting for conditions). */
-    val active: Boolean get() = job?.isActive == true
+    val active: Boolean get() = davJob?.isActive == true || nasJob?.isActive == true
 
     /** AI classification is switched on at all: a model is configured, or the on-device fallback (1.0.1 #8) is on. */
     val on: Boolean get() = AiConfig.configured || LocalAi.enabled
@@ -391,7 +394,10 @@ object AiRunner {
     fun canRun(c: Context): Boolean = AiConfig.configured && !AiConfig.overBudget && Analyzer.canScan(c)
 
     /** 「暂停」 on the AI tab: stops now; automatic starts are ignored until a manual start (see [ScanPolicy.paused]). */
-    fun pause() { ScanPolicy.paused = true; job?.cancel(); running = false; note = "已暂停" }
+    fun pause() { ScanPolicy.paused = true; pauseDav(); pauseNas(); running = false; note = "已暂停" }
+    /** B27: pause only one source's job. */
+    fun pauseDav() { davJob?.cancel() }
+    fun pauseNas() { nasJob?.cancel() }
     fun resume() { ScanPolicy.paused = false; if (note == "已暂停") note = "" }
 
     /** Starts (or keeps) labelling the WebDAV library. [manual] = user pressed 继续/立即整理: ignores network/charging rules. */
@@ -399,23 +405,29 @@ object AiRunner {
         if (!on) { status = "未配置"; return }
         if (manual) resume() else if (ScanPolicy.paused) return
         val key = "dav:" + lib.accountId + if (manual) ":m" else ""
-        if (job?.isActive == true && (jobKey == key || !manual && jobKey.startsWith("dav:" + lib.accountId))) return
-        job?.cancel()
-        jobKey = key
-        val skip = HashSet<String>()
+        if (davJob?.isActive == true && (davJobKey == key || !manual && davJobKey.startsWith("dav:" + lib.accountId))) return
+        davJob?.cancel()
+        davJobKey = key
+        // B30: skip carries a timestamp — a skipped photo returns to the todo list on the next pass
+        // (10 min later), instead of being skipped for the rest of this job.
+        val skipAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+        fun skipped(path: String): Boolean {
+            val at = skipAt[path] ?: return false
+            return System.currentTimeMillis() - at < 600_000
+        }
         val marks = LocalMarks.of("dav-" + lib.accountId)
-        job = scope.launch {
+        davJob = scope.launch {
             loop(c, manual,
                 // unlabelled photos first; photos labelled on the phone (本地) are re-done once a model is available
                 todo = {
                     val llm = AiConfig.configured && AiPool.usable()
-                    lib.photos.filter { !it.isVideo && it.cloudPath !in skip && (lib.meta[it.cloudPath]?.aiCat.isNullOrEmpty() || llm && marks.has(it.cloudPath)) }
+                    lib.photos.filter { !it.isVideo && !skipped(it.cloudPath) && (lib.meta[it.cloudPath]?.aiCat.isNullOrEmpty() || llm && marks.has(it.cloudPath)) }
                         .sortedBy { marks.has(it.cloudPath) }
                 },
                 isLocal = { p -> marks.has(p.cloudPath) },
                 localLeft = { marks.size },
                 fetch = { p -> davImage(lib, p) },
-                skip = { p -> skip.add(p.cloudPath) },
+                skip = { p -> skipAt[p.cloudPath] = System.currentTimeMillis() },
                 store = { p, l ->
                     val m = lib.meta[p.cloudPath] ?: Meta()
                     m.aiCat = l.cat; m.aiTags = l.tags; m.aiCaption = l.caption; m.aiFaces = l.faces; lib.meta[p.cloudPath] = m
@@ -603,16 +615,17 @@ object AiRunner {
         if (!AiConfig.nasToo || !on || photos.isEmpty()) return
         if (manual) resume() else if (ScanPolicy.paused) return
         val key = "fn:" + NasAccounts.currentId
-        if (job?.isActive == true && (jobKey.startsWith(key) || !manual)) return
-        job?.cancel(); jobKey = key
+        if (nasJob?.isActive == true && (nasJobKey.startsWith(key) || !manual)) return
+        nasJob?.cancel(); nasJobKey = key
         val meta = nasMeta(); val file = nasFile()
-        val skip = HashSet<Int>()
+        // B30: same skip-with-timestamp as the DAV job.
+        val skipAt = java.util.concurrent.ConcurrentHashMap<Int, Long>()
         val snapshot = photos.toList()
-        job = scope.launch {
+        nasJob = scope.launch {
             loop(c, manual,
                 todo = {
                     val llm = AiConfig.configured && AiPool.usable()
-                    synchronized(meta) { snapshot.filter { !it.isVideo && it.id !in skip && (!meta.has(it.id.toString()) || llm && meta.optJSONObject(it.id.toString())?.has("l") == true) } }
+                    synchronized(meta) { snapshot.filter { !it.isVideo && (skipAt[it.id]?.let { System.currentTimeMillis() - it < 600_000 } != true) && (!meta.has(it.id.toString()) || llm && meta.optJSONObject(it.id.toString())?.has("l") == true) } }
                         .sortedBy { synchronized(meta) { meta.has(it.id.toString()) } }.take(2000)
                 },
                 isLocal = { p -> synchronized(meta) { meta.optJSONObject(p.id.toString())?.has("l") == true } },
@@ -622,7 +635,7 @@ object AiRunner {
                     FnClient.http.newCall(Request.Builder().url(url).apply { NasX.streamHeaders(url).forEach { (k, v) -> header(k, v) }; header("accesstoken", FnClient.token) }.build())
                         .execute().use { if (it.isSuccessful) it.body?.bytes() else null }
                 },
-                skip = { p -> skip.add(p.id) },
+                skip = { p -> skipAt[p.id] = System.currentTimeMillis() },
                 store = { p, l -> synchronized(meta) { meta.put(p.id.toString(), JSONObject().put("c", l.cat).put("t", JSONArray(l.tags)).put("p", l.caption).apply { if (l.local) put("l", 1) }) } },
                 flush = { synchronized(meta) { runCatching { file.writeText(meta.toString()) } } })
         }
@@ -635,7 +648,10 @@ object AiRunner {
         return out
     }
 
-    fun stop() { job?.cancel(); running = false }
+    fun stop() { stopDav(); stopNas(); running = false }
+    /** B27: stop only one source's job. */
+    fun stopDav() { davJob?.cancel() }
+    fun stopNas() { nasJob?.cancel() }
 }
 
 /** 1.0.1 #8: which photos were labelled on the phone (本地), per library — kept apart from Meta so the model can refine them later. */

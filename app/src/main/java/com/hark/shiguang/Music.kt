@@ -219,9 +219,12 @@ class MusicLib(val sourceKey: String) {
                             val l = runCatching { fs.list(d) }.getOrElse { if (d == root) throw it else emptyList() }
                             val files = l.filter { !it.isDir }
                             synchronized(folders) { folders[d] = files }
-                            val audio = files.filter { Music.isAudio(it.name) && !it.name.startsWith("._") }
+                            // B36: audio files that live inside a 影视 folder are not music.
+                            val audio = files.filter { Music.isAudio(it.name) && !it.name.startsWith("._") && !MediaIsolation.isMediaPath(sourceKey, it.path) }
                             synchronized(out) { audio.forEach { out.add(it to d) } }
-                            next.addAll(l.filter { it.isDir && !it.name.startsWith(".") && !it.name.startsWith("@") && !it.name.startsWith("#") }.map { it.path })
+                            // B36: never descend into 影视 folders — a music dir inside / next to a movie
+                            // library must not pull movie soundtracks into the music library.
+                            next.addAll(l.filter { it.isDir && !it.name.startsWith(".") && !it.name.startsWith("@") && !it.name.startsWith("#") && !MediaIsolation.isMediaPath(sourceKey, it.path) }.map { it.path })
                             if (audio.isNotEmpty()) withContext(Dispatchers.Main) { found += audio.size; phase = "正在列出音乐文件 · 已找到 $found 首" }
                         }
                     }

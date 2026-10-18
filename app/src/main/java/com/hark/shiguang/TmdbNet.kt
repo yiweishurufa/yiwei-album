@@ -139,12 +139,14 @@ object TmdbNet {
         return fs.firstOrNull { (_, f) -> runCatching { f.get(6, TimeUnit.SECONDS) }.getOrDefault(false) }?.first
     }
 
-    /** TMDB JSON: either the configuration (valid key) or TMDB's own error object (401 status_code 7 / 34). */
+    /**
+     * S12: anonymous reachability probe ONLY — the real key is never sent here. A candidate counts as TMDB
+     * when it answers with TMDB-shaped JSON (the configuration object, or TMDB's own 401 error object
+     * status_code/status_message). Sending the real Bearer to an untrusted proxy candidate would leak it.
+     */
     private fun okApi(base: String): Boolean = runCatching {
-        val key = Tmdb.key
-        val u = "$base/3/configuration" + if (key.isNotEmpty() && !(key.startsWith("eyJ") || key.length > 40)) "?api_key=$key" else ""
+        val u = "$base/3/configuration"
         val rb = Request.Builder().url(u).header("Accept", "application/json")
-        if (key.startsWith("eyJ") || key.length > 40) rb.header("Authorization", "Bearer $key")
         http.newCall(rb.build()).execute().use { r ->
             val o = JSONObject(r.body?.string().orEmpty())
             o.has("images") || o.has("status_code") && o.has("status_message")

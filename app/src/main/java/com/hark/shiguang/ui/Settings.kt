@@ -213,10 +213,16 @@ fun SettingsScreen() {
             Div()
             NavRow(LI.lock(), "隐藏相册", "需验证指纹或锁屏密码才能查看") { Nav.push(Route.X(ExtScreen.HiddenAlbum)) }
             Div()
-            NavRow(LI.layers(), "清理缓存", if (cacheSize >= 0) "已用 ${"%.0f".format(cacheSize / 1048576.0)} MB，会自动控制在 460 MB 内" else "") {
+            NavRow(LI.layers(), "清理缓存", if (cacheSize >= 0) "已用 ${"%.0f".format(cacheSize / 1048576.0)} MB，会自动控制在 460 MB 内；诊断日志和已下载更新包不会被删除" else "") {
                 scope.launch {
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { ctx.cacheDir.listFiles()?.forEach { it.deleteRecursively() } }
-                    cacheSize = 0; Toast.makeText(ctx, "缓存已清理", Toast.LENGTH_SHORT).show()
+                    // B38: never delete the diagnostic log, downloaded update packages, or crash reports —
+                    // they are the evidence when something goes wrong, and the update would need re-downloading.
+                    val left = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        ctx.cacheDir.listFiles()?.filter { it.name != "diag" && it.name != "update" && !it.name.startsWith("crash") }?.forEach { it.deleteRecursively() }
+                        ctx.cacheDir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+                    }
+                    cacheSize = left
+                    Toast.makeText(ctx, "缓存已清理", Toast.LENGTH_SHORT).show()
                 }
             }
             Div()
@@ -253,10 +259,7 @@ fun SettingsScreen() {
     }, confirmButton = {}, dismissButton = { TextButton(onClick = { syncOpen = false }) { Text("取消", color = C.Sub) } })
     if (confirmLogout) ConfirmDialog("退出「${nas?.title}」？", "会从本机移除这个账号的登录信息。", "退出", onDismiss = { confirmLogout = false }) {
         confirmLogout = false
-        NasAccounts.current?.let { NasAccounts.remove(it.id) }
-        HomeState.clear()
-        if (NasAccounts.current == null) { Store.clear(); FnClient.token = ""; if (Dav.accounts.isNotEmpty()) { HomeState.useSource("dav"); Nav.reset(Route.Home) } else Nav.reset(Route.Login) }
-        else Nav.reset(Route.Home)
+        Ops.logoutNas()
     }
     if (showQr) {
         val code = remember { SettingsCode.export() }

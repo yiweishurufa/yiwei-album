@@ -728,7 +728,9 @@ private fun DavDiscoverTab() {
                     if (lib.analyzing || fl.running || AiRunner.running) { Analyzer.stop(); Faces.stop(); AiRunner.pause() }
                     else { ScanPolicy.paused = false; Analyzer.start(ctx, lib, true); Faces.start(ctx, lib, true); if (AiRunner.on) AiRunner.startDav(ctx, lib, manual = true) }
                 },
-                onSettings = { Nav.push(Route.Settings) },
+                // S19: the 整理 card's settings go to the tab-4 Settings (one Settings, not two):
+                // pushing Route.Settings opened a second, stacked copy.
+                onSettings = { HomeState.tab = 4 },
             )
         }
 
@@ -1061,8 +1063,7 @@ fun ConnectionSheet(onDismiss: () -> Unit) {
                     testing = true; scope.launch { runCatching { Endpoint.autoSelect() }; testing = false }
                 }
                 NavRow(LI.close(), "退出这个账号", a.user, danger = true) {
-                    HomeState.forget(a.id); NasAccounts.remove(a.id); HomeState.clear(); onDismiss()
-                    if (NasAccounts.current == null) { Store.clear(); FnClient.token = ""; Nav.reset(Route.Login) }
+                    onDismiss(); Ops.logoutNas(a.id)
                 }
             }
         }

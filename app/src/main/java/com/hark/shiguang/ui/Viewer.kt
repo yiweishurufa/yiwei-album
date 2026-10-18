@@ -362,8 +362,13 @@ fun VideoSurface(url: String, play: Boolean, loop: Boolean, controls: Boolean, m
             } else if (target != url) emptyMap() else com.hark.shiguang.ImageAuth.headersFor(url) ?: emptyMap()
         )
         val load = androidx.media3.exoplayer.DefaultLoadControl.Builder().setBufferDurationsMs(15_000, 50_000, 800, 1_500).build()
+        // B34: same FFmpeg-preferred renderers as the 影视 player (DTS / TrueHD / AC3 on every phone);
+        // the shared factory extraction is batch 3's job (D8) — this stays a local copy until then.
+        val renderers = androidx.media3.exoplayer.DefaultRenderersFactory(ctx)
+            .setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+            .setEnableDecoderFallback(true)
         // DefaultDataSource: file:// (extracted Motion Photo MP4) locally, everything else through OkHttp
-        ExoPlayer.Builder(ctx).setLoadControl(load).setMediaSourceFactory(DefaultMediaSourceFactory(androidx.media3.datasource.DefaultDataSource.Factory(ctx, ds))).build().apply {
+        ExoPlayer.Builder(ctx, renderers).setLoadControl(load).setMediaSourceFactory(DefaultMediaSourceFactory(androidx.media3.datasource.DefaultDataSource.Factory(ctx, ds))).build().apply {
             setMediaItem(MediaItem.fromUri(target)); repeatMode = if (loop) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
             prepare(); playWhenReady = play
         }

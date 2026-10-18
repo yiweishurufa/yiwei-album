@@ -10,6 +10,8 @@ import com.hark.shiguang.cloud.*
 import com.hark.shiguang.data.Photo
 import com.hark.shiguang.ui.CloudPhotos
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
@@ -32,13 +34,17 @@ data class Meta(
     var mv: Long = 0L,
     /** 1.0.1: the motion-photo XMP check ran for this photo (new analyses, or the name-based backfill). */
     var mvChecked: Boolean = false,
+    /** B14: head md5 was computed (dedupe key is usable even when EXIF parsing failed). */
+    var hashDone: Boolean = false,
+    /** B14: the last analysis failed (EXIF parse threw) — not done, retried on the next pass. */
+    var failed: Boolean = false,
 ) {
     fun json(): JSONObject = JSONObject().put("t", time).put("c", city).put("m", headMd5).put("d", done).put("ac", aiCat).put("ap", aiCaption)
-        .put("ag", JSONArray(aiTags)).put("af", aiFaces).apply { if (cam.isNotEmpty()) put("cm", cam); if (camChecked) put("ck", true); if (dur != 0) put("du", dur); if (mv != 0L) put("mv", mv); if (mvChecked) put("mk", true) }.apply { if (!lat.isNaN()) { put("la", lat); put("lo", lng) }; if (hasHash) put("h", dhash) }
+        .put("ag", JSONArray(aiTags)).put("af", aiFaces).apply { if (cam.isNotEmpty()) put("cm", cam); if (camChecked) put("ck", true); if (dur != 0) put("du", dur); if (mv != 0L) put("mv", mv); if (mvChecked) put("mk", true); if (hashDone) put("hd", true); if (failed) put("fl", true) }.apply { if (!lat.isNaN()) { put("la", lat); put("lo", lng) }; if (hasHash) put("h", dhash) }
     companion object {
         fun of(o: JSONObject) = Meta(o.optString("t"), o.optDouble("la", Double.NaN), o.optDouble("lo", Double.NaN), o.optString("c"), o.optString("m"),
             o.optLong("h", 0L), o.has("h"), o.optBoolean("d"), o.optString("ac"),
-            o.optJSONArray("ag")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(), o.optString("ap"), o.optInt("af", -1), o.optString("cm"), o.optBoolean("ck"), o.optInt("du", 0), o.optLong("mv", 0L), o.optBoolean("mk"))
+            o.optJSONArray("ag")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(), o.optString("ap"), o.optInt("af", -1), o.optString("cm"), o.optBoolean("ck"), o.optInt("du", 0), o.optLong("mv", 0L), o.optBoolean("mk"), o.optBoolean("hd"), o.optBoolean("fl"))
     }
 }
 
@@ -57,8 +63,14 @@ class DavLib(val accountId: String) {
     val meta = java.util.concurrent.ConcurrentHashMap<String, Meta>()
     private val dir: File get() = File(App.ctx.filesDir, "dav/$accountId").apply { mkdirs() }
     val src: WebDavSource? get() = (CloudPhotos.source(accountId) as? WebDavSource)?.also { NetEnv.prime(it.account.url) }
-    private var loaded = false
+    /** B17: load state machine — a failed ensure() lands in FAILED (retryable), never in a stuck "loaded". */
+    private enum class LoadState { NOT_LOADED, LOADING, LOADED, FAILED }
+    @Volatile private var loadState = LoadState.NOT_LOADED
+    private val ensureMutex = Mutex()
     private val uiScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    /** B18: cancels this lib's UI scope (progress ticker etc.). Called from [Dav.forget]. */
+    fun close() { uiScope.cancel() }
 
     fun imagesCount() = photos.count { !it.isVideo }
 
@@ -66,8 +78,21 @@ class DavLib(val accountId: String) {
     var fullyLoaded by mutableStateOf(false)
 
     suspend fun ensure() {
-        if (loaded) return
-        loaded = true
+        ensureMutex.withLock {
+            if (loadState == LoadState.LOADED) return
+            loadState = LoadState.LOADING
+            try {
+                ensureLocked()
+                loadState = LoadState.LOADED
+            } catch (e: Exception) {
+                loadState = LoadState.FAILED
+                error = e.message
+                Diag.log("DAV", "ensure failed: ${e.message}")
+            }
+        }
+    }
+
+    private suspend fun ensureLocked() {
         withContext(Dispatchers.IO) { loadMeta() }
         // 1.0.10: the index is stored per month; the newest few months go on screen first, the rest follows.
         val months = withContext(Dispatchers.IO) { IndexStore.months(dir) }
@@ -111,6 +136,8 @@ class DavLib(val accountId: String) {
     /** After a delete on the server: drop the files from the index, analysis, faces and virtual albums. */
     suspend fun removeLocal(paths: List<String>) {
         val set = paths.toSet()
+        // B20: the removed photos' thumbnails must go too, or the grid keeps showing deleted photos.
+        DavThumb.invalidateUrls(photos.filter { it.cloudPath in set }.flatMap { listOf(it.thumbS, it.thumbM, it.original) })
         withContext(Dispatchers.Main) { photos.removeAll { it.cloudPath in set }; metaVersion++ }
         set.forEach { meta.remove(it) }
         withContext(Dispatchers.IO) {
@@ -127,6 +154,8 @@ class DavLib(val accountId: String) {
 
     /** A file this app just uploaded (e.g. an edited copy): into the index without a full re-scan. */
     suspend fun addLocal(e: CloudEntry) {
+        // B20: a replaced file (e.g. an edited copy) must not keep the old thumbnail.
+        DavThumb.invalidateUrls(photos.filter { it.cloudPath == e.path }.flatMap { listOf(it.thumbS, it.thumbM, it.original) })
         val ps = CloudPhotos.toPhotos(accountId, listOf(e))
         withContext(Dispatchers.Main) { photos.removeAll { it.cloudPath == e.path }; setPhotos(photos.toList() + ps) }
         withContext(Dispatchers.IO) { writeIndex(readIndex().filter { it.path != e.path } + e) }
@@ -154,7 +183,9 @@ class DavLib(val accountId: String) {
         val folderFile = File(dir, "folders.json")
         val lastFull = Store.getStr("dav.lastFull.$accountId").toLongOrNull() ?: 0L
         val doFull = full || !folderFile.exists() || System.currentTimeMillis() - lastFull > 7 * 24 * 3600_000L
-        val (previous, old) = withContext(Dispatchers.IO) { (if (doFull) emptyList() else readIndex()) to (if (doFull) DavFolderCache() else DavFolderCache.load(folderFile)) }
+        // B13: the old index is always loaded — even for a full scan — so a branch whose listing fails can
+        // keep its old media instead of dropping out (scanIncremental only reuses it on failure / skip).
+        val (previous, old) = withContext(Dispatchers.IO) { readIndex() to (if (doFull) DavFolderCache() else DavFolderCache.load(folderFile)) }
         val prog = DavScanProgress()
         val ticker = uiScope.launch { while (isActive) { scanListed = prog.listed.get(); scanKnown = prog.known.get(); scanFound = prog.found.get(); delay(700) } }
         var cache: DavFolderCache? = null
@@ -195,6 +226,16 @@ class DavLib(val accountId: String) {
         ticker.cancel()
         scanListed = prog.listed.get(); scanKnown = prog.known.get(); scanFound = prog.found.get()
         Diag.log("DAV", "scan ${if (doFull) "full" else "incremental"} roots=$roots: ${prog.listed.get()} folders (${prog.skipped.get()} unchanged, skipped), ${all.size} media, complete=$complete, ${System.currentTimeMillis() - t0} ms")
+        // B13: branches whose listing failed keep their old media + old folder tags — the new index/cache
+        // never silently drops them.
+        val unknown = cache?.unknown.orEmpty()
+        if (unknown.isNotEmpty()) {
+            Diag.log("DAV", "scan: ${unknown.size} branches failed, keeping old media for them: ${unknown.sorted().take(5).joinToString()}")
+            val have = all.map { it.path }.toSet()
+            val keep = previous.filter { e -> e.path !in have && unknown.any { u -> e.path.startsWith(u.trimEnd('/') + "/") || CloudPath.parent(e.path) == u } }
+            if (keep.isNotEmpty()) synchronized(all) { all.addAll(keep) }
+            cache?.let { c -> unknown.forEach { u -> old.dirs[u]?.let { c.dirs[u] = it } } }
+        }
         // B1: only a complete, error-free scan may overwrite the index / folder cache / timestamps. A truncated
         // scan (caps hit) or a failed scan keeps the previous index; the next scan re-lists from it. A failed
         // index write also blocks the timestamp update and is reported via [error].
@@ -257,7 +298,7 @@ class DavLib(val accountId: String) {
         File(dir, "meta.json").writeText(o.toString())
     }
 
-    fun clearCache() { File(dir, "folders.json").delete(); IndexStore.clear(dir); fullyLoaded = false; File(dir, "meta.json").delete(); meta.clear(); photos.clear(); loaded = false }
+    fun clearCache() { File(dir, "folders.json").delete(); IndexStore.clear(dir); fullyLoaded = false; File(dir, "meta.json").delete(); meta.clear(); photos.clear(); loadState = LoadState.NOT_LOADED }
 
     // ---------------------------------------------------------------- virtual albums (manifest in WebDAV root)
     suspend fun refreshAlbums() {
@@ -297,12 +338,15 @@ class DavLib(val accountId: String) {
     fun photoAt(path: String): Photo? = photos.firstOrNull { it.cloudPath == path }
 
     // ---------------------------------------------------------------- groups for 发现
-    fun places(): List<Pair<String, List<Photo>>> = Hidden.visible(photos).filter { meta[it.cloudPath]?.city?.isNotEmpty() == true }
-        .groupBy { meta[it.cloudPath]!!.city }.toList().sortedByDescending { it.second.size }
+    /** B12: snapshot (photo, city) pairs — no meta[..]!! that can NPE when the meta was removed mid-group. */
+    fun places(): List<Pair<String, List<Photo>>> = Hidden.visible(photos).mapNotNull { p ->
+        meta[p.cloudPath]?.city?.takeIf { it.isNotEmpty() }?.let { p to it }
+    }.groupBy({ it.second }, { it.first }).toList().sortedByDescending { it.second.size }
 
-    /** B2: groups by head-MD5 + size (head-only match). Deletion must pass [fullSha256] secondary confirmation first. */
-    fun duplicates(): List<List<Photo>> = photos.filter { !it.isVideo && meta[it.cloudPath]?.headMd5?.isNotEmpty() == true }
-        .groupBy { meta[it.cloudPath]!!.headMd5 + ":" + it.size }.values.filter { it.size > 1 }.sortedByDescending { it.size }
+    /** B2 + B12: groups by head-MD5 + size (head-only match), snapshot — no meta[..]!!. Deletion must pass [fullSha256] secondary confirmation first. */
+    fun duplicates(): List<List<Photo>> = photos.mapNotNull { p ->
+        if (p.isVideo) null else meta[p.cloudPath]?.headMd5?.takeIf { it.isNotEmpty() }?.let { p to (it + ":" + p.size) }
+    }.groupBy({ it.second }, { it.first }).values.filter { it.size > 1 }.sortedByDescending { it.size }
 
     /**
      * B2: full-file SHA-256 of one photo — the secondary confirmation before deleting a "duplicate".
@@ -313,20 +357,41 @@ class DavLib(val accountId: String) {
         MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
     }
 
+    /**
+     * B22: the O(n·400) union-find only runs when the analysis actually changed. The result is cached on
+     * disk (dav/<id>/similar.json) and keyed by [metaVersion] + the photo set; a repeat call with the same
+     * key rebuilds the groups from paths without recomputing any hash distance.
+     */
     fun similar(maxDist: Int = 6): List<List<Photo>> {
-        val items = photos.filter { !it.isVideo && meta[it.cloudPath]?.hasHash == true }.sortedBy { it.time }
-        val h = items.map { meta[it.cloudPath]!!.dhash }
-        val md = items.map { meta[it.cloudPath]!!.headMd5 + it.size }
-        val parent = IntArray(items.size) { it }
+        val items = photos.mapNotNull { p ->
+            if (p.isVideo) null else meta[p.cloudPath]?.takeIf { it.hasHash }?.let { p to it }
+        }.sortedBy { it.first.time }
+        val paths = items.map { it.first.cloudPath }
+        SimilarCache.load(dir, metaVersion, paths)?.let { cached ->
+            val byPath = photos.associateBy { it.cloudPath }
+            val groups = cached.mapNotNull { g -> g.mapNotNull { byPath[it] }.takeIf { it.size > 1 } }
+            if (groups.isNotEmpty() || items.isEmpty()) return groups.sortedByDescending { it.size }
+        }
+        val h = items.map { it.second.dhash }
+        val md = items.map { it.second.headMd5 + it.first.size }
+        val plain = items.map { it.first }
+        val parent = IntArray(plain.size) { it }
         fun find(x: Int): Int { var a = x; while (parent[a] != a) { parent[a] = parent[parent[a]]; a = parent[a] }; return a }
-        for (i in items.indices) for (j in i + 1 until minOf(items.size, i + 400)) {
+        for (i in plain.indices) for (j in i + 1 until minOf(plain.size, i + 400)) {
             if (md[i] != md[j] && java.lang.Long.bitCount(h[i] xor h[j]) <= maxDist) parent[find(i)] = find(j)
         }
-        return items.indices.groupBy { find(it) }.values.filter { it.size > 1 }.map { g -> g.map { items[it] } }.sortedByDescending { it.size }
+        val groups = plain.indices.groupBy { find(it) }.values.filter { it.size > 1 }.map { g -> g.map { plain[it] } }.sortedByDescending { it.size }
+        SimilarCache.save(dir, metaVersion, groups.map { g -> g.map { it.cloudPath } }, paths)
+        return groups
     }
 
-    fun aiCategories(): List<Pair<String, List<Photo>>> = Hidden.visible(photos).filter { meta[it.cloudPath]?.aiCat?.isNotEmpty() == true }
-        .groupBy { meta[it.cloudPath]!!.aiCat }.toList().sortedByDescending { it.second.size }
+    /** S16: the single data-layer exit for "photos the 照片/视频 tabs may show" — 影视/音乐 folders excluded. */
+    fun visiblePhotos(): List<Photo> = MediaIsolation.davVisible(accountId, photos)
+
+    /** B12: snapshot (photo, aiCat) pairs — no meta[..]!!. */
+    fun aiCategories(): List<Pair<String, List<Photo>>> = Hidden.visible(photos).mapNotNull { p ->
+        meta[p.cloudPath]?.aiCat?.takeIf { it.isNotEmpty() }?.let { p to it }
+    }.groupBy({ it.second }, { it.first }).toList().sortedByDescending { it.second.size }
 
     /**
      * [concepts]: every concept must be matched (AND), any synonym inside a concept counts (OR).
@@ -361,6 +426,26 @@ class DavLib(val accountId: String) {
 }
 
 /**
+ * B22: on-disk cache for [DavLib.similar]. Key = (metaVersion, photo-set hash). A stale key (analysis
+ * changed, photos added/removed) forces a recompute; the stored groups are paths, so a cache hit still
+ * resolves against the live [DavLib.photos] and can never resurrect a deleted photo.
+ */
+object SimilarCache {
+    fun load(dir: File, metaVersion: Int, paths: List<String>): List<List<String>>? = runCatching {
+        val o = JSONObject(File(dir, "similar.json").readText())
+        if (o.optInt("mv") != metaVersion) return null
+        if (o.optInt("hash") != paths.sorted().hashCode()) return null
+        val a = o.optJSONArray("g") ?: return null
+        (0 until a.length()).map { i -> val g = a.optJSONArray(i) ?: JSONArray(); (0 until g.length()).map { g.optString(it) } }
+    }.getOrNull()
+
+    fun save(dir: File, metaVersion: Int, groups: List<List<String>>, paths: List<String>) = runCatching {
+        val a = JSONArray(); groups.forEach { g -> a.put(JSONArray(g)) }
+        File(dir, "similar.json").writeText(JSONObject().put("mv", metaVersion).put("hash", paths.sorted().hashCode()).put("g", a).toString())
+    }
+}
+
+/**
  * 1.0.10 large-library index: `index/<yyyy-MM>.json` per month of the file's modified time + `index/months.json`
  * (newest first). Only changed segments are rewritten. The pre-1.0.10 single `index.json` is migrated on first read.
  */
@@ -385,13 +470,28 @@ object IndexStore {
     @Synchronized fun write(dir: File, l: List<CloudEntry>) {
         val d = seg(dir)
         val groups = l.groupBy { monthOf(it.modified) }
+        // B19: write the new segments first (tmp + atomic rename, copy fallback), then months.json, then
+        // delete stale segments — a crash mid-write leaves either the old or the new complete index, never a mix.
         groups.forEach { (m, es) ->
             val text = encode(es)
             val f = File(d, "$m.json")
-            if (!f.exists() || f.length() != text.length.toLong() || f.readText() != text) { val t = File(d, "$m.json.tmp"); t.writeText(text); t.renameTo(f) }
+            if (!f.exists() || f.length() != text.length.toLong() || f.readText() != text) atomicWrite(f, text)
         }
-        d.listFiles()?.forEach { f -> val m = f.name.removeSuffix(".json"); if (f.name.endsWith(".json") && f.name != "months.json" && m !in groups) f.delete() }
-        File(d, "months.json").writeText(JSONArray(groups.keys.sortedDescending()).toString())
+        atomicWrite(File(d, "months.json"), JSONArray(groups.keys.sortedDescending()).toString())
+        d.listFiles()?.forEach { f ->
+            val m = f.name.removeSuffix(".json")
+            if (f.name.endsWith(".json") && f.name != "months.json" && !f.name.endsWith(".tmp") && m !in groups) f.delete()
+        }
+    }
+
+    /** tmp + renameTo; when rename fails (e.g. cross-filesystem) fall back to copy + delete tmp. */
+    private fun atomicWrite(f: File, text: String) {
+        val t = File(f.parentFile, f.name + ".tmp")
+        t.writeText(text)
+        if (!t.renameTo(f)) {
+            t.copyTo(f, overwrite = true)
+            t.delete()
+        }
     }
 
     @Synchronized fun clear(dir: File) { seg(dir).deleteRecursively(); File(dir, "index.json").delete() }
@@ -407,37 +507,57 @@ object IndexStore {
     private fun parse(f: File): List<CloudEntry> = runCatching {
         val a = JSONArray(f.readText())
         (0 until a.length()).map { i -> a.getJSONObject(i).let { o ->
-            CloudEntry(o.getString("n"), o.getString("p"), false, o.optLong("s"), o.optLong("m"), null, !o.optBoolean("v"), o.optBoolean("v"))
+            // B19: isDir round-trips now (it used to be dropped — every parsed entry came back as a file).
+            val isDir = o.optBoolean("d")
+            val isVideo = o.optBoolean("v") && !isDir
+            CloudEntry(o.getString("n"), o.getString("p"), isDir, o.optLong("s"), o.optLong("m"), null, !isDir && !isVideo, isVideo)
         } }
     }.getOrDefault(emptyList())
 
     private fun encode(l: List<CloudEntry>): String {
-        val a = JSONArray(); l.sortedBy { it.path }.forEach { a.put(JSONObject().put("n", it.name).put("p", it.path).put("s", it.size).put("m", it.modified).put("v", it.isVideo)) }
+        val a = JSONArray(); l.sortedBy { it.path }.forEach { e ->
+            a.put(JSONObject().put("n", e.name).put("p", e.path).put("s", e.size).put("m", e.modified).put("v", e.isVideo).apply { if (e.isDir) put("d", true) })
+        }
         return a.toString()
     }
 }
 
 object Dav {
     var currentId by mutableStateOf(Store.davId)
-    private val libs = HashMap<String, DavLib>()
+    /** S18: libs is read from UI + IO threads — a plain HashMap could corrupt under concurrent getOrPut. */
+    private val libs = java.util.concurrent.ConcurrentHashMap<String, DavLib>()
     val accounts: List<CloudAccount> get() = CloudAccounts.all.filter { it.kind == CloudKind.WEBDAV }
     val current: CloudAccount? get() = accounts.firstOrNull { it.id == currentId } ?: accounts.firstOrNull()
     fun lib(): DavLib? = current?.let { a -> libs.getOrPut(a.id) { DavLib(a.id) } }
     fun lib(id: String): DavLib = libs.getOrPut(id) { DavLib(id) }
     fun select(id: String) { currentId = id; Store.davId = id }
-    fun forget(id: String) { libs.remove(id); CloudPhotos.forget(id) }
+    /**
+     * B25: dropping an account repairs [Store.davId] (next remaining account, or empty) so [current] never
+     * silently falls back to another account. The on-disk index/meta/faces are kept by default — pass
+     * [clearDisk] = true to delete them as well (callers that mean "forget everything").
+     */
+    fun forget(id: String, clearDisk: Boolean = false) {
+        libs.remove(id)?.close()
+        CloudPhotos.forget(id)
+        if (currentId == id) {
+            currentId = accounts.firstOrNull { it.id != id }?.id ?: ""
+            Store.davId = currentId
+        }
+        if (clearDisk) runCatching { File(App.ctx.filesDir, "dav/$id").deleteRecursively() }
+    }
 }
 
 /** On-device analysis: EXIF GPS/time from the first 128 KB (HTTP Range), headMd5 (MD5 of that head) + size for duplicates, dHash from the EXIF thumbnail. */
 object Analyzer {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private var job: Job? = null
+    /** B28: one job per account — analysing account A never cancels / blocks account B. */
+    private val jobs = java.util.concurrent.ConcurrentHashMap<String, Job>()
     private val geoCache = HashMap<String, String>()
 
     fun wifiAndCharging(c: Context): Boolean = Net.isWifi(c) && Net.isCharging(c)
     /** Local analysis + faces: Wi-Fi and charging unless the user allowed otherwise. */
     fun canScan(c: Context): Boolean = (ScanPolicy.allowCellular || Net.isWifi(c)) && (ScanPolicy.allowNoCharge || Net.isCharging(c))
-    val running: Boolean get() = job?.isActive == true
+    val running: Boolean get() = jobs.values.any { it.isActive }
 
     /**
      * [manual] runs regardless of Wi-Fi/charging. Three phases, each only for what is still missing:
@@ -445,7 +565,7 @@ object Analyzer {
      * 3) 1.0.10 WebDAV video durations (MediaMetadataRetriever on the stream, 2 at a time).
      */
     fun start(c: Context, lib: DavLib, manual: Boolean) {
-        if (job?.isActive == true) return
+        if (jobs[lib.accountId]?.isActive == true) return
         if (!manual && !canScan(c)) return
         val needPhotos = lib.photos.any { !it.isVideo && lib.meta[it.cloudPath]?.done != true }
         val needCam = !camFillDone(lib) && lib.photos.any { !it.isVideo && lib.meta[it.cloudPath]?.let { m -> m.done && !m.camChecked } == true }
@@ -453,7 +573,7 @@ object Analyzer {
         val needMv = lib.photos.any { motionTodo(lib, it) }
         if (!needPhotos && !needCam && !needDur && !needMv) return
         ScanService.ensure(c)
-        job = scope.launch {
+        jobs[lib.accountId] = scope.launch {
             lib.analyzing = true
             withContext(Dispatchers.Main) { lib.analyzed = lib.meta.values.count { it.done } }
             try {
@@ -464,7 +584,8 @@ object Analyzer {
                     val gate = kotlinx.coroutines.sync.Semaphore(if (NetEnv.anySlow) 8 else 4)
                     for (chunk in todo.chunked(24)) {
                         if (!isActive || !ok()) break
-                        chunk.map { p -> async { gate.acquire(); try { analyze(c, s, p, lib) } finally { gate.release() } } }.awaitAll()
+                        // B16: one photo's failure must not abort the whole chunk — collect and continue.
+                        chunk.map { p -> async { gate.acquire(); try { runCatching { analyze(c, s, p, lib) }.onFailure { Diag.log("DAV", "analyze ${p.cloudPath}: ${it.message}") } } finally { gate.release() } } }.awaitAll()
                         lib.analyzed = lib.meta.values.count { it.done }
                         lib.metaVersion++
                         lib.saveMeta()
@@ -474,7 +595,7 @@ object Analyzer {
                 if (needCam && isActive && ok()) camBackfill(s, lib, ok)
                 if (needMv && isActive && ok()) motionBackfill(s, lib, ok)
                 if (needDur && isActive && ok()) videoDurations(lib, ok)
-            } finally { lib.analyzing = false }
+            } finally { lib.analyzing = false; jobs.remove(lib.accountId) }
         }
     }
 
@@ -489,10 +610,12 @@ object Analyzer {
         for (chunk in todo.chunked(30)) {
             if (!isActive || !ok()) { stopped = true; break }
             chunk.map { p -> async { gate.acquire(); try {
-                val m = lib.meta[p.cloudPath] ?: return@async
-                val head = s.headBytes(p.cloudPath) ?: return@async // network error: retry on a later run
-                runCatching { m.cam = camOf(ExifInterface(ByteArrayInputStream(head))) }
-                m.camChecked = true
+                runCatching {
+                    val m = lib.meta[p.cloudPath] ?: return@runCatching
+                    val head = s.headBytes(p.cloudPath) ?: return@runCatching // network error: retry on a later run
+                    runCatching { m.cam = camOf(ExifInterface(ByteArrayInputStream(head))) }
+                    m.camChecked = true
+                }.onFailure { Diag.log("DAV", "camBackfill ${p.cloudPath}: ${it.message}") }
             } finally { gate.release() } } }.awaitAll()
             lib.metaVersion++
             lib.saveMeta()
@@ -513,9 +636,13 @@ object Analyzer {
         for (chunk in todo.chunked(30)) {
             if (!isActive || !ok()) break
             chunk.map { p -> async { gate.acquire(); try {
-                val m = lib.meta[p.cloudPath] ?: return@async
-                val head = s.headBytes(p.cloudPath) ?: return@async
-                m.mv = LivePairing.motionOffset(head); m.mvChecked = true
+                // B15: per-file runCatching; a network miss leaves mvChecked=false (untried, retried later),
+                // only a successfully parsed head marks the photo tried.
+                runCatching {
+                    val m = lib.meta[p.cloudPath] ?: return@runCatching
+                    val head = s.headBytes(p.cloudPath) ?: return@runCatching
+                    m.mv = LivePairing.motionOffset(head); m.mvChecked = true
+                }.onFailure { Diag.log("DAV", "motionBackfill ${p.cloudPath}: ${it.message}") }
             } finally { gate.release() } } }.awaitAll()
             lib.metaVersion++
             lib.saveMeta()
@@ -528,8 +655,9 @@ object Analyzer {
         return if (model.startsWith(make, true)) model else "$make $model".trim()
     }
 
-    /** Cached pool: a retriever stuck on a dead host keeps its own thread and never blocks the next file. */
-    private val durPool = java.util.concurrent.Executors.newCachedThreadPool { r -> Thread(r, "yw-dur").apply { isDaemon = true } }
+    /** S5: bounded pool (2) — a retriever stuck on a dead host keeps its own thread, but a long queue of
+     * stuck retrievers can no longer grow the pool without bound. */
+    private val durPool = java.util.concurrent.Executors.newFixedThreadPool(2) { r -> Thread(r, "yw-dur").apply { isDaemon = true } }
 
     /** 1.0.10: duration of WebDAV videos for the advanced-search duration filter. 2 at a time, 25 s cap per file, failures marked -1 and skipped. */
     private suspend fun videoDurations(lib: DavLib, ok: () -> Boolean) = coroutineScope {
@@ -538,9 +666,11 @@ object Analyzer {
         for (chunk in todo.chunked(2)) {
             if (!isActive || !ok()) break
             chunk.map { p -> async(Dispatchers.IO) {
-                val d = durationOf(p.video!!)
-                val m = lib.meta[p.cloudPath] ?: Meta().also { lib.meta[p.cloudPath] = it }
-                m.dur = if (d > 0) d else -1
+                runCatching {
+                    val d = durationOf(p.video!!)
+                    val m = lib.meta[p.cloudPath] ?: Meta().also { lib.meta[p.cloudPath] = it }
+                    m.dur = if (d > 0) d else -1
+                }.onFailure { Diag.log("DAV", "videoDurations ${p.cloudPath}: ${it.message}") }
             } }.awaitAll()
             if (++n % 10 == 0) { lib.saveMeta(); withContext(Dispatchers.Main) { lib.retime(); lib.metaVersion++ } }
         }
@@ -558,28 +688,44 @@ object Analyzer {
                 ((mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L) / 1000L).toInt()
             } finally { runCatching { mmr.release() } }
         }
-        return try { f.get(25, java.util.concurrent.TimeUnit.SECONDS) } catch (_: Throwable) { f.cancel(true); 0 }
+        return try { f.get(25, java.util.concurrent.TimeUnit.SECONDS) } catch (e: Throwable) {
+            f.cancel(true)
+            // S5: a timeout is logged and the caller moves on to the next file — it never blocks the queue.
+            if (e is java.util.concurrent.TimeoutException) Diag.log("DAV", "video duration timeout: ${url.take(120)}")
+            0
+        }
     }
 
-    fun stop() { job?.cancel() }
+    fun stop() { jobs.values.forEach { it.cancel() }; jobs.clear() }
+    /** B28: stop only one account's analysis job. */
+    fun stop(accountId: String) { jobs.remove(accountId)?.cancel() }
 
+    /**
+     * B14/B16: the whole analysis is inside runCatching — a throw in one photo never kills the chunk.
+     * [Meta.done] is set only when the EXIF block actually succeeded; an EXIF failure sets [Meta.failed]
+     * (retried on the next pass) while the already-computed md5 is still kept ([Meta.hashDone]).
+     */
     private fun analyze(c: Context, s: WebDavSource, p: Photo, lib: DavLib) {
-        val m = lib.meta[p.cloudPath] ?: Meta()
-        val head = s.headBytes(p.cloudPath) ?: return
-        m.headMd5 = MessageDigest.getInstance("MD5").digest(head).joinToString("") { "%02x".format(it) }.take(16)
-        if (LivePairing.motionCandidateExt(p.fileName)) { m.mv = LivePairing.motionOffset(head); m.mvChecked = true }
         runCatching {
-            val ex = ExifInterface(ByteArrayInputStream(head))
-            val ll = FloatArray(2)
-            if (ex.getLatLong(ll)) { m.lat = ll[0].toDouble(); m.lng = ll[1].toDouble(); m.city = city(c, m.lat, m.lng) }
-            (ex.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL) ?: ex.getAttribute(ExifInterface.TAG_DATETIME))?.takeIf { it.length >= 19 && !it.startsWith("0000") }?.let { m.time = it.take(19) }
-            m.cam = camOf(ex); m.camChecked = true
-            val tb = ex.thumbnailBytes
-            val bmp = if (tb != null) BitmapFactory.decodeByteArray(tb, 0, tb.size) else BitmapFactory.decodeByteArray(head, 0, head.size)
-            if (bmp != null) { m.dhash = dHash(bmp); m.hasHash = true }
-        }
-        m.done = true
-        lib.meta[p.cloudPath] = m
+            val m = lib.meta[p.cloudPath] ?: Meta()
+            val head = s.headBytes(p.cloudPath) ?: return
+            m.headMd5 = MessageDigest.getInstance("MD5").digest(head).joinToString("") { "%02x".format(it) }.take(16)
+            m.hashDone = true
+            if (LivePairing.motionCandidateExt(p.fileName)) { m.mv = LivePairing.motionOffset(head); m.mvChecked = true }
+            val exifOk = runCatching {
+                val ex = ExifInterface(ByteArrayInputStream(head))
+                val ll = FloatArray(2)
+                if (ex.getLatLong(ll)) { m.lat = ll[0].toDouble(); m.lng = ll[1].toDouble(); m.city = city(c, m.lat, m.lng) }
+                (ex.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL) ?: ex.getAttribute(ExifInterface.TAG_DATETIME))?.takeIf { it.length >= 19 && !it.startsWith("0000") }?.let { m.time = it.take(19) }
+                m.cam = camOf(ex); m.camChecked = true
+                val tb = ex.thumbnailBytes
+                val bmp = if (tb != null) BitmapFactory.decodeByteArray(tb, 0, tb.size) else BitmapFactory.decodeByteArray(head, 0, head.size)
+                if (bmp != null) { m.dhash = dHash(bmp); m.hasHash = true }
+            }.isSuccess
+            m.done = exifOk
+            m.failed = !exifOk
+            lib.meta[p.cloudPath] = m
+        }.onFailure { Diag.log("DAV", "analyze ${p.cloudPath}: ${it.message}") }
     }
 
     fun dHash(b: Bitmap): Long {

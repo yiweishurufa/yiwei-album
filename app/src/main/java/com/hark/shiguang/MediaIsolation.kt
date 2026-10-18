@@ -23,6 +23,9 @@ import java.util.concurrent.ConcurrentHashMap
  * Usage:
  *   MediaIsolation.isMediaPath("dav:$accountId", photo.cloudPath)
  *   MediaIsolation.davVisible(accountId, photos) / MediaIsolation.fnVisible(photos)
+ *
+ * S16: new call sites must go through one of these exits (or DavLib.visiblePhotos()) — do not filter
+ * ad-hoc, or one more list will leak 影视/音乐 folders into the photo tabs.
  */
 object MediaIsolation {
     /** Read inside derivedStateOf / remember keys to refresh when the folders change. */
@@ -69,7 +72,8 @@ object MediaIsolation {
 
     fun invalidate(sourceKey: String? = null) { if (sourceKey == null) cache.clear() else { cache.remove(sourceKey); cache.remove("music|$sourceKey") }; version++ }
 
-    private val VOL = Regex("^vol\\d+/\\d+(?:/|$)")
+    /** S15: 飞牛 paths come as volN/uid/… AND as bare volN/… — both strip to the same relative path. */
+    private val VOL = Regex("^vol\\d+/(?:\\d+/)?")
     private fun norm(p: String): String {
         var s = p.removePrefix("fm:").replace('\\', '/').trim().trim('/')
         s = VOL.replace(s, "")

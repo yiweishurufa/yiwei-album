@@ -177,7 +177,8 @@ object Faces {
     fun lib(id: String): FaceLib = synchronized(libs) { libs.getOrPut(id) { FaceLib(id).also { it.load() } } }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private var job: Job? = null
+    /** B28: one job per account — scanning account A never cancels account B. */
+    private val jobs = java.util.concurrent.ConcurrentHashMap<String, Job>()
     private var interp: Interpreter? = null
     private var inShape = intArrayOf(1, 112, 112, 3)
     private var outDim = 192
@@ -201,19 +202,21 @@ object Faces {
         return i
     }
 
-    fun stop() { job?.cancel() }
-    val running: Boolean get() = job?.isActive == true
+    fun stop() { jobs.values.forEach { it.cancel() }; jobs.clear() }
+    /** B28: stop only one account's face job. */
+    fun stop(accountId: String) { jobs.remove(accountId)?.cancel() }
+    val running: Boolean get() = jobs.values.any { it.isActive }
 
     /** Scans every photo not scanned yet, then clusters. [manual] ignores the Wi-Fi + charging rule. */
     fun start(c: Context, lib: DavLib, manual: Boolean) {
-        if (job?.isActive == true) return
+        if (jobs[lib.accountId]?.isActive == true) return
         val fl = lib(lib.accountId)
         if (!manual && !Analyzer.canScan(c)) { fl.cluster(lib); return }
         if (lib.photos.none { !it.isVideo && it.cloudPath !in fl.scanned }) { fl.cluster(lib); return }
         ScanService.ensure(c)
-        job = scope.launch {
+        jobs[lib.accountId] = scope.launch {
             fl.running = true; fl.status = ""
-            val s = lib.src ?: run { fl.running = false; return@launch }
+            val s = lib.src ?: run { fl.running = false; jobs.remove(lib.accountId); return@launch }
             val skipCats = setOf("文档", "截图", "美食", "风景", "建筑", "植物", "交通")
             val todo = lib.photos.filter { p ->
                 if (p.isVideo || p.cloudPath in fl.scanned) return@filter false
@@ -221,11 +224,16 @@ object Faces {
                 !(m != null && (m.aiFaces == 0 || m.aiCat in skipCats))
             }
             fl.total = todo.size; fl.done = 0
-            runCatching { model(c) }.onFailure { fl.status = "人脸模型加载失败：${it.message}"; fl.running = false; return@launch }
+            runCatching { model(c) }.onFailure { fl.status = "人脸模型加载失败：${it.message}"; fl.running = false; jobs.remove(lib.accountId); return@launch }
             val gate = kotlinx.coroutines.sync.Semaphore(3)
-            todo.chunked(12).forEach { chunk ->
-                if (!isActive) return@forEach
-                if (!manual && !Analyzer.canScan(c)) { fl.status = ScanPolicy.waitingText(); return@forEach }
+            val chunks = todo.chunked(12)
+            var ci = 0
+            while (ci < chunks.size) {
+                if (!isActive) break
+                // B29: Wi-Fi / charging lost mid-run → wait here (like AiRunner.loop) instead of running
+                // dry through the queue; the chunk is retried after the wait, nothing is skipped.
+                if (!manual && !Analyzer.canScan(c)) { fl.status = ScanPolicy.waitingText(); delay(20_000); continue }
+                val chunk = chunks[ci]
                 chunk.map { p -> async {
                     gate.acquire()
                     // B9: only a completed detection attempt marks the photo scanned. Download / decode
@@ -236,10 +244,12 @@ object Faces {
                 } }.awaitAll()
                 fl.done += chunk.size
                 if (fl.done % 48 < 12) { fl.save(); withContext(Dispatchers.Main) { fl.cluster(lib) } }
+                ci++
             }
             fl.save()
             withContext(Dispatchers.Main) { fl.cluster(lib) }
             fl.running = false
+            jobs.remove(lib.accountId)
         }
     }
 
@@ -266,8 +276,9 @@ object Faces {
         val found = detect(bmp)
         if (found.isEmpty()) return true
         val list = mutableListOf<FaceRec>()
-        found.forEachIndexed { i, (box, roll, conf) ->
-            val crop = (markMap.remove(box)?.let { alignByMarks(bmp, it) } ?: align(bmp, box, roll)) ?: return@forEachIndexed
+        found.forEachIndexed { i, f ->
+            // S7: the landmarks travel with the detection result — no shared RectF-keyed map.
+            val crop = (f.marks?.let { alignByMarks(bmp, it) } ?: align(bmp, f.box, f.roll)) ?: return@forEachIndexed
             // test-time flip: averaging the mirrored face makes the vector steadier across poses
             val e1 = embed(c, crop)
             val flipped = Bitmap.createBitmap(crop, 0, 0, crop.width, crop.height, Matrix().apply { postScale(-1f, 1f, crop.width / 2f, crop.height / 2f) }, true)
@@ -275,7 +286,7 @@ object Faces {
             val emb = FloatArray(e1.size) { e1[it] + e2[it] }.also { FaceLib.normalize(it) }
             val id = (p.cloudPath.hashCode().toLong() and 0xffffffffL).toString(36) + "_" + i
             runCatching { FileOutputStream(fl.cropFile(id)).use { Bitmap.createScaledBitmap(crop, 160, 160, true).compress(Bitmap.CompressFormat.JPEG, 85, it) } }
-            list.add(FaceRec(id, p.cloudPath, conf, emb))
+            list.add(FaceRec(id, p.cloudPath, f.conf, emb))
         }
         if (list.isNotEmpty()) fl.faces[p.cloudPath] = list
         return true
@@ -283,12 +294,14 @@ object Faces {
 
     /** Eye / mouth landmarks in bitmap pixels (null when the detector gave none). */
     private class Marks(val le: android.graphics.PointF, val re: android.graphics.PointF, val mouth: android.graphics.PointF?)
-    private val markMap = java.util.concurrent.ConcurrentHashMap<RectF, Marks>()
+    /** S7: one detection result — box, roll, confidence + its own landmarks (no shared map keyed by RectF). */
+    private data class DetectedFace(val box: RectF, val roll: Float, val conf: Float, val marks: Marks?)
 
-    /** Returns (box, roll degrees, confidence 0..1). Confidence = how usable the face is: frontal, sharp-sized, landmarks found. */
-    private fun detect(b: Bitmap): List<Triple<RectF, Float, Float>> {
+    /** Returns detected faces. Confidence = how usable the face is: frontal, sharp-sized, landmarks found. */
+    private fun detect(b: Bitmap): List<DetectedFace> {
         val r = runCatching {
-            val fs = Tasks.await(detector.process(InputImage.fromBitmap(b, 0)))
+            // S8: ML Kit never hangs the queue — 30 s timeout, then the fallback detector below takes over.
+            val fs = Tasks.await(detector.process(InputImage.fromBitmap(b, 0)), 30, java.util.concurrent.TimeUnit.SECONDS)
             fs.map { f ->
                 val bb = f.boundingBox
                 val w = bb.width().toFloat()
@@ -304,14 +317,14 @@ object Faces {
                 val ml = f.getLandmark(com.google.mlkit.vision.face.FaceLandmark.MOUTH_LEFT)?.position
                 val mr = f.getLandmark(com.google.mlkit.vision.face.FaceLandmark.MOUTH_RIGHT)?.position
                 val mb = f.getLandmark(com.google.mlkit.vision.face.FaceLandmark.MOUTH_BOTTOM)?.position
-                if (l != null && r != null) {
+                val marks = if (l != null && r != null) {
                     // ML Kit's LEFT_EYE is the subject's left = image right
                     val (imgL, imgR) = if (l.x > r.x) r to l else l to r
                     val mouth = if (ml != null && mr != null) android.graphics.PointF((ml.x + mr.x) / 2, (ml.y + mr.y) / 2) else mb
-                    markMap[box] = Marks(android.graphics.PointF(imgL.x, imgL.y), android.graphics.PointF(imgR.x, imgR.y), mouth)
-                }
+                    Marks(android.graphics.PointF(imgL.x, imgL.y), android.graphics.PointF(imgR.x, imgR.y), mouth)
+                } else null
                 // profile faces embed badly: count them less
-                Triple(box, f.headEulerAngleZ, if (abs(f.headEulerAngleY) > 35f) conf * 0.7f else conf)
+                DetectedFace(box, f.headEulerAngleZ, if (abs(f.headEulerAngleY) > 35f) conf * 0.7f else conf, marks)
             }
         }
         r.getOrNull()?.let { return it }
@@ -324,7 +337,7 @@ object Faces {
             val pt = android.graphics.PointF(); f.getMidPoint(pt); val e = f.eyesDistance()
             val box = RectF(pt.x - e * 1.1f, pt.y - e * 0.9f, pt.x + e * 1.1f, pt.y + e * 1.6f)
             val conf = (f.confidence() * 1.3f).coerceIn(0f, 1f) * ((e * 2.2f - 32f) / 96f).coerceIn(0.3f, 1f)
-            Triple(box, 0f, conf)
+            DetectedFace(box, 0f, conf, null)
         }
     }
 

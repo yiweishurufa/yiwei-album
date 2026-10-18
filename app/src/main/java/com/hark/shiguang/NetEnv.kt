@@ -152,7 +152,7 @@ object NetEnv {
         return p
     }
 
-    /** Time to first response byte of a HEAD (any HTTP status counts as an answer), -1 on failure. Best of 2. */
+    /** Time to first response byte of a HEAD, -1 on failure. Best of 2. */
     private fun time(url: String, net: Network?): Long {
         val b = OkHttpClient.Builder().connectTimeout(4, TimeUnit.SECONDS).readTimeout(4, TimeUnit.SECONDS).callTimeout(5, TimeUnit.SECONDS)
             .followRedirects(false).retryOnConnectionFailure(false)
@@ -161,7 +161,9 @@ object NetEnv {
         var best = -1L
         repeat(2) {
             val t0 = System.nanoTime()
-            val ok = runCatching { c.newCall(Request.Builder().url(url).head().build()).execute().use { true } }.getOrDefault(false)
+            // S6: 405 (method not allowed) / 302 (redirect to a login page) are NOT a real answer — the host
+            // did not serve the probe. Counting them used to mark a dead route as fast.
+            val ok = runCatching { c.newCall(Request.Builder().url(url).head().build()).execute().use { r -> r.code != 405 && r.code != 302 } }.getOrDefault(false)
             val ms = (System.nanoTime() - t0) / 1_000_000
             if (ok && (best < 0 || ms < best)) best = ms
         }

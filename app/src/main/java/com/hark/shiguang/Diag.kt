@@ -14,7 +14,11 @@ object Diag {
     private lateinit var dir: File
     private val fmt = SimpleDateFormat("MM-dd HH:mm:ss.SSS", Locale.US)
     private val buf = ArrayDeque<String>()
-    private val secret = Regex("(accesstoken|token|password|pass|secret|authx|access_token|Authorization)([\"'=:\\s]+)([^\"'&\\s,\\}]+)", RegexOption.IGNORE_CASE)
+    // S21: also scrub signing material (si / otp / sign / signature) — the fnOS file API signs with si,
+    // and a login OTP must never land in a log the user might forward.
+    private val secret = Regex("(?<![A-Za-z0-9_])(accesstoken|token|password|pass|secret|authx|access_token|Authorization|si|otp|sign|signature)([\"'=:\\s]+)([^\"'&\\s,\\}]+)", RegexOption.IGNORE_CASE)
+    /** S21: userinfo in a URL ("https://user@host/…") — the user part is masked, the host stays readable. */
+    private val userinfo = Regex("([a-zA-Z][a-zA-Z0-9+.-]*://)([^/@\\s:]+)@")
 
     fun init(c: Context) {
         dir = File(c.cacheDir, "diag").apply { mkdirs() }
@@ -28,7 +32,7 @@ object Diag {
         log("APP", "start ${Build.MANUFACTURER} ${Build.MODEL} Android ${Build.VERSION.RELEASE} (${Build.VERSION.SDK_INT}) v${BuildInfo.version}")
     }
 
-    fun mask(s: String): String = secret.replace(s) { m -> m.groupValues[1] + m.groupValues[2] + "***" }
+    fun mask(s: String): String = userinfo.replace(secret.replace(s) { m -> m.groupValues[1] + m.groupValues[2] + "***" }) { m -> m.groupValues[1] + "***@" }
 
     @Synchronized fun log(tag: String, msg: String) {
         val line = "${fmt.format(Date())} [$tag] ${mask(msg)}"

@@ -152,11 +152,11 @@ object FnFiles {
         tokens[path]?.let { (u, t) -> if (System.currentTimeMillis() - t < 600_000) return u }
         if (missingSecret) { relogin(); return null }
         val abs = "/" + path.trimStart('/')
-        val bodies = listOf(
-            JSONObject().put("files", JSONArray().put(abs)),
-            JSONObject().put("files", JSONArray().put(path.trimStart('/'))),
-            JSONObject().put("path", abs),
-        )
+        // S10: only ONE body shape is tried now ({"files":[absolute-path]}). The other two were guesses
+        // from an unverified capture — trying them in turn could hit different server behaviour and hide
+        // which shape actually works. If this shape stops working the failure is logged, not silently
+        // retried with another guess. Callers already treat FnFiles as UNVERIFIED (see the object KDoc).
+        val bodies = listOf(JSONObject().put("files", JSONArray().put(abs)))
         for (b in bodies) {
             val t = runCatching {
                 FnClient.http.newCall(Request.Builder().url(FnClient.baseUrl + "/multiple-download").header("Cookie", cookie()).header("accesstoken", FnClient.token)

@@ -78,7 +78,9 @@ object CrashLog {
     /** Removes anything that looks like a URL, token or e-mail from exception messages. */
     fun scrub(s: String): String = s
         .replace(Regex("https?://[^\\s\"')]+"), "<url>")
-        .replace(Regex("(?i)(token|key|password|pass|authorization|cookie|secret)[=:\\s]+[^\\s,;\"]+"), "$1=<hidden>")
+        // S21: signing material (si / otp / sign / signature) + URL userinfo, like Diag.mask.
+        .replace(Regex("(?i)(token|key|password|pass|authorization|cookie|secret|si|otp|sign|signature)[=:\\s]+[^\\s,;\"]+"), "$1=<hidden>")
+        .replace(Regex("([a-zA-Z][a-zA-Z0-9+.-]*://)([^/@\\s:]+)@"), "$1***@")
         .replace(Regex("[\\w.+-]+@[\\w-]+\\.[\\w.]+"), "<email>")
 
     fun pending(c: Context): String? = last(c).takeIf { it.exists() && it.length() > 0 }?.readText()

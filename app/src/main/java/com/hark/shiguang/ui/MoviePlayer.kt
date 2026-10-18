@@ -153,6 +153,8 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     var subOffset by remember { mutableLongStateOf(PlayPrefs.subOffset(showId)) }
     var hint by remember { mutableStateOf<String?>(null) }
     var menu by remember { mutableStateOf(false) }
+    /** B35: the P7 EL-drop override is applied once per media item (it re-fires onTracksChanged). */
+    var dvFixedFor by remember { mutableStateOf("") }
     var casting by remember { mutableStateOf(false) }
     var playerView by remember { mutableStateOf<PlayerView?>(null) }
     // 1.0.1 #11 弹幕 (弹弹play) — media3 only, not in the libVLC fallback
@@ -248,20 +250,48 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                 MediaBadges.remember(id, badges)
                 val dv = tracks.groups.firstNotNullOfOrNull { g -> if (g.type == MC.TRACK_TYPE_VIDEO) MediaBadges.dvProfile(g.getTrackFormat(0)) else null }
                 if (hint == null) hint = DeviceCaps.hint(ctx, badges, dv)
-                // remember the language choice for this show (applies to the next episodes / next time)
-                tracks.groups.firstOrNull { it.type == MC.TRACK_TYPE_AUDIO && it.isSelected }?.let { g ->
-                    (0 until g.length).firstOrNull { g.isTrackSelected(it) }?.let { g.getTrackFormat(it).language }?.let { PlayPrefs.setAudioLang(showId, it) }
+                // B35: P7 dual-layer on a non-DV phone — drop the EL track once per media item.
+                val mid = player.currentMediaItem?.mediaId.orEmpty()
+                if (dv == 7 && !DeviceCaps.dolbyVision && dvFixedFor != mid) {
+                    val overrides = DeviceCaps.elDisabledOverrides(tracks)
+                    if (overrides.isNotEmpty()) {
+                        dvFixedFor = mid
+                        val b = player.trackSelectionParameters.buildUpon()
+                        overrides.forEach { b.addOverride(it) }
+                        player.trackSelectionParameters = b.build()
+                    }
+                }
+                // B33: only a MANUAL track pick is persisted. Automatic fallback (unsupported codec → next
+                // track) applies to this playback only. The settings dialog writes explicit audio/text
+                // overrides, so an audio/text override present = the user picked it (a video-only override
+                // is the B35 EL-drop, not a user pick).
+                // overrides is a Map<TrackGroup, TrackSelectionOverride> in media3 — check the values, not the entries.
+                val manual = player.trackSelectionParameters.overrides.values.any { it.mediaTrackGroup.type == MC.TRACK_TYPE_AUDIO || it.mediaTrackGroup.type == MC.TRACK_TYPE_TEXT }
+                if (manual) {
+                    // remember the language choice for this show (applies to the next episodes / next time)
+                    tracks.groups.firstOrNull { it.type == MC.TRACK_TYPE_AUDIO && it.isSelected }?.let { g ->
+                        (0 until g.length).firstOrNull { g.isTrackSelected(it) }?.let { g.getTrackFormat(it).language }?.let { PlayPrefs.setAudioLang(showId, it) }
+                    }
                 }
                 val texts = tracks.groups.filter { it.type == MC.TRACK_TYPE_TEXT }
                 if (texts.isNotEmpty()) {
                     val sel = texts.firstOrNull { it.isSelected }
                     val lang = sel?.let { g -> (0 until g.length).firstOrNull { g.isTrackSelected(it) }?.let { g.getTrackFormat(it).language } }
-                    if (sel == null && player.trackSelectionParameters.disabledTrackTypes.contains(MC.TRACK_TYPE_TEXT)) PlayPrefs.setSubLang(showId, "off")
-                    else if (lang != null) PlayPrefs.setSubLang(showId, lang)
+                    // turning subtitles off via the dialog disables the text track type — that is manual
+                    // too, but only when it differs from the stored preference (the initial setup also
+                    // disables it when the stored pref is "off").
+                    if (sel == null && player.trackSelectionParameters.disabledTrackTypes.contains(MC.TRACK_TYPE_TEXT) && PlayPrefs.subLang(showId) != "off") PlayPrefs.setSubLang(showId, "off")
+                    else if (manual && lang != null) PlayPrefs.setSubLang(showId, lang)
                 }
             }
             override fun onPlayerError(e: PlaybackException) {
                 if (vlcIdx >= 0) return
+                // B32: an IO failure means the cached redirect target is probably dead — drop it so the
+                // retry re-resolves instead of replaying the same stale signed url.
+                if (e.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS || e.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+                    e.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT || e.errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND) {
+                    PlayHttp.invalidate(urls[player.currentMediaItem?.mediaId].orEmpty())
+                }
                 canVlc = e.errorCode in setOf(PlaybackException.ERROR_CODE_DECODER_INIT_FAILED, PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
                     PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED, PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
                     PlaybackException.ERROR_CODE_DECODING_FAILED, PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED)
@@ -385,7 +415,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                 horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(e, color = Color.White, fontSize = 15.sp)
                 Row(Modifier.padding(top = 10.dp)) {
-                    TextButton(onClick = { error = null; player.prepare(); player.play() }) { Text("重试", color = C.Accent) }
+                    TextButton(onClick = { error = null; PlayHttp.invalidate(urls[player.currentMediaItem?.mediaId].orEmpty()); player.prepare(); player.play() }) { Text("重试", color = C.Accent) }
                     if (canVlc) TextButton(onClick = { toVlc(player.currentMediaItemIndex, player.currentPosition) }) { Text("用兼容模式播放", color = C.Accent) }
                     if (player.hasNextMediaItem()) TextButton(onClick = { error = null; player.seekToNextMediaItem(); player.prepare(); player.play() }) { Text("下一集", color = Color.White) }
                 }

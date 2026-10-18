@@ -44,15 +44,22 @@ object DavThumb {
 
     private fun md5(s: String) = MessageDigest.getInstance("MD5").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
 
+    /** B20: drop the cached thumbnail for [url] (called when the photo is added / removed / replaced). */
+    fun invalidate(url: String) { runCatching { File(dir, md5(url) + ".jpg").delete() } }
+    fun invalidateUrls(urls: Iterable<String>) { urls.forEach { invalidate(it) } }
+
     suspend fun file(url: String): File = withContext(Dispatchers.IO) {
         val f = File(dir, md5(url) + ".jpg")
+        // B20: thumbnails never invalidated before — a file older than 7 days is re-fetched, so a replaced
+        // photo on the server cannot keep showing its old thumbnail forever.
+        if (f.length() > 0 && System.currentTimeMillis() - f.lastModified() > 7 * 86_400_000L) f.delete()
         if (f.length() > 0) { if (System.currentTimeMillis() - f.lastModified() > 86_400_000L) f.setLastModified(System.currentTimeMillis()); return@withContext f }
         gate.withPermit {
             if (f.length() > 0) return@withPermit f
             val bmp = (if (isVideo(url)) videoGate.withPermit { fromVideo(url) } else fromHead(url) ?: fromFull(url)) ?: error("缩略图加载失败")
             val tmp = File(dir, f.name + ".tmp")
             tmp.outputStream().use { (if (maxOf(bmp.width, bmp.height) > 480) Bitmap.createScaledBitmap(bmp, bmp.width * 480 / maxOf(bmp.width, bmp.height), bmp.height * 480 / maxOf(bmp.width, bmp.height), true) else bmp).compress(Bitmap.CompressFormat.JPEG, 78, it) }
-            tmp.renameTo(f)
+            if (!tmp.renameTo(f)) { tmp.copyTo(f, overwrite = true); tmp.delete() }
             f
         }
     }
@@ -68,10 +75,20 @@ object DavThumb {
 
     private fun isVideo(url: String) = com.hark.shiguang.cloud.CloudMedia.isVideo(Uri.decode(url.substringBefore('?')))
 
+    /** S4: resolved redirect targets are cached 5 min — Analyzer, Viewer and the thumbnail loader all
+     * resolve the same url, and each resolution is a network round trip. */
+    private val finalUrlCache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Long>>()
+    fun invalidateFinalUrl(url: String) { finalUrlCache.remove(url) }
+
     /** Follow redirects ourselves (123pan → signed CDN url) so the retriever streams with Range requests. */
-    fun finalUrl(url: String): String = runCatching {
-        http.newCall(req(url, false).newBuilder().header("Range", "bytes=0-0").build()).execute().use { it.request.url.toString() }
-    }.getOrDefault(url)
+    fun finalUrl(url: String): String {
+        finalUrlCache[url]?.takeIf { System.currentTimeMillis() - it.second < 300_000 }?.let { return it.first }
+        val out = runCatching {
+            http.newCall(req(url, false).newBuilder().header("Range", "bytes=0-0").build()).execute().use { it.request.url.toString() }
+        }.getOrDefault(url)
+        finalUrlCache[url] = out to System.currentTimeMillis()
+        return out
+    }
 
     /** First frame of a remote video without downloading the file (MediaMetadataRetriever reads only what it needs). */
     private fun fromVideo(url: String): Bitmap? {
