@@ -139,9 +139,9 @@ object DeviceCaps {
         for (g in t.groups) {
             if (g.type != MC.TRACK_TYPE_VIDEO || g.length < 2) continue
             val formats = (0 until g.length).map { g.getTrackFormat(it) }
-            if (formats.none { dvProfile(it) == 7 }) continue
+            if (formats.none { MediaBadges.dvProfile(it) == 7 }) continue
             val sel = (0 until g.length).firstOrNull { g.isTrackSelected(it) } ?: 0
-            val keep = (0 until g.length).filter { it == sel || dvProfile(formats[it]) != 7 }
+            val keep = (0 until g.length).filter { it == sel || MediaBadges.dvProfile(formats[it]) != 7 }
             if (keep.size < g.length) out += TrackSelectionOverride(g.mediaTrackGroup, keep)
         }
         return out

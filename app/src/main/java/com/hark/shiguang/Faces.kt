@@ -307,10 +307,10 @@ object Faces {
                 val w = bb.width().toFloat()
                 val frontal = (1f - (abs(f.headEulerAngleY) / 50f + abs(f.headEulerAngleX) / 50f) / 2f).coerceIn(0f, 1f)
                 val size = ((w - 32f) / 96f).coerceIn(0f, 1f)
-                val marks = listOf(f.getLandmark(com.google.mlkit.vision.face.FaceLandmark.LEFT_EYE), f.getLandmark(com.google.mlkit.vision.face.FaceLandmark.RIGHT_EYE),
+                val landmarkScore = listOf(f.getLandmark(com.google.mlkit.vision.face.FaceLandmark.LEFT_EYE), f.getLandmark(com.google.mlkit.vision.face.FaceLandmark.RIGHT_EYE),
                     f.getLandmark(com.google.mlkit.vision.face.FaceLandmark.NOSE_BASE)).count { it != null } / 3f
                 val eyes = listOfNotNull(f.leftEyeOpenProbability, f.rightEyeOpenProbability).let { if (it.isEmpty()) 0.7f else it.average().toFloat() }
-                val conf = (0.45f * frontal + 0.3f * size + 0.15f * marks + 0.1f * eyes).coerceIn(0f, 1f)
+                val conf = (0.45f * frontal + 0.3f * size + 0.15f * landmarkScore + 0.1f * eyes).coerceIn(0f, 1f)
                 val box = RectF(bb)
                 val l = f.getLandmark(com.google.mlkit.vision.face.FaceLandmark.LEFT_EYE)?.position
                 val r = f.getLandmark(com.google.mlkit.vision.face.FaceLandmark.RIGHT_EYE)?.position

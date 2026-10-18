@@ -28,8 +28,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
-import androidx.compose.material3.pulltorefresh.pullRefresh
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -409,7 +409,7 @@ private fun DavPhotosTab() {
     val day = visibleDay(entries, grid, 1)
     val (mt, yt) = monthTitle(day)
     val sub = listOf(yt, "${n(stills.size)} 张照片", ScanStatus.listing(lib)?.let { "正在扫描 ${it.done}/${it.total} 个文件夹" } ?: "").filter { it.isNotEmpty() }.joinToString(" · ")
-    Box(Modifier.fillMaxSize().pullRefresh(ptr, enabled = !lib.scanning)) {
+    Box(Modifier.fillMaxSize().then(if (!lib.scanning) Modifier.nestedScroll(ptr.nestedScrollConnection) else Modifier)) {
         when {
             lib.photos.isEmpty() && lib.scanning -> Column { TopSwitch(); SkeletonGrid(4, 20.dp) }
             lib.photos.isEmpty() && lib.error != null -> Column { TopSwitch(); Box(Modifier.weight(1f)) { StateMessage(LI.drive(), "连不上 WebDAV", lib.error!!, "重试") { scope.launch { lib.scan() } } } }
@@ -955,11 +955,11 @@ fun FaceSettingsDialog(onDismiss: () -> Unit) {
         TextButton(onClick = {
             FaceConfig.conf = conf; FaceConfig.minPhotos = minP.toInt(); FaceConfig.diff = diff; FaceConfig.save()
             Dav.lib()?.let { Faces.lib(it.accountId).cluster(it) }
-            onClose()
+            onDismiss()
         }) { Text("保存并重新归类", color = C.Accent) }
     }, dismissButton = { TextButton(onClick = onDismiss) { Text("取消", color = C.Sub) } })
     if (confirmClear) ConfirmDialog("清除人脸识别结果？", "人物和名字都会清空，之后重新识别。", "清除", onDismiss = { confirmClear = false }) {
-        confirmClear = false; Faces.stop(); Dav.lib()?.let { Faces.lib(it.accountId).clear() }; onClose()
+        confirmClear = false; Faces.stop(); Dav.lib()?.let { Faces.lib(it.accountId).clear() }; onDismiss()
     }
 }
 

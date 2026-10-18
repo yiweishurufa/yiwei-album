@@ -88,7 +88,8 @@ object MemoryVideo {
         var audioTrackSrc = -1
         var audioFmt: MediaFormat? = null
         runCatching {
-            app.resources.openRawResourceFd(R.raw.memory_ambient).use { afd -> ex.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length) }
+            val rawId = app.resources.getIdentifier("memory_ambient", "raw", app.packageName)
+            if (rawId != 0) app.resources.openRawResourceFd(rawId).use { afd -> ex.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length) }
             for (t in 0 until ex.trackCount) {
                 val f = ex.getTrackFormat(t)
                 if (f.getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true) { audioTrackSrc = t; audioFmt = f; break }
