@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -35,6 +36,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -183,4 +185,32 @@ fun RoundIcon(icon: ImageVector, modifier: Modifier = Modifier, tint: Color = C.
         modifier.size(size).clip(CircleShape).background(bg).border(0.5.dp, C.Line, CircleShape).clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) { Icon(icon, null, tint = tint, modifier = Modifier.size(size * 0.5f)) }
+}
+
+/**
+ * 第 4 批：影视 / 音乐共用的扫描进度卡（ScanStatusCard 式统一进度卡）。
+ * 以前 MoviesTab.ScanBar 和 MusicTab.MusicScanBar 是两份几乎一样的实现（标题行 + 错误行 + 进度条），
+ * 现在都调这个；样式保持原样（Surface 底、14dp 圆角、3dp 进度条），只抽公共部分，不改行为。
+ * [progress] 为 null = 不确定进度（转圈条）；[error] 只在非扫描时显示。
+ */
+@Composable
+fun ScanProgressCard(
+    title: String,
+    countText: String?,
+    scanning: Boolean,
+    error: String?,
+    progress: Float?,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(C.Surface).padding(horizontal = 14.dp, vertical = 12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(title, color = C.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (countText != null) Text(countText, color = C.Sub, fontSize = 12.sp)
+        }
+        if (error != null && !scanning) Text(error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
+        if (scanning) {
+            if (progress == null) LinearProgressIndicator(color = C.Accent, trackColor = C.Surface2, modifier = Modifier.padding(top = 10.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)))
+            else LinearProgressIndicator(progress = { progress }, color = C.Accent, trackColor = C.Surface2, modifier = Modifier.padding(top = 10.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)))
+        }
+    }
 }

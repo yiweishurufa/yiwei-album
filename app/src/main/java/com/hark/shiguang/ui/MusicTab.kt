@@ -184,7 +184,16 @@ private fun PillButton(icon: ImageVector, text: String, modifier: Modifier = Mod
 }
 
 @Composable
-private fun MusicScanBar(lib: MusicLib) = LibraryScanBar(lib.phase, lib.done, lib.total, lib.error, lib.scanning)
+private fun MusicScanBar(lib: MusicLib) {
+    // 第 4 批：复用共用 ScanProgressCard（与影视共用一份实现，样式与旧版一致）。
+    ScanProgressCard(
+        title = if (lib.scanning) lib.phase.ifEmpty { "正在扫描" } else "扫描遇到问题",
+        countText = if (lib.scanning && lib.total > 0) "${lib.done}/${lib.total}" else null,
+        scanning = lib.scanning,
+        error = lib.error,
+        progress = if (lib.scanning && lib.total > 0) lib.done / lib.total.toFloat() else null,
+    )
+}
 
 /** Format badge: lossless / DSD / formats played by the compatibility engine. */
 private fun badge(t: Track): String? = when (t.ext) {

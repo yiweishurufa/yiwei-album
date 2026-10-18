@@ -52,8 +52,8 @@ data class YearCount(val year: Int, val count: Int, val months: List<MonthCount>
 /** A URL plus the headers the NAS needs to serve it (accesstoken + authx). */
 data class DownloadSpec(val url: String, val headers: Map<String, String>)
 
-/** Live/motion photo video source. [embedded]=true means the MP4 sits inside [url]'s bytes after [marker]. */
-data class MotionSource(val url: String, val headers: Map<String, String>, val embedded: Boolean, val marker: String? = null)
+/** Live/motion photo video source. [embedded]=true means the MP4 sits inside [url]'s bytes after [marker]. [verified]=false means the type → stream mapping was never confirmed against a real device (第 4 批：目前只有飞牛实况 type-1 走这条分支，见 [NasX.motionVideo])，调用方应在界面上标注「未验证」，不要宣称已验证。 */
+data class MotionSource(val url: String, val headers: Map<String, String>, val embedded: Boolean, val marker: String? = null, val verified: Boolean = true)
 
 /** A photo-library root folder (photo/folder/list), also the upload target list. */
 data class LibraryFolder(val path: String, val isDefault: Boolean, val raw: JSONObject)
@@ -294,6 +294,10 @@ object NasX {
      * Official player: types 2 and 3 are Motion Photos — the MP4 is embedded in the original bytes, starting 4 bytes
      * before "ftypmp42" (type 2) or "ftypisom" (type 3). Other live types play the separate video stream (videoUrl);
      * which types take that branch is decided by a helper not traced here, so the type-1 -> videoUrl mapping is // UNVERIFIED.
+     *
+     * 第 4 批：type-1 分支加验证日志 + [MotionSource.verified] = false（调用方在界面标注「未验证」）。
+     * 仍未验证：没有真机 + 飞牛实况 type-1 样张，无法确认 type-1 到底是独立视频流还是内嵌 MP4；
+     * 这里只记日志、不改行为——日志里写清用的是 thumbnail.videoUrl 还是兜底的 /p/api/v1/stream/v/<id>，方便真机验证时对账。
      */
     suspend fun motionVideo(p: Photo, liveType: Int? = null): MotionSource? {
         val t = liveType ?: p.liveType.takeIf { it > 0 } ?: liveType(p.id)
@@ -302,8 +306,10 @@ object NasX {
             2 -> MotionSource(p.original, streamHeaders(p.original), true, "ftypmp42")
             3 -> MotionSource(p.original, streamHeaders(p.original), true, "ftypisom")
             else -> {
+                val fromThumb = p.video != null
                 val v = p.video ?: FnClient.abs("/p/api/v1/stream/v/${p.id}")!! // UNVERIFIED for live type 1 without thumbnail.videoUrl
-                MotionSource(v, streamHeaders(v), false)
+                com.hark.shiguang.Diag.log("LIVE", "fn live type=$t id=${p.id} verified=false src=${if (fromThumb) "thumbnail.videoUrl" else "fallback /p/api/v1/stream/v/<id>"} (UNVERIFIED mapping)")
+                MotionSource(v, streamHeaders(v), false, verified = false)
             }
         }
     }

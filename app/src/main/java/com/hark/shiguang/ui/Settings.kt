@@ -76,6 +76,7 @@ fun SettingsScreen() {
     var cacheSize by remember { mutableLongStateOf(-1L) }
     var lockOn by remember { mutableStateOf(Store.lockOn) }
     var confirmLogout by remember { mutableStateOf(false) }
+    var confirmRemoveDav by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { cacheSize = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { ctx.cacheDir.walkTopDown().filter { it.isFile }.sumOf { it.length() } } }
     val pickQr = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) scope.launch {
@@ -96,7 +97,9 @@ fun SettingsScreen() {
     var syncOpen by remember { mutableStateOf(false) }
     var davFolderSel by remember { mutableStateOf(Dav.lib()?.getSelectedDirs() ?: emptyList()) }
     var showDavFolders by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize().background(C.Bg).verticalScroll(rememberScrollState()).navigationBarsPadding().padding(bottom = 110.dp)) {
+    // 第 4 批：平板/折叠屏——内容区最大宽度 720dp 居中，宽屏不再通栏拉伸。
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+    Column(Modifier.widthIn(max = 720.dp).fillMaxHeight().background(C.Bg).verticalScroll(rememberScrollState()).navigationBarsPadding().padding(bottom = 110.dp)) {
         if (Nav.stack.size > 1) Row(Modifier.statusBarsPadding().padding(start = 6.dp, top = 8.dp)) { IconButton(onClick = { Nav.pop() }) { Icon(LI.back(), null, tint = C.Text) } }
         else TopSwitch()
         Text("设置", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = C.Text, letterSpacing = (-0.4).sp, modifier = Modifier.padding(start = 20.dp, top = 8.dp, bottom = 4.dp))
@@ -250,6 +253,14 @@ fun SettingsScreen() {
             Spacer(Modifier.height(18.dp))
             Card { NavRow(LI.close(), "退出「${nas.title}」", nas.user, danger = true) { confirmLogout = true } }
         }
+        // 第 4 批：设置页 Dav 账号「移除」入口。账号管理页（DavAccountsScreen）里已有移除，
+        // 但设置页只有飞牛的「退出」，Dav 账号没有直达入口；这里补一个，逻辑与那边一致（只删本机，不动 WebDAV 里的文件）。
+        // 飞牛退出仍走下面的 confirmLogout（第 2 批若统一 logoutNas，本批不碰）。
+        if (dav && davAcc != null) {
+            Spacer(Modifier.height(18.dp))
+            Card { NavRow(LI.trash(), "移除「${davAcc.title}」", "只从本机移除，不影响 WebDAV 里的文件", danger = true) { confirmRemoveDav = true } }
+        }
+    }
     }
     if (syncOpen) ActionListDialog("同步设置", onDismiss = { syncOpen = false }, actions = listOf(
         "显示设置二维码" to { syncOpen = false; showQr = true },
@@ -259,6 +270,17 @@ fun SettingsScreen() {
     if (confirmLogout) ConfirmDialog("退出「${nas?.title}」？", "会从本机移除这个账号的登录信息。", "退出", onDismiss = { confirmLogout = false }) {
         confirmLogout = false
         Ops.logoutNas()
+    }
+    if (confirmRemoveDav) ConfirmDialog("移除「${davAcc?.title}」？", "只从本机移除，不影响 WebDAV 里的文件。", "移除", onDismiss = { confirmRemoveDav = false }) {
+        confirmRemoveDav = false
+        val id = davAcc?.id ?: return@ConfirmDialog
+        CloudAccounts.remove(id); Dav.forget(id)
+        HomeState.clear()
+        when {
+            Dav.accounts.isNotEmpty() -> { Dav.select(Dav.accounts.first().id); HomeState.useSource("dav"); Nav.reset(Route.Home) }
+            NasAccounts.list.isNotEmpty() -> { HomeState.useSource("fn"); Nav.reset(Route.Home) }
+            else -> Nav.reset(Route.Login)
+        }
     }
     if (showQr) {
         val code = remember { SettingsCode.export() }

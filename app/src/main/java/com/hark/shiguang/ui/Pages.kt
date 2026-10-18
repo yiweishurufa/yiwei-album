@@ -97,11 +97,11 @@ internal fun fmtBytes(b: Long): String = when {
     else -> "%.2f GB".format(b / 1073741824f)
 }
 
-/** Simple photo grid with a local selection set (used by recycle bin). */
+/** Simple photo grid with a local selection set (used by recycle bin). 第 4 批：本文件各 Fixed(4/3) 网格改 Adaptive（手机列数不变，平板自动变多列），通栏行用 maxLineSpan。 */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun PickGrid(photos: List<Photo>, selected: Set<Int>, onTap: (Photo, Int) -> Unit, onLong: (Photo) -> Unit, onEnd: () -> Unit = {}) {
-    LazyVerticalGrid(GridCells.Fixed(4), Modifier.fillMaxSize(), contentPadding = PaddingValues(2.dp, 2.dp, 2.dp, 120.dp),
+    LazyVerticalGrid(GridCells.Adaptive(92.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(2.dp, 2.dp, 2.dp, 120.dp),
         horizontalArrangement = Arrangement.spacedBy(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         items(photos.size, key = { photos[it].key }) { i ->
             val p = photos[i]
@@ -230,7 +230,7 @@ fun SmartScreen() {
                     err != null && cards == null -> StateMessage(Icons.Rounded.AutoAwesome, "加载失败", err!!)
                     cards == null -> Loading()
                     cards.isEmpty() -> StateMessage(Icons.Rounded.AutoAwesome, "还没有分类", "需要在飞牛相册里开启 AI 识别，识别完成后会出现在这里。")
-                    else -> LazyVerticalGrid(GridCells.Fixed(3), contentPadding = PaddingValues(12.dp, 6.dp, 12.dp, 40.dp),
+                    else -> LazyVerticalGrid(GridCells.Adaptive(110.dp), contentPadding = PaddingValues(12.dp, 6.dp, 12.dp, 40.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         items(cards) { c ->
                             Column(Modifier.clickable(onClick = c.open)) {
@@ -348,9 +348,9 @@ fun FoldersScreen(r: Route.Folders) {
             f == null -> Loading()
             f.isEmpty() && photos.isEmpty() && err != null -> StateMessage(Icons.Rounded.FolderOff, "加载失败", err!!)
             f.isEmpty() && photos.isEmpty() && !loading -> StateMessage(Icons.Rounded.Folder, "空文件夹", "")
-            else -> LazyVerticalGrid(GridCells.Fixed(4), Modifier.fillMaxSize(), contentPadding = PaddingValues(2.dp, 0.dp, 2.dp, 60.dp),
+            else -> LazyVerticalGrid(GridCells.Adaptive(92.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(2.dp, 0.dp, 2.dp, 60.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                items(f, span = { GridItemSpan(4) }, key = { "d" + it.first }) { (path, name) ->
+                items(f, span = { GridItemSpan(maxLineSpan) }, key = { "d" + it.first }) { (path, name) ->
                     ListRow(Icons.Rounded.Folder, null, name, "", trailing = { Icon(Icons.Rounded.ChevronRight, null, tint = C.Faint) }) {
                         Nav.push(Route.Folders(path, name))
                     }
@@ -634,9 +634,9 @@ fun CloudBrowseScreen(r: Route.CloudBrowse) {
             d == null -> Loading()
             err != null && d.isEmpty() && photos.isEmpty() -> StateMessage(Icons.Rounded.CloudOff, "打不开这个目录", err!!, "重试") { scope.launch { load() } }
             d.isEmpty() && photos.isEmpty() && others.isEmpty() -> StateMessage(Icons.Rounded.FolderOpen, "空文件夹", "")
-            else -> LazyVerticalGrid(GridCells.Fixed(4), Modifier.fillMaxSize(), contentPadding = PaddingValues(2.dp, 0.dp, 2.dp, 120.dp),
+            else -> LazyVerticalGrid(GridCells.Adaptive(92.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(2.dp, 0.dp, 2.dp, 120.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                items(d, span = { GridItemSpan(4) }, key = { "d" + it.path }) { e ->
+                items(d, span = { GridItemSpan(maxLineSpan) }, key = { "d" + it.path }) { e ->
                     ListRow(Icons.Rounded.Folder, null, e.name, "", trailing = { Icon(Icons.Rounded.ChevronRight, null, tint = C.Faint) }) {
                         Nav.push(Route.CloudBrowse(r.accountId, e.path, e.name))
                     }
@@ -644,7 +644,7 @@ fun CloudBrowseScreen(r: Route.CloudBrowse) {
                 items(photos.size, key = { "p" + photos[it].key }) { i ->
                     SelCell(photos[i]) { Nav.push(Route.Viewer(photos, i)) }
                 }
-                items(others, span = { GridItemSpan(4) }, key = { "o" + it.path }) { e ->
+                items(others, span = { GridItemSpan(maxLineSpan) }, key = { "o" + it.path }) { e ->
                     ListRow(Icons.Rounded.InsertDriveFile, null, e.name, fmtBytes(e.size)) {}
                 }
             }

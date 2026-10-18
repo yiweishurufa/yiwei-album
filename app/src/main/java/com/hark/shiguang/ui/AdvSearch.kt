@@ -85,9 +85,12 @@ object AdvFilter {
 
     /**
      * Pool searched when the text is empty. WebDAV: the whole index. 飞牛: by date range straight from the
-     * gallery list API (up to 3000), otherwise the photos the timeline already loaded.
+     * gallery list API (paged, 300 per page), otherwise the photos the timeline already loaded.
+     *
+     * 第 4 批：飞牛日期分支不再写死 3000 条上限。改为按需分页：300 条一页向服务端拉，直到服务端说没有更多，
+     * 或达到调用方传的 [maxItems]（默认不限）。调用方不传上限时就是全量日期范围；传了上限时提示「只显示前 N 项」。
      */
-    suspend fun pool(dav: Boolean): Pair<List<Photo>, String> {
+    suspend fun pool(dav: Boolean, maxItems: Int = Int.MAX_VALUE): Pair<List<Photo>, String> {
         if (dav) {
             val lib = Dav.lib() ?: return emptyList<Photo>() to ""
             lib.ensure()
@@ -98,13 +101,14 @@ object AdvFilter {
             val s = (from ?: LocalDate.of(1970, 1, 1)); val e = (to ?: LocalDate.now())
             val start = "%04d:%02d:%02d 00:00:00".format(s.year, s.monthValue, s.dayOfMonth)
             val end = "%04d:%02d:%02d 23:59:59".format(e.year, e.monthValue, e.dayOfMonth)
-            val out = ArrayList<Photo>(); var off = 0
-            while (out.size < 3000) {
-                val (l, more) = Repo.photos(start, end, off, 300)
-                out.addAll(l); off += l.size
-                if (!more || l.isEmpty()) break
+            val out = ArrayList<Photo>(); var off = 0; var more = true
+            while (out.size < maxItems && more) {
+                val (l, m) = Repo.photos(start, end, off, 300)
+                out.addAll(l); off += l.size; more = m
+                if (l.isEmpty()) { more = false; break }
             }
-            return out to (if (out.size >= 3000) "只显示前 3000 项" else "")
+            // more=true 说明是撞到调用方上限停下的（不是服务端没更多了），才提示「只显示前 N 项」。
+            return out to (if (more && out.size >= maxItems) "只显示前 $maxItems 项" else "")
         }
         return HomeState.timeline.photos.toList() to "只在已加载的时间线里筛选，日期范围更准确"
     }
