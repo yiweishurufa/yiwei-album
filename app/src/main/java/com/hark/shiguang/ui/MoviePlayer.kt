@@ -207,9 +207,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         val load = DefaultLoadControl.Builder().setBufferDurationsMs(20_000, 60_000, 1_200, 2_500).build()
         // 1.0.9: FFmpeg audio decoders first (DTS / TrueHD / AC3 / EAC3 play on every phone), fall back to other decoders
         // when one fails to start (Dolby Vision → HEVC on non-DV devices).
-        val renderers = androidx.media3.exoplayer.DefaultRenderersFactory(ctx)
-            .setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
-            .setEnableDecoderFallback(true)
+        val renderers = ffmpegRenderersFactory(ctx)
         ExoPlayer.Builder(ctx, renderers).setLoadControl(load).setMediaSourceFactory(DefaultMediaSourceFactory(resolving)).build().apply {
             val items = queue.map { q -> itemFor(q, urls[q.path].orEmpty(), subOffset) }
             setMediaItems(items, start, lib.progressOf(queue[start].path)?.takeIf { !it.watched && it.pos > 5_000 }?.pos ?: 0L)

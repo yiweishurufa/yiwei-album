@@ -78,6 +78,28 @@ fun openDavPerson(accountId: String, p: FacePerson) = Nav.push(Route.X(ExtScreen
 private fun FaceLib.find(key: String, group: String): FacePerson? =
     (persons + hiddenPersons).let { all -> all.firstOrNull { group.isNotEmpty() && it.group == group } ?: all.firstOrNull { it.key == key } }
 
+/**
+ * The one place for WebDAV person hide / unhide / merge (AI tab long-press, person detail page,
+ * hidden-persons page). The order is fixed here — rename an unnamed target, resolve the survivor by
+ * group (not just key), merge via [FaceEdits], then re-cluster — so no entry point can drift.
+ * 飞牛 persons stay separate ([FnPersonHide] is local-only hiding; the NAS has no merge API).
+ */
+object FacePersonActions {
+    fun hide(fl: FaceLib, lib: DavLib, ctx: android.content.Context, p: FacePerson) {
+        fl.edits.hide(p, true); fl.cluster(lib); toast(ctx, "已隐藏，可在人物栏「已隐藏」里恢复")
+    }
+    fun unhide(fl: FaceLib, lib: DavLib, ctx: android.content.Context, p: FacePerson) {
+        fl.edits.hide(p, false); fl.cluster(lib); toast(ctx, "已取消隐藏")
+    }
+    /** Merges [from] into [into] and returns the surviving person. Callers keep their own toast / regroup. */
+    fun merge(fl: FaceLib, lib: DavLib, from: FacePerson, into: FacePerson): FacePerson {
+        if (into.name.isEmpty() && from.name.isNotEmpty()) fl.rename(into, from.name)
+        val t = fl.find(into.key, into.group) ?: into
+        fl.edits.merge(t, from); fl.cluster(lib)
+        return t
+    }
+}
+
 @Composable
 private fun PersonScreen(s: ExtScreen.Person) {
     val ctx = LocalContext.current
@@ -131,8 +153,8 @@ private fun PersonScreen(s: ExtScreen.Person) {
                     DropdownMenuItem({ Text("命名", color = C.Text) }, { menu = false; renaming = true })
                     DropdownMenuItem({ Text("合并到其他人物…", color = C.Text) }, { menu = false; merging = true })
                     DropdownMenuItem({ Text(if (hidden) "取消隐藏" else "隐藏（路人）", color = C.Text) }, {
-                        menu = false; group = fl.edits.ensureGroup(p); fl.edits.hide(p, !hidden)
-                        regroup(if (hidden) "已取消隐藏" else "已隐藏，可在人物栏「已隐藏」里恢复")
+                        menu = false; group = fl.edits.ensureGroup(p)
+                        if (hidden) FacePersonActions.unhide(fl, lib, ctx, p) else FacePersonActions.hide(fl, lib, ctx, p)
                     })
                 }
             }
@@ -142,10 +164,9 @@ private fun PersonScreen(s: ExtScreen.Person) {
     if (renaming && p != null) InputDialog("给人物命名", p.name, "名字", "保存", onDismiss = { renaming = false }) { v -> renaming = false; fl.rename(p, v) }
     if (merging && p != null) PersonPicker(fl, exclude = p.key, title = "把「${p.name.ifEmpty { "该人物" }}」合并到…", onDismiss = { merging = false }) { target ->
         merging = false
-        if (target.name.isEmpty() && p.name.isNotEmpty()) fl.rename(target, p.name)
-        val t = fl.find(target.key, target.group) ?: target
-        group = fl.edits.merge(t, p); key = t.key
-        regroup("已合并到「${t.name.ifEmpty { p.name.ifEmpty { "未命名" } }}」")
+        val t = FacePersonActions.merge(fl, lib, from = p, into = target)
+        group = fl.edits.ensureGroup(t); key = t.key
+        toast(ctx, "已合并到「${t.name.ifEmpty { p.name.ifEmpty { "未命名" } }}」")
     }
 }
 
@@ -153,19 +174,14 @@ private fun PersonScreen(s: ExtScreen.Person) {
 @Composable
 fun PersonPicker(fl: FaceLib, exclude: String, title: String, onDismiss: () -> Unit, onPick: (FacePerson) -> Unit) {
     val all = (fl.persons + fl.hiddenPersons).filter { it.key != exclude }
-    AlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface, title = { Text(title, color = C.Text, fontSize = 17.sp) }, text = {
-        if (all.isEmpty()) Text("没有其他人物。", color = C.Sub)
-        else LazyColumn(Modifier.heightIn(max = 440.dp)) {
-            items(all, key = { it.key }) { q ->
-                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onPick(q) }.padding(vertical = 8.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(44.dp).clip(CircleShape).background(C.Surface2)) { NetImage(fl.cropFile(q.cover).absolutePath, Modifier.fillMaxSize()) }
-                    Spacer(Modifier.width(12.dp))
-                    Text(q.name.ifEmpty { "未命名" }, color = if (q.name.isEmpty()) C.Sub else C.Text, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                    Text("${q.photos.size} 张", color = C.Faint, fontSize = 12.sp)
-                }
-            }
+    PickDialog(title, all, key = { it.key }, emptyText = "没有其他人物。", onDismiss = onDismiss, onPick = onPick) { q ->
+        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(44.dp).clip(CircleShape).background(C.Surface2)) { NetImage(fl.cropFile(q.cover).absolutePath, Modifier.fillMaxSize()) }
+            Spacer(Modifier.width(12.dp))
+            Text(q.name.ifEmpty { "未命名" }, color = if (q.name.isEmpty()) C.Sub else C.Text, fontSize = 15.sp, modifier = Modifier.weight(1f))
+            Text("${q.photos.size} 张", color = C.Faint, fontSize = 12.sp)
         }
-    }, confirmButton = {}, dismissButton = { TextButton(onClick = onDismiss) { Text("取消", color = C.Sub) } })
+    }
 }
 
 @Composable
@@ -179,7 +195,7 @@ private fun HiddenPersonsScreen(accountId: String) {
         else LazyColumn(contentPadding = PaddingValues(bottom = 40.dp)) {
             items(fl.hiddenPersons, key = { it.key }) { p ->
                 PersonListRow(fl.cropFile(p.cover).absolutePath, p.name.ifEmpty { "未命名" }, "${p.photos.size} 张", onOpen = { openDavPerson(accountId, p) }) {
-                    fl.edits.hide(p, false); fl.cluster(lib); toast(ctx, "已取消隐藏")
+                    FacePersonActions.unhide(fl, lib, ctx, p)
                 }
             }
         }

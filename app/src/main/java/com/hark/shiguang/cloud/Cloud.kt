@@ -79,6 +79,12 @@ object CloudSources {
  * Recursive media scan for timeline: walks folders breadth-first, emits media entries
  * (one batch per folder that contains media), stops after [maxItems] media or depth [CloudMedia.MAX_SCAN_DEPTH].
  * A failure on the root folder is thrown; failures on sub folders are skipped.
+ *
+ * Live entry point, not dead code: [com.hark.shiguang.ui.CloudTimelineScreen] (Route.CloudTimeline, reached from
+ * the cloud-browse page) is its only caller. It is intentionally NOT the WebDAV library scan — that is
+ * [WebDavSource.scanIncremental] with its folder-tag cache and the 60000-item [com.hark.shiguang.DavLib] index;
+ * this one is the generic [CloudSource] timeline scan, capped at 5000 items because it holds no index.
+ * Keep the two: merging them would either lose the incremental cache or blow up the timeline page's memory.
  */
 suspend fun CloudSource.scanMedia(root: String = "/", maxItems: Int = 5000, onBatch: (List<CloudEntry>) -> Unit) {
     // Parallel breadth-first scan: some WebDAV servers (123pan) take ~10 s per PROPFIND,

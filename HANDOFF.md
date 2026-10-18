@@ -11,7 +11,7 @@ Android 原生（Kotlin + Jetpack Compose）飞牛 fnOS 相册客户端，名字
 - 参考项目：github.com/jonas-pi/FMphoto（鸿蒙版，PolyForm Noncommercial 许可）。**只借鉴接口和功能思路，不要复制代码**。
 
 ## 2. 用户已拍板的需求（不要再问）
-- 四套主题全保留并可切换：暗房 DARKROOM（深色、琥珀）、冷矿 MINERAL（浅色）、电影 CINEMA（深色）、手账 JOURNAL（浅色纸感）；支持跟随系统深浅色（浅/深各选一套）。
+- 主题（已纠正：早期文档称“四套主题 DARKROOM/MINERAL/CINEMA/JOURNAL”，代码从未实现）：实际为 ThemeMode LIGHT/DARK/SYSTEM（跟随系统）+ 6 强调色（蓝/绿/橙/粉/紫/琥珀），见 ui/Theme.kt。不要按四套主题的前提开发。
 - Logo：时间线 + 琥珀色瞬间点（已做成矢量 adaptive icon：res/drawable/ic_bg.xml、ic_fg.xml、ic_mono.xml）。
 - FMphoto 全部功能：日/月/年视图 + 双指缩放切换、右侧时间快速拖动条、缩略图→大图一镜到底、长按滑动多选、批量收藏/下载/删除/加入相册、下载原图/实况、上传与手机相册自动备份、传输队列、回收站（恢复/彻底删除）、重复/相似照片、智能分类、地图、文件夹浏览、幻灯片、搜索过滤、系统分享导入、内外网自动切换、诊断日志、设置同步（二维码/设置码/WebDAV）。
 - 第三方来源：OpenList、WebDAV、123 云盘、百度网盘，统一在一个 App 里看。
@@ -34,7 +34,7 @@ Android 原生（Kotlin + Jetpack Compose）飞牛 fnOS 相册客户端，名字
 | data/FnExtra.kt | **NasX 高级接口层已写好**：月/年汇总、删除、回收站、下载原图、实况视频、上传、目录、相册增删改、智能分类、重复/相似、地图、文件夹、搜索过滤、批量收藏 |
 | data/Endpoint.kt | 内外网探测与自动切换。第 19 行 `by mutableStateOf` 缺 import（`androidx.compose.runtime.getValue/setValue`） |
 | cloud/*.kt | 网盘层完成并在 JVM 上编译通过；OpenList 已对 demo.oplist.org 实测；WebDAV/123/百度未用真实账号测。接口见 ARCH.md 和各文件注释（`// UNVERIFIED` 标注了未确认点） |
-| ui/Theme.kt | 四套主题、ThemeState、C 调色板。完成 |
+| ui/Theme.kt | ThemeMode LIGHT/DARK/SYSTEM + 6 强调色、ThemeState、C 调色板（四套主题未实现，见第 2 节）。完成 |
 | ui/Timeline.kt | 日/月/年、双指切换、长按滑动多选、快速滚动条 |
 | ui/HomeHeaders.kt | 四种首页头部 + 回忆/去年今日；引用了不存在的 openAlbum/openPerson |
 | ui/Screens.kt | 登录、首页、底部导航、相册/人物等；引用了不存在的 SelectionBar；373 行重载歧义 |
@@ -251,7 +251,7 @@ Android 原生（Kotlin + Jetpack Compose）飞牛 fnOS 相册客户端，名字
 ### NEXT-STEPS
 1. 真机：OpenRouter 免费模型（真实 Key）测试连接/测速/获取免费模型/分类；429 时说明行与自动继续时间；X-Title 中文头是否被 OpenRouter 接受（若报错改成 URL 编码或英文 "YiWei Album"）。
 2. 真机：飞牛内网/外网测速数值是否合理（缩略图签名在外网地址上是否通过、FN Connect 中转地址）；自动模式偏好外网的逻辑是否会误选。
-3. TestButton 在深浅色四套主题下的颜色；WebDAV 对话框里测试与「连接」按钮并存是否清楚。
+3. TestButton 在深浅色（LIGHT/DARK/SYSTEM）下的颜色；WebDAV 对话框里测试与「连接」按钮并存是否清楚。
 4. 之后每次发版：versionCode +1，安装包命名 `一维相册-<versionName>-<versionCode>.apk`。
 5. 仍待（沿用 1.0.10 清单）：飞牛 /multiple-download 与 file.ls 抓包、libVLC 真机、大图库分页、123 匿名下载。
 

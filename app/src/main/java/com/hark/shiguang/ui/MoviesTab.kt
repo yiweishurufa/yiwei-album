@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -56,9 +57,7 @@ fun MoviesTab() {
     val grid = rememberMemGrid("movies-$key-${MoviesState.seg}")
     LaunchedEffect(key) {
         // first visit after a restart: pick up new files quietly (only new ones are scraped)
-        if (lib.dirs.isNotEmpty() && !lib.scanning && System.currentTimeMillis() - (Store.getStr("movies.last.$key").toLongOrNull() ?: 0L) > 6 * 3600_000L) {
-            Store.putStr("movies.last.$key", System.currentTimeMillis().toString()); lib.scan(); ScanService.ensure(App.ctx)
-        }
+        autoScanIfStale("movies.last.$key", lib.dirs.isNotEmpty(), lib.scanning) { lib.scan(); ScanService.ensure(App.ctx) }
     }
     val v = lib.version
     val kind = if (MoviesState.seg == 0) "movie" else "tv"
@@ -143,19 +142,66 @@ private fun SortMenu() {
     }
 }
 
+/**
+ * Shared 影视 / 音乐 library pieces (D2 / D8): one scan progress bar, one settings-page scan row
+ * (manual scan + the differently-named “redo” action), one folder row, one 6 h stale auto-scan.
+ * The two libs keep their own scan() parameters — rescrapeUnmatched (影视) vs rescrape (音乐) — so the
+ * row takes explicit [onScan] / [onRedo] lambdas instead of a shared scan call; nothing may drop a parameter.
+ */
 @Composable
-private fun ScanBar(lib: MovieLib) {
+fun LibraryScanBar(phase: String, done: Int, total: Int, error: String?, scanning: Boolean) {
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(C.Surface).padding(horizontal = 14.dp, vertical = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(if (lib.scanning) (lib.phase.ifEmpty { "正在扫描" }) else "扫描遇到问题", color = C.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (lib.scanning && lib.total > 0) Text("${lib.done}/${lib.total}", color = C.Sub, fontSize = 12.sp)
+            Text(if (scanning) (phase.ifEmpty { "正在扫描" }) else "扫描遇到问题", color = C.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (scanning && total > 0) Text("$done/$total", color = C.Sub, fontSize = 12.sp)
         }
-        if (lib.error != null && !lib.scanning) Text(lib.error!!, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
-        if (lib.scanning) {
-            val p = if (lib.total > 0) lib.done / lib.total.toFloat() else null
+        if (error != null && !scanning) Text(error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
+        if (scanning) {
+            val p = if (total > 0) done / total.toFloat() else null
             if (p == null) LinearProgressIndicator(color = C.Accent, trackColor = C.Surface2, modifier = Modifier.padding(top = 10.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)))
             else LinearProgressIndicator(progress = { p }, color = C.Accent, trackColor = C.Surface2, modifier = Modifier.padding(top = 10.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)))
         }
+    }
+}
+
+@Composable
+private fun ScanBar(lib: MovieLib) = LibraryScanBar(lib.phase, lib.done, lib.total, lib.error, lib.scanning)
+
+/** First visit after a restart: pick up new files quietly when the last scan is over 6 h old. */
+fun autoScanIfStale(storeKey: String, hasDirs: Boolean, scanning: Boolean, onScan: () -> Unit) {
+    if (hasDirs && !scanning && System.currentTimeMillis() - (Store.getStr(storeKey).toLongOrNull() ?: 0L) > 6 * 3600_000L) {
+        Store.putStr(storeKey, System.currentTimeMillis().toString()); onScan()
+    }
+}
+
+@Composable
+fun GhostButton(t: String, enabled: Boolean = true, onClick: () -> Unit) {
+    Text(t, color = C.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1,
+        modifier = Modifier.height(48.dp).clip(RoundedCornerShape(14.dp)).background(C.Surface).clickable(enabled = enabled, onClick = onClick).padding(horizontal = 16.dp).wrapContentHeight(Alignment.CenterVertically))
+}
+
+/** Settings-page scan row: one manual “立即扫描” + the lib's own “redo” action ([onRedo]). */
+@Composable
+fun LibraryScanRow(scanning: Boolean, hasDirs: Boolean, emptyHint: String, onScan: () -> Unit, redoLabel: String, redoEnabled: Boolean = true, onRedo: () -> Unit) {
+    val ctx = LocalContext.current
+    Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        GradientButton(if (scanning) "扫描中…" else "立即扫描", Modifier.weight(1f), loading = scanning) {
+            if (!hasDirs) toast(ctx, emptyHint) else { onScan(); toast(ctx, "开始扫描，离开页面也会继续") }
+        }
+        GhostButton(redoLabel, enabled = redoEnabled) { onRedo() }
+    }
+}
+
+/** One folder row of a library settings page (name / path / 移除); kind pickers stay per-page. */
+@Composable
+fun LibraryDirRow(name: String, path: String, onRemove: () -> Unit) {
+    Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(LI.folder(), null, tint = C.Text, modifier = Modifier.size(20.dp))
+        Column(Modifier.padding(start = 12.dp).weight(1f)) {
+            Text(name, color = C.Text, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(path, color = C.Faint, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Text("移除", color = C.Danger, fontSize = 13.sp, modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onRemove() }.padding(6.dp))
     }
 }
 

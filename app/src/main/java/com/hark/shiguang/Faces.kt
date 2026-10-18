@@ -44,7 +44,7 @@ object FaceConfig {
         Store.putStr("face.min", "$minPhotos")
         Store.putStr("face.diff", "%.2f".format(java.util.Locale.US, diff))
     }
-    fun reset() { conf = DEF_CONF; minPhotos = DEF_MIN; diff = DEF_DIFF; save() }
+
 }
 
 class FaceRec(val id: String, val path: String, val conf: Float, val emb: FloatArray)

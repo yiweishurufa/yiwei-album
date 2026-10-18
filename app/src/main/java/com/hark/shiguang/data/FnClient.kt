@@ -1,6 +1,7 @@
 package com.hark.shiguang.data
 
 import android.util.Base64
+import com.hark.shiguang.HashUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -33,14 +34,11 @@ object AuthX {
     private const val SALT = "EAECCF25-80A6-4666-A7C2-A76904A74AB6"
     private val rnd = SecureRandom()
 
-    fun md5(s: String): String =
-        MessageDigest.getInstance("MD5").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
-
     /** [payload] is the sorted raw (unencoded) query for GET, or the JSON body for POST. */
     fun header(path: String, payload: String): String {
         val nonce = (100000 + rnd.nextInt(900000)).toString()
         val ts = System.currentTimeMillis().toString()
-        val sign = md5(listOf(KEY, path, nonce, ts, md5(payload), SALT).joinToString("_"))
+        val sign = HashUtil.md5(listOf(KEY, path, nonce, ts, HashUtil.md5(payload), SALT).joinToString("_"))
         return "nonce=$nonce&timestamp=$ts&sign=$sign"
     }
 }

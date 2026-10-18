@@ -17,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
@@ -291,7 +292,6 @@ object AlbumOps {
 @Composable
 fun DavAlbumPicker(lib: com.hark.shiguang.DavLib, onDismiss: () -> Unit, onPick: (com.hark.shiguang.VAlbum) -> Unit) {
     var creating by remember { mutableStateOf(false) }
-    val ctx = androidx.compose.ui.platform.LocalContext.current
     LaunchedEffect(Unit) { if (lib.albums == null) lib.refreshAlbums() }
     AlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface, title = { Text("加入 WebDAV 相册", color = C.Text) }, text = {
         LazyColumn(Modifier.heightIn(max = 380.dp)) {
@@ -301,10 +301,7 @@ fun DavAlbumPicker(lib: com.hark.shiguang.DavLib, onDismiss: () -> Unit, onPick:
             }
         }
     }, confirmButton = {}, dismissButton = { TextButton(onClick = onDismiss) { Text("取消", color = C.Sub) } })
-    if (creating) InputDialog("新建相册", "", "相册名称", "创建", onDismiss = { creating = false }) { name ->
-        creating = false
-        Ops.launch { runCatching { lib.createAlbum(name) }.onSuccess { onPick(it) }.onFailure { toast(ctx, it.message ?: "创建失败") } }
-    }
+    if (creating) CreateAlbumDialog(onDismiss = { creating = false }, create = { name -> lib.createAlbum(name) }, onPick = onPick)
 }
 
 fun openPerson(p: com.hark.shiguang.data.Person) {
@@ -337,11 +334,62 @@ fun InputDialog(title: String, initial: String, hint: String, okText: String = "
     )
 }
 
+/**
+ * The one action-list dialog (was Home GroupActions + the Settings sync chooser): a title, an optional
+ * subtitle, and a vertical list of text actions. Anything with inputs / sliders / forms keeps its own
+ * AlertDialog (DavDialog, free-model / provider pickers, face settings).
+ */
+@Composable
+fun ActionListDialog(title: String, sub: String = "", onDismiss: () -> Unit, actions: List<Pair<String, () -> Unit>>) {
+    AlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface, title = {
+        Column {
+            Text(title, color = C.Text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            if (sub.isNotEmpty()) Text(sub, color = C.Sub, fontSize = 13.sp)
+        }
+    }, text = {
+        Column {
+            actions.forEach { (label, act) ->
+                Text(label, color = C.Text, fontSize = 16.sp, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { act() }.padding(vertical = 14.dp, horizontal = 4.dp))
+            }
+        }
+    }, confirmButton = {}, dismissButton = { TextButton(onClick = onDismiss) { Text("取消", color = C.Sub) } })
+}
+
+/**
+ * The one picker dialog (was PersonPicker + GroupPicker): a scrollable list of [items] with a caller-drawn
+ * [row] each. The row decides its own visuals; picking just calls [onPick] — navigation stays with the caller.
+ */
+@Composable
+fun <T> PickDialog(title: String, items: List<T>, key: (T) -> Any, emptyText: String, dismissText: String = "取消",
+                   onDismiss: () -> Unit, onPick: (T) -> Unit, row: @Composable (T) -> Unit) {
+    AlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface, title = { Text(title, color = C.Text, fontSize = 17.sp) }, text = {
+        if (items.isEmpty()) Text(emptyText, color = C.Sub)
+        else LazyColumn(Modifier.heightIn(max = 440.dp)) {
+            items(items, key = { key(it) }) { item ->
+                Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onPick(item) }) { row(item) }
+            }
+        }
+    }, confirmButton = {}, dismissButton = { TextButton(onClick = onDismiss) { Text(dismissText, color = C.Sub) } })
+}
+
+/**
+ * The shared “新建相册” step of both album pickers: one InputDialog + one create call + one toast on failure.
+ * The backends stay separate (NAS NasX vs WebDAV manifest) — only the dialog + error handling is shared,
+ * so a photo can never land in the wrong kind of album.
+ */
+@Composable
+fun <T> CreateAlbumDialog(onDismiss: () -> Unit, create: suspend (String) -> T, onPick: (T) -> Unit) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    InputDialog("新建相册", "", "相册名称", "创建", onDismiss = onDismiss) { name ->
+        onDismiss()
+        Ops.launch { runCatching { create(name) }.onSuccess { onPick(it) }.onFailure { toast(ctx, it.message ?: "创建失败") } }
+    }
+}
+
 /** Pick an existing NAS album or create a new one. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AlbumPicker(onDismiss: () -> Unit, onPick: (Album) -> Unit) {
-    val ctx = androidx.compose.ui.platform.LocalContext.current
     var albums by remember { mutableStateOf(HomeState.albums) }
     var creating by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { runCatching { Repo.albums() }.onSuccess { albums = it; HomeState.albums = it } }
@@ -367,14 +415,8 @@ fun AlbumPicker(onDismiss: () -> Unit, onPick: (Album) -> Unit) {
             }
         }
     }
-    if (creating) InputDialog("新建相册", "", "相册名称", "创建", onDismiss = { creating = false }) { name ->
-        creating = false
-        Ops.launch {
-            runCatching { NasX.createAlbum(name) }.onSuccess { id ->
-                onPick(Album(id, name, 0, 0, null, ""))
-            }.onFailure { toast(ctx, it.message ?: "创建失败") }
-        }
-    }
+    if (creating) CreateAlbumDialog(onDismiss = { creating = false },
+        create = { name -> NasX.createAlbum(name).let { id -> Album(id, name, 0, 0, null, "") } }, onPick = onPick)
 }
 
 /** Bottom bar shown while multi-selecting: favourite / download / add to album / delete. */

@@ -365,43 +365,6 @@ fun FoldersScreen(r: Route.Folders) {
     }
 }
 
-// ============================================================ map (no map SDK: places by cluster)
-
-@Composable
-fun MapScreen() {
-    val ctx = LocalContext.current
-    var points by remember { mutableStateOf<List<MapPoint>?>(null) }
-    var err by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(Unit) {
-        runCatching { NasX.mapPoints(MapBounds(90.0, 180.0, -90.0, -180.0)) }
-            .onSuccess { points = it.sortedByDescending { p -> p.count } }.onFailure { err = it.message; points = emptyList() }
-    }
-    val places = HomeState.places
-    Page("地图", points?.let { "${it.sumOf { p -> p.count }} 张带位置的照片" } ?: "") {
-        val pts = points
-        when {
-            pts == null -> Loading()
-            pts.isEmpty() && places.isNullOrEmpty() -> StateMessage(Icons.Rounded.Map, if (err != null) "加载失败" else "还没有带位置的照片", err ?: "拍照时开启定位，NAS 识别后会出现在这里。")
-            else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
-                items(pts.size) { i ->
-                    val p = pts[i]
-                    ListRow(null, p.cover, "%.4f, %.4f".format(p.lat, p.lng), "${p.count} 张" + if (p.dateTime.length >= 10) " · ${p.dateTime.take(10).replace(':', '.')}" else "",
-                        trailing = {
-                            IconButton(onClick = {
-                                runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("geo:${p.lat},${p.lng}?q=${p.lat},${p.lng}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-                                    .onFailure { toast(ctx, "没有可用的地图应用") }
-                            }) { Icon(Icons.Rounded.Place, null, tint = C.Accent) }
-                        }) {
-                        val d = 0.02
-                        val b = MapBounds(p.lat + d, p.lng + d, p.lat - d, p.lng - d)
-                        Nav.push(Route.Collection("%.3f, %.3f".format(p.lat, p.lng), "附近的照片", PhotoSource(pageSize = 100) { o, l -> NasX.mapPhotos(b, o, l) }))
-                    }
-                }
-            }
-        }
-    }
-}
-
 // ============================================================ transfers
 
 @Composable
@@ -520,7 +483,7 @@ fun BackupScreen() {
             ToggleRow(Icons.Rounded.Backup, "自动备份新照片", if (on) "每小时检查一次，从开启那一刻起的新照片会上传到 NAS" else "开启后只备份之后新拍的照片", on) { v ->
                 if (v) permLauncher.launch(perms) else { on = false; Store.backupOn = false; BackupScheduler.cancel(ctx) }
             }
-            Text(if (ScanPolicy.allowCellular) "Wi-Fi 和移动网络都会备份（设置 → 网络与电量）" else "只在 Wi-Fi 下备份（设置 → 网络与电量 可允许移动网络）",
+            Text(if (ScanPolicy.allowCellular) "Wi-Fi 和移动网络都会备份（${ScanPolicy.SETTINGS_REF}）" else "只在 Wi-Fi 下备份（${ScanPolicy.SETTINGS_REF} 可允许移动网络）",
                 style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp))
             if (on) {
                 NavRow(Icons.Rounded.CloudUpload, if (running) "正在加入队列…" else "立即备份",
@@ -551,7 +514,6 @@ fun BackupScreen() {
 fun kindName(k: CloudKind) = "WebDAV"
 
 @Composable
-fun CloudHomeScreen() = DavAccountsScreen()
 
 @Composable
 fun DavAccountsScreen() {
