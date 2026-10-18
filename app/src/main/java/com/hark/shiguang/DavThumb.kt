@@ -42,14 +42,11 @@ object DavThumb {
 
     fun mark(raw: String) = raw + MARK
 
-    private fun md5(s: String) = MessageDigest.getInstance("MD5").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
-
     /** B20: drop the cached thumbnail for [url] (called when the photo is added / removed / replaced). */
-    fun invalidate(url: String) { runCatching { File(dir, md5(url) + ".jpg").delete() } }
+    fun invalidate(url: String) { runCatching { File(dir, HashUtil.md5(url) + ".jpg").delete() } }
     fun invalidateUrls(urls: Iterable<String>) { urls.forEach { invalidate(it) } }
-
     suspend fun file(url: String): File = withContext(Dispatchers.IO) {
-        val f = File(dir, md5(url) + ".jpg")
+        val f = File(dir, HashUtil.md5(url) + ".jpg")
         // B20: thumbnails never invalidated before — a file older than 7 days is re-fetched, so a replaced
         // photo on the server cannot keep showing its old thumbnail forever.
         if (f.length() > 0 && System.currentTimeMillis() - f.lastModified() > 7 * 86_400_000L) f.delete()

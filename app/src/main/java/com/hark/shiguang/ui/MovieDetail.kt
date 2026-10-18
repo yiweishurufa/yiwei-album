@@ -203,12 +203,6 @@ private fun versionLabel(name: String): String {
 }
 
 @Composable
-private fun GhostButton(t: String, onClick: () -> Unit) {
-    Text(t, color = C.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1,
-        modifier = Modifier.height(48.dp).clip(RoundedCornerShape(14.dp)).background(C.Surface).clickable(onClick = onClick).padding(horizontal = 16.dp).wrapContentHeight(Alignment.CenterVertically))
-}
-
-@Composable
 private fun EpisodeRow(lib: MovieLib, m: MovieItem, e: Episode) {
     val p = lib.progressOf(e.path)
     Row(Modifier.fillMaxWidth().clickable { Nav.push(Route.MoviePlay(lib.sourceKey, m.id, e.path)) }.padding(horizontal = 18.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -334,30 +328,19 @@ fun MovieLibrarySettingsScreen() {
                 if (lib.dirs.isEmpty()) Text("和相册的扫描目录分开设置。可以加多个，每个标成电影、剧集或自动识别。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
                 lib.dirs.forEachIndexed { i, d ->
                     if (i > 0) Div()
-                    Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(LI.folder(), null, tint = C.Text, modifier = Modifier.size(20.dp))
-                            Column(Modifier.padding(start = 12.dp).weight(1f)) {
-                                Text(d.name, color = C.Text, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text(d.path, color = C.Faint, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                            Text("移除", color = C.Danger, fontSize = 13.sp, modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { lib.saveDirs(lib.dirs - d) }.padding(6.dp))
-                        }
-                        Row(Modifier.padding(start = 32.dp, top = 8.dp)) {
-                            Segmented(listOf("自动", "电影", "剧集"), listOf("auto", "movie", "tv").indexOf(d.kind).coerceAtLeast(0)) { k ->
-                                lib.saveDirs(lib.dirs.map { if (it.path == d.path) it.copy(kind = listOf("auto", "movie", "tv")[k]) else it })
-                            }
+                    LibraryDirRow(d.name, d.path) { lib.saveDirs(lib.dirs - d) }
+                    Row(Modifier.padding(start = 32.dp, top = 8.dp, bottom = 12.dp)) {
+                        Segmented(listOf("自动", "电影", "剧集"), listOf("auto", "movie", "tv").indexOf(d.kind).coerceAtLeast(0)) { k ->
+                            lib.saveDirs(lib.dirs.map { if (it.path == d.path) it.copy(kind = listOf("auto", "movie", "tv")[k]) else it })
                         }
                     }
                 }
                 Div()
-                NavRow(LI.plus(), "添加文件夹", if (lib.kind == "fn") "飞牛只能选相册里已添加的文件夹" else "浏览这个 WebDAV") { picking = true }
+                NavRow(LI.plus(), "添加文件夹", if (lib.kind == "fn") "飞牛可选相册或文件管理里的文件夹" else "浏览这个 WebDAV") { picking = true }
             }
-            Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                GradientButton(if (lib.scanning) "扫描中…" else "立即扫描", Modifier.weight(1f), loading = lib.scanning) {
-                    if (lib.dirs.isEmpty()) toast(ctx, "先添加影视文件夹") else { lib.scan(); ScanService.ensure(ctx); toast(ctx, "开始扫描，离开页面也会继续") }
-                }
-                GhostButton("重新匹配未匹配") { lib.scan(rescrapeUnmatched = true); ScanService.ensure(ctx) }
+            LibraryScanRow(lib.scanning, lib.dirs.isNotEmpty(), "先添加影视文件夹",
+                onScan = { lib.scan(); ScanService.ensure(ctx) }, redoLabel = "重新匹配未匹配") {
+                lib.scan(rescrapeUnmatched = true); ScanService.ensure(ctx)
             }
             if (lib.kind == "fn") Text("飞牛的相册接口只返回视频本身，读不到同目录的 NFO、海报和字幕；这些会用 TMDB 补上。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 20.dp))
 

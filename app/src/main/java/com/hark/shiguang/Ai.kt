@@ -340,12 +340,6 @@ object AiClient {
         (0 until a.length()).mapNotNull { i -> a.optJSONArray(i)?.let { g -> (0 until g.length()).map { g.optString(it).trim() }.filter { it.isNotEmpty() } }?.takeIf { it.isNotEmpty() } }
     }.getOrDefault(emptyList())
 
-    /** Turns a natural-language query into keywords. */
-    suspend fun keywords(q: String): List<String> = runCatching {
-        chat("把这句相册搜索语句拆成 3 到 6 个中文关键词（物体、场景、颜色、活动），只输出用逗号分隔的关键词：$q", maxTokens = 60)
-            .split(',', '，', '、', ' ', '\n').map { it.trim() }.filter { it.isNotEmpty() }
-    }.getOrDefault(emptyList())
-
     fun to512(bytes: ByteArray): ByteArray? {
         val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
@@ -390,8 +384,6 @@ object AiRunner {
     val rowLabel: String get() = "AI 分类" + (if (usingLocal) " · 本地" else AiPool.active?.label?.let { " · $it" } ?: "")
     /** Why it waits + 「已自动切换到 …」 for the AI card. */
     val cardNote: String get() = listOf(note.takeIf { it != "已暂停" }.orEmpty(), AiPool.switched).filter { it.isNotEmpty() }.distinct().joinToString(" · ")
-
-    fun canRun(c: Context): Boolean = AiConfig.configured && !AiConfig.overBudget && Analyzer.canScan(c)
 
     /** 「暂停」 on the AI tab: stops now; automatic starts are ignored until a manual start (see [ScanPolicy.paused]). */
     fun pause() { ScanPolicy.paused = true; pauseDav(); pauseNas(); running = false; note = "已暂停" }

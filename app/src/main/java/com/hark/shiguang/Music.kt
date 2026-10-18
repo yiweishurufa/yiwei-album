@@ -239,7 +239,7 @@ class MusicLib(val sourceKey: String) {
         return siblings.firstOrNull { NameParser.ext(it.name) == "lrc" && NameParser.stem(it.name).equals(stem, true) }?.path
     }
 
-    private fun idOf(p: String) = md5("$sourceKey|$p").take(16)
+    private fun idOf(p: String) = HashUtil.md5("$sourceKey|$p").take(16)
 
     /** Track from the file and folder name alone: "歌手 - 歌名", "01. 歌名", folder = album ("CD1" → parent). */
     private fun guess(e: FsEntry, folder: String): Track {
@@ -333,7 +333,7 @@ class MusicLib(val sourceKey: String) {
 
     fun saveArt(b: ByteArray): String? {
         if (b.size < 200) return null
-        val f = File(artDir, md5(b).take(20) + ".img")
+        val f = File(artDir, HashUtil.md5(b).take(20) + ".img")
         if (!f.exists()) runCatching { f.writeBytes(b) }.onFailure { return null }
         return f.absolutePath
     }
@@ -352,10 +352,7 @@ class MusicLib(val sourceKey: String) {
         if (l.isNullOrBlank()) { runCatching { none.writeText("") }; null } else { f.writeText(l); l }
     }
 
-    companion object {
-        fun md5(s: String) = md5(s.toByteArray())
-        fun md5(b: ByteArray) = MessageDigest.getInstance("MD5").digest(b).joinToString("") { "%02x".format(it) }
-    }
+
 }
 
 object MusicPrefs {

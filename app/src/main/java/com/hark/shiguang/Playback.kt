@@ -8,7 +8,9 @@ import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Tracks
 import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import org.json.JSONObject
+import org.videolan.libvlc.LibVLC
 
 /**
  * 1.0.9 playback helpers: quality badges (from the file name, refined by real track info after a play),
@@ -217,4 +219,23 @@ object SubShift {
         }
     }
     private fun ass(t: Long) = "%d:%02d:%02d.%02d".format(t / 3600_000, t / 60_000 % 60, t / 1000 % 60, t % 1000 / 10)
+}
+
+/**
+ * Shared player construction. The three ExoPlayer sites keep their own DataSource / load-control /
+ * audio-attribute setup (lifecycles differ), but the FFmpeg-first renderer config is identical in the
+ * movie and music players — the photo viewer intentionally stays on the default renderers (no FFmpeg).
+ */
+fun ffmpegRenderersFactory(ctx: Context): DefaultRenderersFactory =
+    DefaultRenderersFactory(ctx)
+        .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+        .setEnableDecoderFallback(true)
+
+/** Shared LibVLC construction for the two VLC paths (video player vs music compatibility engine). */
+object VlcEngine {
+    fun newLibVlc(ctx: Context, audioOnly: Boolean): LibVLC {
+        val opts = if (audioOnly) arrayListOf("--no-video", "--network-caching=3000", "--http-reconnect", "--no-stats")
+        else arrayListOf("--network-caching=2000", "--http-reconnect", "--no-stats")
+        return LibVLC(ctx.applicationContext, opts)
+    }
 }

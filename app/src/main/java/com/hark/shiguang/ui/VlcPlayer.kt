@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.hark.shiguang.CastProxy
 import com.hark.shiguang.Diag
+import com.hark.shiguang.VlcEngine
 import kotlinx.coroutines.delay
 import org.videolan.libvlc.LibVLC
 import org.videolan.libvlc.Media
@@ -62,7 +63,7 @@ fun VlcPlayer(
     var controls by remember(url) { mutableStateOf(true) }
     var dragging by remember(url) { mutableStateOf<Float?>(null) }
 
-    val vlc = remember { LibVLC(ctx.applicationContext, arrayListOf("--network-caching=2000", "--http-reconnect", "--no-stats")) }
+    val vlc = remember { VlcEngine.newLibVlc(ctx, audioOnly = false) }
     val mp = remember(vlc) { MediaPlayer(vlc) }
     var layout by remember { mutableStateOf<VLCVideoLayout?>(null) }
 

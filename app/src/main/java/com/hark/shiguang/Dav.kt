@@ -554,7 +554,6 @@ object Analyzer {
     private val jobs = java.util.concurrent.ConcurrentHashMap<String, Job>()
     private val geoCache = HashMap<String, String>()
 
-    fun wifiAndCharging(c: Context): Boolean = Net.isWifi(c) && Net.isCharging(c)
     /** Local analysis + faces: Wi-Fi and charging unless the user allowed otherwise. */
     fun canScan(c: Context): Boolean = (ScanPolicy.allowCellular || Net.isWifi(c)) && (ScanPolicy.allowNoCharge || Net.isCharging(c))
     val running: Boolean get() = jobs.values.any { it.isActive }
@@ -780,6 +779,49 @@ object ScanPolicy {
         !allowCellular -> "连上 Wi-Fi 时自动继续"
         !allowNoCharge -> "充电时自动继续"
         else -> "会在后台继续"
+    }
+    /** Single source for the two toggle wordings + the settings reference used by AI / backup pages. */
+    const val SETTINGS_REF = "设置 → 网络与电量"
+    const val CELLULAR_DESC = "本地分析、人脸识别、AI 分类和手机备份都会读取或上传照片，产生流量"
+    const val NO_CHARGE_DESC = "关掉更省电：本地分析、人脸识别和 AI 分类只在充电时继续"
+    /**
+     * The one pause / resume pair (notification action, AI card toggle, AI tab). Callers keep their own
+     * UI entry points; the coordination lives here so the notification and the card can never drift apart.
+     * [resumeAll] is the manual path (user pressed 继续): Wi-Fi / charging rules do not hold it back.
+     * [startAiDav] is [AiRunner.on] for both callers (B31: the notification must resume local-AI too,
+     * not just a configured model). [nasPhotos] is only passed by the notification resume.
+     */
+    fun pauseAll() {
+        paused = true
+        runCatching { AiRunner.pause() }
+        runCatching { Analyzer.stop() }
+        runCatching { Faces.stop() }
+    }
+    fun resumeAll(c: Context, startAiDav: Boolean, nasPhotos: List<Photo> = emptyList()) {
+        paused = false
+        runCatching { AiRunner.resume() }
+        val lib = runCatching { Dav.lib() }.getOrNull()
+        if (lib != null && lib.photos.isNotEmpty()) {
+            runCatching { Analyzer.start(c, lib, true) }
+            runCatching { Faces.start(c, lib, true) }
+            if (startAiDav) runCatching { AiRunner.startDav(c, lib, manual = true) }
+        }
+        if (nasPhotos.isNotEmpty() && AiConfig.nasToo && AiRunner.on)
+            runCatching { AiRunner.startNas(c, nasPhotos.toList()) }
+    }
+}
+
+/**
+ * One starter for the analysis + faces + AI trio (automatic starts honour [ScanPolicy], manual ones
+ * do not — [manual] must stay true for the AI card's 「立即继续」 or the Wi-Fi / charging rules are bypassed
+ * for every caller). Call sites keep their own paused / empty guards; only the trio itself is shared.
+ */
+object ScanStarter {
+    fun startAll(c: Context, lib: DavLib, manual: Boolean) {
+        if (!manual && !Analyzer.canScan(c)) return
+        runCatching { Analyzer.start(c, lib, manual) }
+        runCatching { Faces.start(c, lib, manual) }
+        if (AiRunner.on) runCatching { AiRunner.startDav(c, lib, manual = manual) }
     }
 }
 

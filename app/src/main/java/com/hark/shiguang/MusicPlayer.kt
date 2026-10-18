@@ -74,7 +74,7 @@ class MusicPlayer(private val ctx: Context) : SimpleBasePlayer(Looper.getMainLoo
         val resolving = ResolvingDataSource.Factory(DefaultDataSource.Factory(ctx, up)) { spec ->
             val h = hdr[spec.uri.toString()]; if (h.isNullOrEmpty()) spec else spec.withAdditionalHeaders(h)
         }
-        val rf = DefaultRenderersFactory(ctx).setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER).setEnableDecoderFallback(true)
+        val rf = ffmpegRenderersFactory(ctx)
         ExoPlayer.Builder(ctx, rf).setMediaSourceFactory(DefaultMediaSourceFactory(resolving))
             .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
             .setHandleAudioBecomingNoisy(true).setWakeMode(C.WAKE_MODE_NETWORK).build().apply { addListener(exoListener) }
@@ -271,7 +271,7 @@ class MusicPlayer(private val ctx: Context) : SimpleBasePlayer(Looper.getMainLoo
 
     private fun startVlc(url: String, h: Map<String, String>, ext: String, startMs: Long) {
         runCatching {
-            val lib = vlcLib ?: LibVLC(ctx.applicationContext, arrayListOf("--no-video", "--network-caching=3000", "--http-reconnect", "--no-stats")).also { vlcLib = it }
+            val lib = vlcLib ?: VlcEngine.newLibVlc(ctx, audioOnly = true).also { vlcLib = it }
             val mp = vlc ?: org.videolan.libvlc.MediaPlayer(lib).also { vlc = it }
             vlcProxyUrl = null
             val src = if (h.isEmpty()) url else CastProxy.serveLocal(url, h, "a.$ext").also { vlcProxyUrl = it }

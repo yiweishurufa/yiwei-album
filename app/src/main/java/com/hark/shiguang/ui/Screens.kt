@@ -174,8 +174,6 @@ object HomeState {
     fun openAiTab() { tab = 3; Nav.reset(Route.Home) }
     var columns by mutableIntStateOf(Store.columns)
     var dirty by mutableStateOf(false)
-    var showConn by mutableStateOf(false)
-    var showDav by mutableStateOf(false)
     var showDate by mutableStateOf(false)
     var renamePerson by mutableStateOf<Person?>(null)
     var switching by mutableStateOf(false)
@@ -484,7 +482,7 @@ fun SearchScreen() {
                     if (SearchState.query.isEmpty()) Text("用一句话描述你要找的照片", color = C.Faint, fontSize = 15.sp)
                     BasicTextField(
                         SearchState.query, { SearchState.query = it; if (it.isBlank() && !AdvFilter.active) SearchState.reset() }, singleLine = true,
-                        textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp, color = C.Text), cursorBrush = SolidColor(C.Rose),
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp, color = C.Text), cursorBrush = SolidColor(C.Accent),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { run(SearchState.query) }),
                         modifier = Modifier.fillMaxWidth().focusRequester(fr)
                     )

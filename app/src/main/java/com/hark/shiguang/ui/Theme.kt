@@ -82,7 +82,6 @@ object C {
     val Accent get() = P.accent
     val Accent2 get() = P.accent2
     val OnAccent get() = P.onAccent
-    val Rose get() = P.accent
     val Orange get() = Color(0xFFF5A524)
     val Violet get() = Color(0xFFA683F5)
     val Gold get() = Color(0xFFF5C044)
@@ -90,8 +89,6 @@ object C {
     val Pink get() = Color(0xFFF2617A)
     val Blue get() = Color(0xFF4F8CFF)
     val Danger get() = if (P.dark) Color(0xFFFF6B5E) else Color(0xFFD13B2A)
-    val Brand: Brush get() = SolidColor(P.accent)
-    val BrandH: Brush get() = SolidColor(P.accent)
     val Scrim: Brush get() = Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000)))
     val TopScrim: Brush get() = Brush.verticalGradient(listOf(P.bg, P.bg.copy(alpha = 0.92f), P.bg.copy(alpha = 0f)))
     val Chip get() = if (P.dark) Color(0x14FFFFFF) else Color(0x0D000000)
