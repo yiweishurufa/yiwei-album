@@ -163,6 +163,9 @@ object CastProxy {
         if (id.isNotEmpty()) routes.remove(id)
     }
 
+    /** 只停投屏用的局域网代理和路由，保留给 libVLC 本地播放用的回环代理（否则会断掉正在播放的音乐）。 */
+    fun stopCast() { runCatching { server?.close() }; server = null; routes.entries.removeIf { !it.value.localOnly } }
+
     fun stop() { runCatching { server?.close() }; runCatching { localServer?.close() }; server = null; localServer = null; routes.clear() }
 
     private fun loop(ss: ServerSocket) = scope.launch {

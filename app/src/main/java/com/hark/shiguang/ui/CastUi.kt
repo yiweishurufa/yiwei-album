@@ -95,7 +95,7 @@ fun CastDialog(media: CastMedia?, onDismiss: () -> Unit) {
             }
         },
         confirmButton = {
-            if (dev != null) TextButton({ act { Dlna.stop(it) }; CastState.device = null; CastProxy.stop(); onDismiss() }) { Text("停止投屏", color = C.Danger) }
+            if (dev != null) TextButton({ act { Dlna.stop(it) }; CastState.device = null; CastProxy.stopCast(); onDismiss() }) { Text("停止投屏", color = C.Danger) }
             else TextButton({ scanKey++ }) { Text("重新查找", color = C.Accent) }
         },
         dismissButton = { TextButton(onDismiss) { Text(if (dev != null) "收起" else "取消", color = C.Sub) } })

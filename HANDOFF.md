@@ -318,7 +318,7 @@ Android 原生（Kotlin + Jetpack Compose）飞牛 fnOS 相册客户端，名字
 4. 隔离：加音乐文件夹后照片/视频页不再出现其中文件；影视扫描不再进入音乐目录。
 5. 网易云 cloudsearch 在大陆网络的速度与匹配准确率；LRCLIB 在大陆是否可达（不可达只是没歌词）。
 6. 大曲库（上万首）首次扫描耗时与流量（每首约 256 KB + 部分 160 KB 尾部），列表滚动流畅度（目前一次性全部在内存，未分页）。
-7. 已知小问题：投屏面板「停止投屏」会 `CastProxy.stop()`，正在用 VLC 播放的音乐（ape/wma 等）会断，需要重新点播；~~迷你播放条会盖住照片网格最后一行的一部分~~（2026-10-19 已修：`ui/MusicTab.kt` 新增 `miniPlayerPad`，迷你播放条显示时首页各 tab 列表底部留白 +64dp）。
+7. 已知小问题：~~投屏面板「停止投屏」会 `CastProxy.stop()` 断掉 VLC 音乐~~（2026-10-20 已修：改用 `CastProxy.stopCast()`，只关局域网代理，保留回环代理）；~~迷你播放条会盖住照片网格最后一行的一部分~~（2026-10-19 已修：`ui/MusicTab.kt` 新增 `miniPlayerPad`，迷你播放条显示时首页各 tab 列表底部留白 +64dp）。
 
 ### 1.0.3 修复：首次扫描音乐 OOM 闪退（OPPO PHY110 / Android 16，2026-10-09 19:40）
 - 崩溃：主线程 OutOfMemoryError（256 MB 堆满，栈只是压垮的位置）。原因推断（无内存快照）：读标签并发 4–6，每首可能同时持有 6 MB 级的大块（大封面 / moov）+ 块缓存副本 + 图片原始字节；每扫完一首就改一次 tracks 触发整页重组，并且每 20 首就把整个曲库 JSON 重写一次。
@@ -333,3 +333,7 @@ Android 原生（Kotlin + Jetpack Compose）飞牛 fnOS 相册客户端，名字
 ## 2026-10-19 · 定期维护
 - BUILD_ERRORS.txt 是 1.0.3 早期的旧记录，当前 main（746acb9）在 aarch64 沙箱 `:app:compileDebugKotlin` 编译通过，已清空。
 - 修：迷你播放条盖住首页列表最后一行。`miniPlayerPad`（音乐在播且非多选时 64dp，否则 0）加到 照片（飞牛/WebDAV）、视频（飞牛/WebDAV）、相册、AI（飞牛/WebDAV）、影音 电影剧集 的底部 contentPadding。未真机验证。
+
+
+## 2026-10-20
+- 修复：投屏「停止投屏」不再断掉 VLC 播放的音乐（`CastProxy.stopCast()`）。本地编译通过。
