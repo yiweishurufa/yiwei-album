@@ -56,7 +56,7 @@ fun VideosTab(dav: Boolean) {
             val vids by remember(lib) { derivedStateOf { lib.metaVersion; MediaIsolation.version; Hidden.visible(MediaIsolation.davVisible(lib.accountId, lib.photos.filter { it.isVideo })) } }
             val entries = remember(vids) { buildEntries(vids, true) }
             if (vids.isEmpty()) Column { TopSwitch(); Title("视频", if (lib.scanning) "正在扫描…" else "0 个"); Box(Modifier.weight(1f)) { if (lib.scanning) SkeletonGrid(cols, 0.dp) else StateMessage(LI.videos(), "没有视频", "") } }
-            else PhotoGrid(entries, cols, lib.scanning, onEnd = {}, onOpen = { Nav.push(Route.Viewer(vids, it)) }, state = grid,
+            else PhotoGrid(entries, cols, lib.scanning, onEnd = {}, onOpen = { Nav.push(Route.Viewer(vids, it)) }, state = grid, bottom = 100.dp + miniPlayerPad,
                 header = { Column { TopSwitch(); Title("视频", "${vids.size} 个" + if (lib.scanning) " · 正在扫描…" else "") } })
         } else {
             val src = remember(NasAccounts.currentId) { NasVideos.get() }
@@ -67,7 +67,7 @@ fun VideosTab(dav: Boolean) {
                 src.photos.isEmpty() && src.loading -> Column { TopSwitch(); Title("视频", "正在查找…"); SkeletonGrid(cols, 0.dp) }
                 src.photos.isEmpty() && src.error != null -> Column { TopSwitch(); Box(Modifier.weight(1f)) { StateMessage(LI.videos(), "加载失败", src.error!!, "重试") { scope.launch { src.refresh() } } } }
                 src.photos.isEmpty() -> Column { TopSwitch(); Title("视频", "0 个"); Box(Modifier.weight(1f)) { StateMessage(LI.videos(), "没有视频", "") } }
-                else -> PhotoGrid(entries, cols, src.loading, onEnd = { scope.launch { src.next() } }, onOpen = { Nav.push(Route.Viewer(shown, it)) }, state = grid,
+                else -> PhotoGrid(entries, cols, src.loading, onEnd = { scope.launch { src.next() } }, onOpen = { Nav.push(Route.Viewer(shown, it)) }, state = grid, bottom = 100.dp + miniPlayerPad,
                     header = { Column { TopSwitch(); Title("视频", "${shown.size}${if (src.more) "+" else ""} 个") } })
             }
         }

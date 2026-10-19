@@ -356,7 +356,7 @@ private fun PhotosTab() {
             else -> {
                 PhotoGrid(
                     entries, cols, tl.loading, onEnd = { scope.launch { tl.next() } },
-                    onOpen = { Nav.push(Route.Viewer(stills, it)) }, state = grid, top = 0.dp,
+                    onOpen = { Nav.push(Route.Viewer(stills, it)) }, state = grid, top = 0.dp, bottom = 100.dp + miniPlayerPad,
                     header = { Column { TopSwitch(); PhotoModeSwitch(); BigTitle(mt, sub); MemoriesRow(memories) } },
                     onPinch = ::pinch,
                     onHeaderClick = { h -> if (level == Level.MONTH) {
@@ -415,7 +415,7 @@ private fun DavPhotosTab() {
             lib.photos.isEmpty() && lib.error != null -> Column { TopSwitch(); Box(Modifier.weight(1f)) { StateMessage(LI.drive(), "连不上 WebDAV", lib.error!!, "重试") { scope.launch { lib.scan() } } } }
             stills.isEmpty() -> Column { TopSwitch(); PhotoModeSwitch(); Box(Modifier.weight(1f)) { StateMessage(LI.photos(), "没有找到照片", "把照片放进这个 WebDAV 后下拉刷新。", "重新扫描") { scope.launch { lib.scan(full = true) } } } }
             else -> {
-                PhotoGrid(entries, adaptiveCols(level.cols.coerceAtMost(7)), lib.scanning, onEnd = {}, onOpen = { Nav.push(Route.Viewer(stills, it)) }, state = grid, top = 0.dp,
+                PhotoGrid(entries, adaptiveCols(level.cols.coerceAtMost(7)), lib.scanning, onEnd = {}, onOpen = { Nav.push(Route.Viewer(stills, it)) }, state = grid, top = 0.dp, bottom = 100.dp + miniPlayerPad,
                     header = { Column { TopSwitch(); PhotoModeSwitch(); BigTitle(mt, sub); MemoriesRow(memories) } }, onPinch = ::pinch)
                 AnimatedVisibility(scrolled, enter = fadeIn(), exit = fadeOut()) { CompactBar("$mt · $yt".trim(' ', '·')) }
             }
@@ -449,7 +449,7 @@ private fun AlbumsTab(dav: Boolean) {
         TopSwitch { IconButton(onClick = { creating = true }) { Icon(LI.plus(), null, tint = C.Text) } }
         PhotoModeSwitch()
         LazyVerticalGrid(
-            GridCells.Adaptive(150.dp), state = grid, modifier = Modifier.weight(1f), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 120.dp),
+            GridCells.Adaptive(150.dp), state = grid, modifier = Modifier.weight(1f), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 120.dp + miniPlayerPad),
             horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             item(span = { GridItemSpan(maxLineSpan) }, key = "top") {
@@ -592,7 +592,7 @@ private fun DiscoverTab() {
     LaunchedEffect(HomeState.timeline.photos.size, AiConfig.nasToo) { if (AiConfig.nasToo && AiRunner.on && !ScanPolicy.paused) AiRunner.startNas(ctx, HomeState.timeline.photos.toList()) }
     val list = rememberMemList("fn-discover")
     val places = HomeState.places
-    LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 120.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 120.dp + miniPlayerPad)) {
         item { TopSwitch() }
         item { BigTitle("AI", "") }
         item { SearchBar() }
@@ -709,7 +709,7 @@ private fun DavDiscoverTab() {
     var mergeFrom by remember { mutableStateOf<com.hark.shiguang.FacePerson?>(null) }
     var menuPlace by remember { mutableStateOf<Pair<String, List<Photo>>?>(null) }
     val list = rememberMemList("dav-discover-" + lib.accountId)
-    LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 120.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 120.dp + miniPlayerPad)) {
         item { TopSwitch() }
         item { BigTitle("AI", "${n(imgs)} 张照片 · ${fl.persons.size} 位人物 · ${places.size} 个地点") }
         item { SearchBar() }

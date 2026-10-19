@@ -33,6 +33,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.Player
@@ -311,6 +312,9 @@ fun MusicListScreen(r: Route.MusicList) {
 }
 
 // ============================================================ mini bar
+
+/** Extra bottom space for Home tab lists while the mini bar is showing, so it no longer covers the last row. */
+val miniPlayerPad: Dp get() = if (MusicState.active && !Selection.active) 64.dp else 0.dp
 
 /** Above the bottom navigation (or at the bottom on wide screens) while something is queued. */
 @Composable
