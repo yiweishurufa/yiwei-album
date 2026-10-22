@@ -13,6 +13,8 @@ android {
         targetSdk = 34
         versionCode = 14
         versionName = "1.0.3"
+        // GitHub Actions passes -PciRun=<run number>; the in-app updater compares it when versionCode is equal
+        buildConfigField("int", "CI_RUN", ((project.findProperty("ciRun") as String?)?.toIntOrNull() ?: 0).toString())
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
     // Signing secrets live in keystore.properties (git-ignored): storeFile/storePassword/keyAlias/keyPassword

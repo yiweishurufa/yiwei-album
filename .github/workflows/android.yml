@@ -60,23 +60,44 @@ jobs:
 
       - name: 编译 APK
         run: |
-          gradle --no-daemon --console=plain :app:assembleRelease
+          gradle --no-daemon --console=plain :app:assembleRelease -PciRun=${VERSION_RUN}
           ls -la app/build/outputs/apk/release/
 
       - name: 整理安装包
         run: |
           set -e
           V=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
-          echo "APP_VERSION=$V" >> "$GITHUB_ENV"
+          echo "APP_VERSION=$V" >> "$GITHUB_ENV"; export APP_VERSION=$V
           mkdir dist
           f=$(ls app/build/outputs/apk/release/*.apk | head -1)
           cp "$f" dist/yiwei-album.apk
+          # App 内「检查更新」读这个文件（只走 GitHub，不再用网盘）
+          export VC=$(grep -oP 'versionCode = \K\d+' app/build.gradle.kts)
+          export SHA=$(sha256sum dist/yiwei-album.apk | cut -d' ' -f1)
+          export SIZE=$(stat -c%s dist/yiwei-album.apk)
+          export MSG="$(git log -1 --pretty=%B)"
+          python3 - <<'PY'
+          import json, os
+          json.dump({
+              "versionCode": int(os.environ["VC"]),
+              "versionName": os.environ["APP_VERSION"],
+              "build": int(os.environ["VERSION_RUN"]),
+              "notes": "CI #%s：%s" % (os.environ["VERSION_RUN"], os.environ["MSG"].strip()[:1500]),
+              "apk": "https://github.com/yiweishurufa/yiwei-album/releases/download/android-nightly/yiwei-album.apk",
+              "sha256": os.environ["SHA"],
+              "size": int(os.environ["SIZE"]),
+              "commit": os.environ["GITHUB_SHA"],
+          }, open("dist/version.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+          PY
+          cat dist/version.json
           ls -la dist
 
       - uses: actions/upload-artifact@v6
         with:
           name: yiwei-album-android
-          path: dist/*.apk
+          path: |
+            dist/*.apk
+            dist/version.json
 
       - name: 发布安卓测试版
         if: github.ref == 'refs/heads/main'
@@ -91,8 +112,8 @@ jobs:
             gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref=refs/tags/android-nightly -f sha="$GITHUB_SHA" >/dev/null || echo "tag create refused"
           fi
           if gh release view android-nightly >/dev/null 2>&1; then
-            gh release upload android-nightly dist/yiwei-album.apk --clobber
+            gh release upload android-nightly dist/yiwei-album.apk dist/version.json --clobber
             gh release edit android-nightly --prerelease --title "一维相册 安卓测试版" --notes "$NOTES"
           else
-            gh release create android-nightly dist/yiwei-album.apk --target "$GITHUB_SHA" --prerelease --title "一维相册 安卓测试版" --notes "$NOTES"
+            gh release create android-nightly dist/yiwei-album.apk dist/version.json --target "$GITHUB_SHA" --prerelease --title "一维相册 安卓测试版" --notes "$NOTES"
           fi

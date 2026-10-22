@@ -237,7 +237,7 @@ fun SettingsScreen() {
         Card {
             NavRow(LI.info(), "一维相册 ${BuildInfo.version} 公测版", "版本号 ${BuildInfo.code} · 第三方应用，与飞牛官方无关") {}
             Div()
-            NavRow(LI.refresh(), "检查更新", if (AppUpdate.checking) "正在检查…" else "从开发者网盘获取新版本") {
+            NavRow(LI.refresh(), "检查更新", if (AppUpdate.checking) "正在检查…" else "从 GitHub 获取新版本") {
                 if (!AppUpdate.checking) scope.launch { AppUpdate.manualCheck()?.let { Toast.makeText(ctx, it, Toast.LENGTH_SHORT).show() } }
             }
             Div()

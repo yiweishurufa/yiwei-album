@@ -1,5 +1,8 @@
 # 给下一个 AI 的交接说明：一维相册 1.0.2 → 1.0.3
 
+> **⚠️ 在线更新只走 GitHub（用户 2026-10-22 定）**：App 内「检查更新」读 GitHub release `android-nightly` 里 CI 上传的 `version.json`（versionCode / versionName / build=CI 运行号 / notes / apk / sha256 / size），读不到时退回 GitHub API 的 assets；国内按 上次成功源 → ghfast.top → gh-proxy.com → GitHub 直连 依次尝试，只信任 `https://github.com/yiweishurufa/` 下的地址，下载后校验 SHA-256 + 包名 + 签名才安装（代码在 `AppUpdate.kt`，CI 在 `.github/workflows/android.yml`「整理安装包」一步）。**以后禁止再接 123 网盘或任何网盘做更新源。**
+
+
 ## 0. 你接手的是什么
 - 「一维相册」是一个 Android App，用 Kotlin + Jetpack Compose 写（没有用 XML 布局）。包名 `com.hark.shiguang`，minSdk 26，target/compileSdk 34。
 - 功能：浏览飞牛 NAS（fnOS）相册和 WebDAV 网盘（123 云盘、阿里云盘 WebDAV、坚果云等）里的照片和视频，提供 AI 整理（人脸、相似照片、重复照片）。「影音」页（原名「影视」）做电影/剧集刮削（TMDB）、弹幕，并用 ExoPlayer 加 libVLC 播放。

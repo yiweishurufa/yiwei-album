@@ -32,7 +32,7 @@ fun AppOverlays() {
             title = { Text("发现新版本 ${r.version}", color = C.Text) },
             text = {
                 Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
-                    Text("当前 ${BuildInfo.label}" + if (r.apk.size > 0) " · 安装包 ${"%.1f".format(r.apk.size / 1048576.0)} MB" else "", color = C.Sub, fontSize = 13.sp)
+                    Text("当前 ${BuildInfo.label}" + (if (r.build > 0) " · 新版 CI #${r.build}" else "") + if (r.size > 0) " · 安装包 ${"%.1f".format(r.size / 1048576.0)} MB" else "", color = C.Sub, fontSize = 13.sp)
                     if (r.notes.isNotBlank()) Text(r.notes.trim(), color = C.Text, fontSize = 14.sp, modifier = Modifier.padding(top = 10.dp))
                     Text(AppUpdate.FALLBACK_TEXT, color = C.Sub, fontSize = 12.sp, modifier = Modifier.padding(top = 10.dp))
                     if (p >= 0f) {
@@ -43,7 +43,7 @@ fun AppOverlays() {
             },
             confirmButton = { TextButton(enabled = p < 0f, onClick = { scope.launch { if (AppUpdate.downloadAndInstall(ctx.applicationContext, r)) AppUpdate.offer = null else AppUpdate.offer = null } }) { Text("更新", color = C.Accent) } },
             dismissButton = { Row {
-                TextButton(enabled = p < 0f, onClick = { AppUpdate.openSharePage(ctx); AppUpdate.offer = null }) { Text("打开分享页", color = C.Sub) }
+                TextButton(enabled = p < 0f, onClick = { AppUpdate.openInBrowser(ctx); AppUpdate.offer = null }) { Text("浏览器下载", color = C.Sub) }
                 TextButton(enabled = p < 0f, onClick = { Store.putStr("upd.skip", r.skipKey); AppUpdate.offer = null }) { Text("以后再说", color = C.Sub) }
             } })
     }
@@ -53,6 +53,6 @@ fun AppOverlays() {
             title = { Text("签名不一致", color = C.Text) },
             text = { Text("下载的安装包签名与当前应用不一致，需先卸载旧版才能安装。本次安装已取消，安装包已删除。", color = C.Sub, fontSize = 14.sp) },
             confirmButton = { TextButton({ AppUpdate.signatureMismatch = null }) { Text("知道了", color = C.Accent) } },
-            dismissButton = { TextButton({ AppUpdate.signatureMismatch = null; AppUpdate.openSharePage(ctx) }) { Text("打开分享页", color = C.Sub) } })
+            dismissButton = { TextButton({ AppUpdate.signatureMismatch = null; AppUpdate.openInBrowser(ctx) }) { Text("浏览器下载", color = C.Sub) } })
     }
 }

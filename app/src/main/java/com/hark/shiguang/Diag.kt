@@ -57,4 +57,4 @@ object Diag {
     }
 }
 
-object BuildInfo { val version: String get() = BuildConfig.VERSION_NAME; val code: Int get() = BuildConfig.VERSION_CODE; val label: String get() = "$version（$code）" }
+object BuildInfo { val version: String get() = BuildConfig.VERSION_NAME; val code: Int get() = BuildConfig.VERSION_CODE; /** CI run number of a GitHub nightly (0 = local build); nightlies share a versionCode. */ val build: Int get() = BuildConfig.CI_RUN; val label: String get() = "$version（$code）" }

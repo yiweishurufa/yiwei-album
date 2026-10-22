@@ -12,34 +12,46 @@ import androidx.core.content.FileProvider
 import com.hark.shiguang.data.FnClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.TimeUnit
 
 /**
- * 1.0.9 in-app update from the developer's 123云盘 share (no token, public share API):
- *  folder 「一维相册」 holds 一维相册-<ver>.apk and optionally 更新说明-<ver>.txt.
- *  List:     GET  {host}/b/api/share/get?...&ParentFileId=<id>   (headers platform: web, App-Version: 3)
- *  Download: POST {host}/b/api/share/download/info {ShareKey,FileID,S3keyFlag,Size,Etag} → data.DownloadURL
- *            (anonymous call answered code 5112 「需要登录」 for a folder in testing — UNVERIFIED for files; on 5112 or
- *            any other failure the share page opens in the browser instead, and the dialog says so up front).
- *  Hosts: only www.123684.com / www.123865.com — www.123pan.com answers these API paths with an HTML page. Never use it.
+ * 在线更新：只走 GitHub（用户 2026-10-22 要求，彻底停用 123 网盘检测；以后禁止再接网盘）。
+ *
+ * 版本信息：CI（.github/workflows/android.yml）每次发布 android-nightly 时随 APK 一起上传 version.json：
+ *   {versionCode, versionName, build(=CI run number), notes, apk, sha256, size, commit}
+ * 读不到 version.json 时退而读 GitHub API releases/tags/android-nightly 的 assets（digest = "sha256:…"）。
+ *
+ * 国内不翻墙：每个 GitHub 地址按 上次成功的源 → ghfast.top → gh-proxy.com → GitHub 直连 依次尝试（同 yiwei-ime
+ * helper/Features/Mirrors.cs），短超时，失败自动换下一个。代理只是转发，安装包的正确性由 SHA-256 + 包名 + 签名把关。
+ * 只信任 https://github.com/yiweishurufa/ 下的地址；version.json 里给出别的地址一律拒绝。
  */
 object AppUpdate {
-    const val SHARE_KEY = "Qpc7Vv-89Ywh"
-    const val SHARE_PAGE = "https://1814107608.share.123pan.cn/123pan/Qpc7Vv-89Ywh"
-    private const val FOLDER_NAME = "一维相册"
-    private const val FOLDER_ID_HINT = 129194314L
-    private val HOSTS = listOf("https://www.123684.com", "https://www.123865.com")
-    private val http by lazy { FnClient.http.newBuilder().readTimeout(30, TimeUnit.SECONDS).followRedirects(true).build() }
+    private const val TRUSTED = "https://github.com/yiweishurufa/"
+    private const val REPO = "${TRUSTED}yiwei-album"
+    const val APK_URL = "$REPO/releases/download/android-nightly/yiwei-album.apk"
+    const val VERSION_URL = "$REPO/releases/download/android-nightly/version.json"
+    private const val API_URL = "https://api.github.com/repos/yiweishurufa/yiwei-album/releases/tags/android-nightly"
 
-    data class Entry(val id: Long, val name: String, val size: Long, val etag: String, val s3: String, val type: Int)
-    data class Release(val version: String, val apk: Entry, val notes: String, val code: Int = 0) {
+    /** One way to reach a GitHub url. [map] returns null when this source cannot serve it. */
+    private class Mirror(val id: String, val name: String, val map: (String) -> String?)
+    private val MIRRORS = listOf(
+        Mirror("ghfast", "ghfast.top 加速") { u -> if (u.startsWith("https://github.com/")) "https://ghfast.top/$u" else null },  // ghfast 不转发 api.github.com
+        Mirror("ghproxy", "gh-proxy.com 加速") { u -> "https://gh-proxy.com/$u" },
+        Mirror("github", "GitHub 直连") { u -> u },
+    )
+    /** Last source that worked goes first next time. */
+    private fun ordered(): List<Mirror> { val last = Store.getStr("upd.mirror"); return MIRRORS.sortedBy { if (it.id == last) 0 else 1 } }
+
+    // short connect timeout so a dead mirror is skipped quickly; inherits NetEnv dns/socketFactory
+    private val http by lazy { FnClient.http.newBuilder().connectTimeout(6, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).followRedirects(true).followSslRedirects(true).build() }
+    private val small by lazy { http.newBuilder().callTimeout(15, TimeUnit.SECONDS).build() }
+
+    data class Release(val version: String, val code: Int, val build: Int, val notes: String, val apkUrl: String, val sha256: String, val size: Long) {
         /** Key for 「以后再说」. */
-        val skipKey: String get() = "$version-$code"
+        val skipKey: String get() = "$version-$code-$build"
     }
 
     /** Shown by [com.hark.shiguang.ui.UpdateDialog]. */
@@ -48,41 +60,52 @@ object AppUpdate {
     var signatureMismatch by mutableStateOf<String?>(null)
     var progress by mutableFloatStateOf(-1f)
     var checking by mutableStateOf(false)
-    /** Last download/info answer code (5112 = 「需要登录」: the share only downloads in the browser). */
-    @Volatile var lastCode: Int = 0
-    const val LOGIN_REQUIRED = 5112
-    /** Shown in the update dialog so the browser hop is not a surprise. */
-    const val FALLBACK_TEXT = "123 云盘分享不允许免登录下载：本机添加过 123 云盘 WebDAV 账户（分享者本人）时会直接下载；否则改为在浏览器打开分享页，登录 123 云盘后下载安装包，点开安装即可。"
+    /** Shown in the update dialog. */
+    const val FALLBACK_TEXT = "安装包来自 GitHub（国内自动走 ghfast.top / gh-proxy.com 加速），下载后校验 SHA-256、包名和签名再安装。应用内下载失败时可点「浏览器下载」。"
 
-    private fun Request.Builder.web() = header("platform", "web").header("App-Version", "3").header("User-Agent", "Mozilla/5.0 (Linux; Android) YiWei/${BuildInfo.version}")
+    private fun Request.Builder.ua() = header("User-Agent", "YiWei-Album/${BuildInfo.version} (Android)")
 
-    private fun list(parent: Long): List<Entry> {
-        var last: Exception? = null
-        for (h in HOSTS) {
+    /** GET a small text through the mirror chain; throws with every source's failure listed. */
+    private fun fetchText(url: String, accept: String? = null): String {
+        val errs = ArrayList<String>()
+        for (m in ordered()) {
+            val u = m.map(url) ?: continue
             try {
-                val out = ArrayList<Entry>()
-                var page = 1
-                while (page < 10) {
-                    val url = "$h/b/api/share/get?limit=100&next=1&orderBy=file_name&orderDirection=asc&shareKey=$SHARE_KEY&SharePwd=&ParentFileId=$parent&Page=$page&event=homeListFile&operateType=1"
-                    val j = http.newCall(Request.Builder().url(url).web().build()).execute().use { JSONObject(it.body?.string().orEmpty()) }
-                    if (j.optInt("code", -1) != 0) throw Exception(j.optString("message", "列表失败"))
-                    val d = j.getJSONObject("data"); val a = d.optJSONArray("InfoList")
-                    for (i in 0 until (a?.length() ?: 0)) a!!.getJSONObject(i).let {
-                        out += Entry(it.optLong("FileId"), it.optString("FileName"), it.optLong("Size"), it.optString("Etag"), it.optString("S3KeyFlag"), it.optInt("Type"))
-                    }
-                    if (d.optString("Next") == "-1" || d.optString("Next").isEmpty() || (a?.length() ?: 0) < 100) break
-                    page++
+                small.newCall(Request.Builder().url(u).ua().apply { accept?.let { header("Accept", it) } }.build()).execute().use { r ->
+                    if (!r.isSuccessful) throw Exception("HTTP ${r.code}")
+                    val t = r.body?.string().orEmpty()
+                    if (t.isBlank()) throw Exception("空响应")
+                    Store.putStr("upd.mirror", m.id)
+                    return t
                 }
-                return out
-            } catch (e: Exception) { last = e }
+            } catch (e: Exception) { errs += "${m.name}：${e.message ?: e.javaClass.simpleName}"; Diag.log("UPD", "fetch ${m.id} failed: ${e.message}") }
         }
-        throw last ?: Exception("列表失败")
+        throw Exception(errs.joinToString("；").ifEmpty { "没有可用的下载源" })
     }
 
-    private fun text(e: Entry): String = runCatching {
-        val u = downloadUrl(e) ?: return@runCatching ""
-        http.newCall(Request.Builder().url(u).build()).execute().use { if (it.isSuccessful) it.body?.string().orEmpty().take(4000) else "" }
-    }.getOrDefault("")
+    private fun trusted(u: String) = u.startsWith(TRUSTED) && !u.contains("..") && !u.contains('@')
+
+    /** version.json written by CI. */
+    private fun fromVersionJson(): Release {
+        val j = JSONObject(fetchText(VERSION_URL))
+        val apk = j.optString("apk").ifEmpty { APK_URL }
+        if (!trusted(apk)) throw Exception("版本信息里的下载地址不在 github.com/yiweishurufa/ 下，已拒绝")
+        return Release(j.optString("versionName"), j.optInt("versionCode", -1), j.optInt("build", 0), j.optString("notes"), apk,
+            j.optString("sha256").lowercase().trim(), j.optLong("size", 0L))
+    }
+
+    /** Fallback: GitHub API release assets (digest "sha256:…"); versionName / CI run read from the release notes. */
+    private fun fromApi(): Release {
+        val j = JSONObject(fetchText(API_URL, "application/vnd.github+json"))
+        val assets = j.optJSONArray("assets")?.objs().orEmpty()
+        val a = assets.firstOrNull { it.optString("name") == "yiwei-album.apk" } ?: throw Exception("GitHub 发布里没有 yiwei-album.apk")
+        val body = j.optString("body")
+        val name = Regex("测试版\\s*(\\d+(?:\\.\\d+)+)").find(body)?.groupValues?.get(1) ?: BuildInfo.version
+        val run = Regex("CI\\s*#(\\d+)").find(body)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+        // the API does not carry versionCode: same name = same code; a higher name counts as newer (the APK's real code is still checked before installing)
+        val code = when { cmp(name, BuildInfo.version) > 0 -> BuildInfo.code + 1; cmp(name, BuildInfo.version) < 0 -> BuildInfo.code - 1; else -> BuildInfo.code }
+        return Release(name, code, run, body.take(2000), APK_URL, a.optString("digest").removePrefix("sha256:").lowercase().trim(), a.optLong("size"))
+    }
 
     /** "1.0.10" > "1.0.9"; non-digits ignored. */
     fun cmp(a: String, b: String): Int {
@@ -92,40 +115,16 @@ object AppUpdate {
         return 0
     }
 
-    /**
-     * 1.0.0 (公测): versionName restarted at 1.0.0 while versionCode keeps growing (11), so names alone can no longer be
-     * compared ("1.0.10" > "1.0.0" but is OLDER). Releases are compared by versionCode, which must be in the file name:
-     *   一维相册-1.0.0-11.apk / 一维相册-1.0.0(11).apk / 一维相册_1.0.0_vc11.apk
-     * A name without a code is a pre-公测 build (≤ 1.0.10 = versionCode ≤ 10) and is never offered over versionCode ≥ 11;
-     * a name without a code whose version is above 1.0.10 (e.g. 1.1.0) is compared by name as a fallback.
-     */
-    private val APK = Regex("^(?:一维相册|YiWei|yiwei)[-_ ]?v?(\\d+(?:\\.\\d+)+)(?:(?:[-_ ]|[-_ ]?[(（])(?:vc|build|b)?(\\d+)[)）]?)?\\.apk$", RegexOption.IGNORE_CASE)
-    private val NOTE = Regex("^(?:更新说明|YiWei|yiwei)[-_ ]?(?:更新说明|notes?)?[-_ ]?v?(\\d+(?:\\.\\d+)+)(?:(?:[-_ ]|[-_ ]?[(（])(?:vc|build|b)?(\\d+)[)）]?)?\\.txt$", RegexOption.IGNORE_CASE)
+    /** Newer = higher versionCode, or the same versionCode from a later CI run (nightlies share a versionCode). */
+    fun isNewer(r: Release): Boolean = r.code > BuildInfo.code || (r.code == BuildInfo.code && r.build > BuildInfo.build)
 
-    /** versionCode of a release file name; legacy names without a code count as ≤ 10. */
-    /**
-     * 1.0.3: the share actually holds names like 「YiWei-1.0.3.apk」 (no versionCode), which the old rule treated as
-     * pre-公测 builds and never offered — that is why 自动更新 found nothing. Now a name without a code is a 公测 build
-     * compared by versionName (public names 1.0.0, 1.0.1… only grow); the downloaded APK's real versionCode is still
-     * checked before installing, so an old build can never be installed over a newer one.
-     */
-    fun codeOf(name: String, code: String?): Int = code?.toIntOrNull() ?: -1
-
-    fun isNewer(name: String, code: Int): Boolean = when {
-        code >= 0 -> code > BuildInfo.code
-        else -> cmp(name, BuildInfo.version) > 0
-    }
-
-    /** Latest release newer than the installed one (by versionCode), or null. */
+    /** Latest release newer than the installed one, or null. Throws 「第 1 步 获取版本信息失败：…」. */
     suspend fun latest(): Release? = withContext(Dispatchers.IO) {
-        val root = runCatching { list(0) }.getOrNull()
-        val folder = root?.firstOrNull { it.type == 1 && it.name == FOLDER_NAME }?.id ?: FOLDER_ID_HINT
-        val files = list(folder)
-        val cands = files.mapNotNull { f -> APK.find(f.name)?.let { m -> Triple(m.groupValues[1], codeOf(m.groupValues[1], m.groupValues[2].ifEmpty { null }), f) } }
-            .filter { isNewer(it.first, it.second) }
-        val best = cands.maxWithOrNull(compareBy<Triple<String, Int, Entry>> { it.second }.thenComparator { a, b -> cmp(a.first, b.first) }) ?: return@withContext null
-        val note = files.firstOrNull { f -> NOTE.find(f.name)?.let { it.groupValues[1] == best.first && (it.groupValues[2].isEmpty() || it.groupValues[2].toIntOrNull() == best.second) } == true }?.let { text(it) }.orEmpty()
-        Release(best.first, best.third, note, best.second)
+        val r = try { fromVersionJson() } catch (e: Exception) {
+            Diag.log("UPD", "version.json failed: ${e.message} → GitHub API")
+            try { fromApi() } catch (e2: Exception) { throw Exception("第 1 步 获取版本信息失败：${e.message}") }
+        }
+        if (isNewer(r)) r else null
     }
 
     /** At most once per 12 h, silently. */
@@ -137,79 +136,24 @@ object AppUpdate {
             .onFailure { Diag.log("UPD", "check failed: ${it.message}") }
     }
 
-    /** From the 关于 row: returns a message for a toast when there is nothing to offer. A failed check opens the 123 share page. */
+    /** From the 关于 row: returns a message for a toast when there is nothing to offer. */
     suspend fun manualCheck(): String? {
         checking = true
         try {
             val r = latest() ?: return "已是最新版本 ${BuildInfo.label}"
             offer = r; return null
         } catch (e: Exception) {
-            withContext(Dispatchers.Main) { openSharePage(App.ctx) }
-            return "检查失败（${e.message ?: "网络错误"}），已在浏览器打开 123 云盘分享页"
+            return "检查更新失败。${e.message ?: "网络错误"}"
         } finally { checking = false }
     }
 
-    private fun downloadUrl(e: Entry): String? {
-        val body = JSONObject().put("ShareKey", SHARE_KEY).put("FileID", e.id).put("S3keyFlag", e.s3).put("Size", e.size).put("Etag", e.etag)
-        for (h in HOSTS) {
-            val j = runCatching {
-                http.newCall(Request.Builder().url("$h/b/api/share/download/info").web()
-                    .post(body.toString().toRequestBody("application/json;charset=UTF-8".toMediaType())).build())
-                    .execute().use { JSONObject(it.body?.string().orEmpty()) }
-            }.getOrNull() ?: continue
-            lastCode = j.optInt("code", -1)
-            if (lastCode == LOGIN_REQUIRED) { Diag.log("UPD", "download/info 5112 需要登录 → share page"); return null } // same answer on every host
-            if (lastCode != 0) { Diag.log("UPD", "download/info $lastCode ${j.optString("message")}"); continue }
-            val u = j.optJSONObject("data")?.let { it.optString("DownloadURL").ifEmpty { it.optString("DownloadUrl") } }.orEmpty()
-            if (u.isEmpty()) continue
-            return resolve(u)
-        }
-        return null
+    /** Browser fallback: the fixed APK link through the first mirror (github.com itself is often unreachable in 大陆). */
+    fun openInBrowser(c: Context) {
+        val u = MIRRORS.first().map(APK_URL) ?: APK_URL
+        runCatching { c.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
     }
 
-    /**
-     * 123 answers the anonymous share download with 5112 「您需要注册登录或付费后下载」 (verified 2026-10-09 for the apk files).
-     * When this phone has a 123 云盘 WebDAV account (the share owner's own drive), fetch the same file through WebDAV instead:
-     * look for folder 「一维相册」 at the root or one level down, and a file with the same name and size.
-     * Returns (url, headers) or null.
-     */
-    private fun viaWebDav(e: Entry): Pair<String, Map<String, String>>? {
-        val accs = runCatching { com.hark.shiguang.cloud.CloudAccounts.all }.getOrDefault(emptyList()).filter { it.url.contains("123pan", true) || it.url.contains("123684") || it.url.contains("123865") }
-        for (a in accs) runCatching {
-            val src = com.hark.shiguang.cloud.WebDavSource(a)
-            val root = src.listBlocking("/")
-            val folders = root.filter { it.isDir && it.name == FOLDER_NAME } +
-                root.filter { it.isDir && it.name != FOLDER_NAME }.take(30).flatMap { d -> runCatching { src.listBlocking(d.path) }.getOrDefault(emptyList()).filter { it.isDir && it.name == FOLDER_NAME } }
-            for (f in folders) {
-                val hit = src.listBlocking(f.path).firstOrNull { !it.isDir && it.name == e.name && (e.size <= 0 || it.size == e.size) } ?: continue
-                val url = kotlinx.coroutines.runBlocking { src.rawUrl(hit) }
-                Diag.log("UPD", "share needs login → using WebDAV account ${a.title}")
-                return url to src.headers(url)
-            }
-        }.onFailure { Diag.log("UPD", "webdav fallback ${a.title}: ${it.message}") }
-        return null
-    }
-
-    /** 123 often returns a web redirect page (…?params=base64) that answers JSON {data:{redirect_url}}; follow it once. */
-    private fun resolve(u: String): String = runCatching {
-        val params = Uri.parse(u).getQueryParameter("params")
-        if (params != null) {
-            val dec = runCatching { String(android.util.Base64.decode(params, android.util.Base64.DEFAULT)) }.getOrNull()
-            if (dec != null && dec.startsWith("http")) return@runCatching dec
-        }
-        val r = http.newBuilder().followRedirects(false).build().newCall(Request.Builder().url(u).web().header("Range", "bytes=0-0").build()).execute()
-        r.use {
-            it.header("Location")?.let { loc -> return@runCatching loc }
-            val ct = it.header("Content-Type").orEmpty()
-            if (ct.contains("json")) JSONObject(it.body?.string().orEmpty()).optJSONObject("data")?.optString("redirect_url")?.takeIf { s -> s.startsWith("http") } ?: u else u
-        }
-    }.getOrDefault(u)
-
-    fun openSharePage(c: Context) {
-        runCatching { c.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SHARE_PAGE)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-    }
-
-    /** Downloads with a progress notification and opens the installer. Falls back to the share page. */
+    /** Downloads through the mirror chain with a progress notification, verifies, opens the installer. */
     suspend fun downloadAndInstall(c: Context, r: Release): Boolean = withContext(Dispatchers.IO) {
         val nm = c.getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= 26 && nm?.getNotificationChannel("update") == null)
@@ -219,58 +163,55 @@ object AppUpdate {
             runCatching { nm?.notify(4109, b.setSmallIcon(R.drawable.ic_notify).setContentTitle("一维相册 ${r.version}").setContentText(text).setOngoing(ongoing).setOnlyAlertOnce(true)
                 .apply { if (p in 0..100 && ongoing) setProgress(100, p, false) }.build()) }
         }
-        val ready = File(c.cacheDir, "update/YiWei-${r.version}.apk")
-        if (ready.exists()) {
-            // B37 + B5: a reused download is re-verified (magic + size + versionCode + SHA-256 when available),
-            // then the same-signer check runs — a stale / swapped file must never reach the installer.
-            if (verifyApk(c, ready, r) == null) {
-                try { checkSignature(c, ready) } catch (e: SignatureMismatch) {
-                    Diag.log("UPD", "cached APK signature mismatch, installer NOT launched")
-                    runCatching { ready.delete() }
-                    return@withContext signatureMismatchAbort(c)
-                }
-                withContext(Dispatchers.Main) { install(c, ready) }; return@withContext true
-            }
-        }
+        val dir = File(c.cacheDir, "update").apply { mkdirs() }
+        val out = File(dir, "YiWei-${r.version}-${r.code}-${r.build}.apk")
         try {
-            lastCode = 0
-            var hdr: Map<String, String> = emptyMap()
-            val url = downloadUrl(r.apk) ?: viaWebDav(r.apk)?.also { hdr = it.second }?.first
-                ?: throw Exception(if (lastCode == LOGIN_REQUIRED) "123 云盘分享要求登录才能下载，本机也没有可用的 123 云盘 WebDAV 账户" else "拿不到下载地址")
-            val dir = File(c.cacheDir, "update").apply { mkdirs(); listFiles()?.forEach { it.delete() } }
-            val out = File(dir, "YiWei-${r.version}.apk")
-            progress = 0f; note(0, "正在下载", true)
-            // WebDAV GET answers 302 to a CDN URL; OkHttp drops Authorization on the cross-host hop by itself
-            http.newCall(Request.Builder().url(url).header("User-Agent", "Mozilla/5.0").apply { hdr.forEach { (k, v) -> header(k, v) } }.build()).execute().use { resp ->
-                if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
-                val body = resp.body ?: throw Exception("空响应")
-                val total = body.contentLength().takeIf { it > 0 } ?: r.apk.size
-                var got = 0L; var lastPct = -1
-                body.byteStream().use { ins -> out.outputStream().use { os ->
-                    val buf = ByteArray(64 * 1024)
-                    while (true) { val n = ins.read(buf); if (n < 0) break; os.write(buf, 0, n); got += n
-                        val pct = if (total > 0) (got * 100 / total).toInt() else -1
-                        if (pct != lastPct) { lastPct = pct; progress = pct / 100f; if (pct % 5 == 0) note(pct, "正在下载 $pct%", true) } }
-                } }
-                if (r.apk.size > 0 && got != r.apk.size) throw Exception("文件不完整")
+            if (!trusted(r.apkUrl)) throw Exception("下载地址不在 github.com/yiweishurufa/ 下，已拒绝")
+            if (!r.sha256.matches(Regex("[0-9a-f]{64}"))) throw Exception("第 2 步 下载前检查失败：GitHub 版本信息里没有 SHA-256，无法校验，已取消")
+            // B37 + B5: a reused download is re-verified before the installer sees it
+            if (!(out.exists() && verifyApk(c, out, r) == null)) {
+                dir.listFiles()?.forEach { it.delete() }
+                progress = 0f; note(0, "正在从 GitHub 下载", true)
+                val errs = ArrayList<String>(); var ok = false
+                for (m in ordered()) {
+                    val u = m.map(r.apkUrl) ?: continue
+                    try {
+                        http.newCall(Request.Builder().url(u).ua().build()).execute().use { resp ->
+                            if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
+                            val body = resp.body ?: throw Exception("空响应")
+                            val ct = resp.header("Content-Type").orEmpty()
+                            if (ct.contains("text/html")) throw Exception("返回的是网页不是安装包")
+                            val total = body.contentLength().takeIf { it > 0 } ?: r.size
+                            var got = 0L; var lastPct = -1
+                            body.byteStream().use { ins -> out.outputStream().use { os ->
+                                val buf = ByteArray(64 * 1024)
+                                while (true) { val n = ins.read(buf); if (n < 0) break; os.write(buf, 0, n); got += n
+                                    val pct = if (total > 0) (got * 100 / total).toInt() else -1
+                                    if (pct != lastPct) { lastPct = pct; progress = pct / 100f; if (pct % 5 == 0) note(pct, "正在下载 $pct%（${m.name}）", true) } }
+                            } }
+                            if (r.size > 0 && got != r.size) throw Exception("文件不完整（$got / ${r.size}）")
+                        }
+                        Store.putStr("upd.mirror", m.id); ok = true; break
+                    } catch (e: Exception) {
+                        out.delete(); errs += "${m.name}：${e.message ?: e.javaClass.simpleName}"; Diag.log("UPD", "download ${m.id} failed: ${e.message}")
+                    }
+                }
+                if (!ok) throw Exception("第 2 步 下载安装包失败：${errs.joinToString("；")}")
+                verifyApk(c, out, r)?.let { out.delete(); throw Exception("第 3 步 校验安装包失败：$it") }
             }
-            // B37: re-verify the fresh download (magic + size + versionCode + SHA-256 when available),
-            // then B5 same-signer check before the installer ever sees the file.
-            verifyApk(c, out, r)?.let { out.delete(); throw Exception(it) }
             checkSignature(c, out)
             note(100, "下载完成，点安装", false); progress = -1f
             withContext(Dispatchers.Main) { install(c, out) }
             true
         } catch (e: SignatureMismatch) {
             Diag.log("UPD", "download failed: signature mismatch, installer NOT launched")
-            progress = -1f; runCatching { nm?.cancel(4109) }
+            progress = -1f; runCatching { nm?.cancel(4109) }; runCatching { out.delete() }
             signatureMismatchAbort(c)
         } catch (e: Exception) {
-            Diag.log("UPD", "download failed: ${e.message}")
+            Diag.log("UPD", "update failed: ${e.message}")
             progress = -1f; runCatching { nm?.cancel(4109) }
             withContext(Dispatchers.Main) {
-                android.widget.Toast.makeText(c, "应用内下载失败（${e.message}），已在浏览器打开 123 云盘分享页，请在那里下载安装包", android.widget.Toast.LENGTH_LONG).show()
-                openSharePage(c)
+                android.widget.Toast.makeText(c, "应用内更新失败。${e.message}\n可在更新窗口点「浏览器下载」。", android.widget.Toast.LENGTH_LONG).show()
             }
             false
         }
@@ -321,28 +262,25 @@ object AppUpdate {
     }
 
     /**
-     * B37: verifies a downloaded APK — ZIP magic ("PK"), size, versionCode newer than installed, and
-     * SHA-256 when the share listing's etag is a 64-hex SHA-256 (123's etag is usually an MD5-like value,
-     * so the hash check only runs when it actually looks like a SHA-256). Returns null when OK.
+     * B37: verifies a downloaded APK — ZIP magic ("PK"), size, SHA-256 (from GitHub version info, required),
+     * package name, and a versionCode not older than the installed one. Returns null when OK.
      */
     fun verifyApk(c: Context, f: File, r: Release): String? {
         if (!f.exists() || f.length() == 0L) return "安装包不存在"
-        // a 123 「请登录」 HTML page would not start with the ZIP magic
         val head = f.inputStream().use { val b = ByteArray(4); it.read(b); b }
         if (!(head[0] == 'P'.code.toByte() && head[1] == 'K'.code.toByte())) return "下载的不是安装包"
-        if (r.apk.size > 0 && f.length() != r.apk.size) return "文件不完整（${f.length()} / ${r.apk.size}）"
-        val etag = r.apk.etag.trim().lowercase()
-        if (etag.matches(Regex("[0-9a-f]{64}"))) {
-            val sha = runCatching {
-                val md = java.security.MessageDigest.getInstance("SHA-256")
-                f.inputStream().use { ins -> val buf = ByteArray(64 * 1024); while (true) { val n = ins.read(buf); if (n < 0) break; md.update(buf, 0, n) } }
-                md.digest().joinToString("") { "%02x".format(it) }
-            }.getOrNull()
-            if (sha != null && sha != etag) return "安装包 SHA-256 校验失败"
-        }
+        if (r.size > 0 && f.length() != r.size) return "文件不完整（${f.length()} / ${r.size}）"
+        val sha = runCatching {
+            val md = java.security.MessageDigest.getInstance("SHA-256")
+            f.inputStream().use { ins -> val buf = ByteArray(64 * 1024); while (true) { val n = ins.read(buf); if (n < 0) break; md.update(buf, 0, n) } }
+            md.digest().joinToString("") { "%02x".format(it) }
+        }.getOrNull()
+        if (sha == null || sha != r.sha256) return "SHA-256 不一致（文件可能被代理改动或下载损坏）"
+        @Suppress("DEPRECATION") val info = runCatching { c.packageManager.getPackageArchiveInfo(f.path, 0) }.getOrNull() ?: return "读不出安装包信息"
+        if (info.packageName != c.packageName) return "包名不对（${info.packageName}）"
+        @Suppress("DEPRECATION") val vc = info.versionCode
         // never hand an older build to the installer (it would fail with a downgrade error)
-        val vc = runCatching { @Suppress("DEPRECATION") c.packageManager.getPackageArchiveInfo(f.path, 0)?.versionCode ?: -1 }.getOrDefault(-1)
-        if (vc in 0..BuildInfo.code) return "网盘里的安装包版本号（$vc）不比当前（${BuildInfo.code}）新"
+        if (vc < BuildInfo.code) return "GitHub 上的安装包版本号（$vc）比当前（${BuildInfo.code}）旧"
         return null
     }
     fun install(c: Context, apk: File) {
@@ -355,6 +293,6 @@ object AppUpdate {
         runCatching {
             c.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK))
-        }.onFailure { openSharePage(c) }
+        }.onFailure { openInBrowser(c) }
     }
 }
