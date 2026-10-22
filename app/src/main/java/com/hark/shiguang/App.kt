@@ -20,6 +20,7 @@ class App : Application(), ImageLoaderFactory {
         Diag.init(this)
         if (Store.insecure) Diag.log("SEC", "encrypted prefs unavailable, using plain prefs (${Store.insecureReason})")   // H18
         CrashLog.install(this)
+        Thread { CrashLog.recordSystemExit(this) }.apply { priority = Thread.MIN_PRIORITY }.start()   // 2026-10-22: native crash / ANR
         runCatching { com.hark.shiguang.cloud.CloudAccounts.init(this) }
         NasAccounts.init()
         ctx = this

@@ -727,7 +727,8 @@ object Analyzer {
         val todo = lib.photos.filter { it.isVideo && (lib.meta[it.cloudPath]?.dur ?: 0) == 0 && it.video != null }
         var n = 0
         for (chunk in todo.chunked(2)) {
-            if (!isActive || !ok()) break
+            // 2026-10-22: stop while a video plays (the rest is picked up on the next analysis run, nothing is marked failed)
+            if (!isActive || !ok() || videoPlaying) { if (videoPlaying) Diag.log("DAV", "video durations paused: video playing"); break }
             chunk.map { p -> async(Dispatchers.IO) {
                 runCatching {
                     val d = durationOf(p.video!!)
@@ -743,34 +744,46 @@ object Analyzer {
     /** Seconds, or 0 on failure / timeout. setDataSource can block on a slow host, so it runs on its own thread with a hard timeout. */
     fun durationOf(url: String): Int {
         // H8: the old fixed pool of 2 got filled by retrievers stuck in setDataSource (Future.cancel cannot interrupt
-        // native code), after which every video timed out. Now each lookup has its own daemon thread, and on timeout
-        // the retriever is released (from yet another thread) to abort the blocked read; the caller never waits past 25 s.
+        // native code), after which every video timed out. Each lookup has its own daemon thread; the caller never waits past 25 s.
+        // 2026-10-22 闪退修复: the retriever is created, used and released ONLY on its own thread. H8 used to release() it from
+        // another thread while setDataSource was still blocked — MediaMetadataRetriever is not thread-safe, the native object
+        // was freed under the running read and the process died with a native crash (no Java stack, no crash dialog),
+        // typically while a WebDAV video was playing and starving these reads. A stuck one now just finishes on its own.
         if (stuckDur.get() >= 6) { Diag.log("DAV", "video duration: ${stuckDur.get()} retrievers still stuck, skipping"); return 0 }
-        val mmr = android.media.MediaMetadataRetriever()
         val result = java.util.concurrent.atomic.AtomicInteger(0)
-        val released = java.util.concurrent.atomic.AtomicBoolean(false)
+        val lock = Any(); var finished = false; var timedOut = false
         val t = Thread({
+            val mmr = android.media.MediaMetadataRetriever()
             try {
                 val real = DavThumb.finalUrl(url)
                 val h = if (real == url) (ImageAuth.headersFor(url) ?: emptyMap()) else emptyMap()
                 mmr.setDataSource(real, h)
                 result.set(((mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L) / 1000L).toInt())
-            } catch (_: Throwable) {
-            } finally { if (released.compareAndSet(false, true)) runCatching { mmr.release() } }
+            } catch (e: Throwable) {
+                Diag.log("DAV", "video duration failed: ${e.javaClass.simpleName} ${e.message?.take(80)}")
+            } finally {
+                runCatching { mmr.release() }
+                synchronized(lock) { finished = true; if (timedOut) stuckDur.decrementAndGet() }
+            }
         }, "yw-dur").apply { isDaemon = true }
         t.start()
         t.join(25_000)
         if (t.isAlive) {
             // S5: a timeout is logged and the caller moves on to the next file — it never blocks the queue.
-            Diag.log("DAV", "video duration timeout: ${url.take(120)}")
-            // release() may wait on the retriever's native lock, so it is called from its own thread, never this one
-            if (released.compareAndSet(false, true)) Thread({ runCatching { mmr.release() } }, "yw-dur-release").apply { isDaemon = true }.start()
-            stuckDur.incrementAndGet()
-            Thread({ t.join(120_000); stuckDur.decrementAndGet() }, "yw-dur-watch").apply { isDaemon = true }.start()
+            // Count it as stuck until its own thread finishes (it releases the retriever itself).
+            val stuck = synchronized(lock) { if (!finished) { timedOut = true; stuckDur.incrementAndGet(); true } else false }
+            if (!stuck) return result.get()
+            Diag.log("DAV", "video duration timeout (${stuckDur.get()} stuck): ${url.take(120)}")
             return 0
         }
         return result.get()
     }
+
+    /**
+     * 2026-10-22 闪退修复: true while the 影音 player is open. Background duration reads (MediaMetadataRetriever over
+     * WebDAV) pause meanwhile so they neither compete with the video for bandwidth nor pile up as stuck reads.
+     */
+    @Volatile var videoPlaying = false
 
     fun stop() { jobs.values.forEach { it.cancel() }; jobs.clear() }
     /** B28: stop only one account's analysis job. */

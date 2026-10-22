@@ -18,7 +18,8 @@ fun AppOverlays() {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var crash by remember { mutableStateOf(CrashLog.pending(ctx)) }
-    LaunchedEffect(Unit) { kotlinx.coroutines.delay(2500); AppUpdate.autoCheck() }
+    // 2026-10-22: a native crash / ANR is written to last.txt by a startup background thread — pick it up shortly after
+    LaunchedEffect(Unit) { kotlinx.coroutines.delay(1500); if (crash == null) crash = CrashLog.pending(ctx); kotlinx.coroutines.delay(1000); AppUpdate.autoCheck() }
     crash?.let { log ->
         AlertDialog(onDismissRequest = {}, containerColor = C.Surface,
             title = { Text("上次异常退出", color = C.Text) },
