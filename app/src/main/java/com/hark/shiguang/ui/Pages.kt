@@ -161,7 +161,7 @@ fun RecycleScreen() {
     }) {
         when {
             photos.isEmpty() && loading -> Loading()
-            photos.isEmpty() && err != null -> StateMessage(Icons.Rounded.CloudOff, "加载失败", err.orEmpty(), "重试") { scope.launch { load(true) } }
+            photos.isEmpty() && err != null -> ErrorState(err, onRetry = { scope.launch { load(true) } })
             photos.isEmpty() -> StateMessage(Icons.Rounded.DeleteOutline, "回收站是空的", "删除的照片会在这里保留 30 天。")
             else -> PickGrid(photos, sel, onTap = { p, i ->
                 if (sel.isNotEmpty()) sel = if (p.id in sel) sel - p.id else sel + p.id
@@ -280,7 +280,7 @@ fun DuplicatesScreen() {
     }) {
         when {
             groups.isEmpty() && loading -> Loading()
-            groups.isEmpty() && err != null -> StateMessage(Icons.Rounded.CloudOff, "加载失败", err.orEmpty(), "重试") { scope.launch { load(true) } }
+            groups.isEmpty() && err != null -> ErrorState(err, onRetry = { scope.launch { load(true) } })
             groups.isEmpty() -> StateMessage(Icons.Rounded.FilterNone, "暂时没有重复照片", "重复和相似检测随「发现」页的整理在 NAS 上进行，有结果会显示在这里。", "去发现页") { HomeState.openAiTab() }
             else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
                 items(groups.size, key = { groups[it].id }) { gi ->
@@ -645,7 +645,7 @@ fun CloudBrowseScreen(r: Route.CloudBrowse) {
         val d = dirs
         when {
             d == null -> Loading()
-            err != null && d.isEmpty() && photos.isEmpty() -> StateMessage(Icons.Rounded.CloudOff, "打不开这个目录", err.orEmpty(), "重试") { scope.launch { load() } }
+            err != null && d.isEmpty() && photos.isEmpty() -> ErrorState(err, onRetry = { scope.launch { load() } })
             d.isEmpty() && photos.isEmpty() && others.isEmpty() -> StateMessage(Icons.Rounded.FolderOpen, "空文件夹", "")
             else -> LazyVerticalGrid(GridCells.Adaptive(92.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(2.dp, 0.dp, 2.dp, 120.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {

@@ -169,6 +169,46 @@ fun StateMessage(icon: ImageVector, title: String, sub: String, action: String? 
     }
 }
 
+/**
+ * 1.1.0 统一错误状态：按 [ErrorKind] 给出说人话的标题、原因和处理按钮（连不上 → 重试，密码错 → 修改账号，
+ * 证书不受信任 → 证书设置，空间不足 → 清理缓存）。[detail] 是原始错误文字，小字附在下面方便反馈。
+ * [onRetry] 用于「重试」类；其余按钮默认跳到对应页面，调用方可用 [onFix] 覆盖。
+ */
+@Composable
+fun ErrorState(message: String?, onRetry: () -> Unit, onFix: ((com.hark.shiguang.ErrorKind) -> Unit)? = null) {
+    val k = com.hark.shiguang.ErrorKind.of(message)
+    val icon = when (k) {
+        com.hark.shiguang.ErrorKind.NETWORK -> Icons.Rounded.CloudOff
+        com.hark.shiguang.ErrorKind.AUTH -> Icons.Rounded.Lock
+        com.hark.shiguang.ErrorKind.CERT -> Icons.Rounded.GppMaybe
+        com.hark.shiguang.ErrorKind.SPACE -> Icons.Rounded.Storage
+        com.hark.shiguang.ErrorKind.NOT_FOUND -> Icons.Rounded.FolderOff
+        com.hark.shiguang.ErrorKind.OTHER -> Icons.Rounded.ErrorOutline
+    }
+    Column(Modifier.fillMaxSize().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Box(Modifier.size(84.dp).clip(CircleShape).background((if (k == com.hark.shiguang.ErrorKind.OTHER || k == com.hark.shiguang.ErrorKind.NETWORK) C.Accent else C.Danger).copy(alpha = 0.10f)), contentAlignment = Alignment.Center) {
+            Icon(icon, null, tint = if (k == com.hark.shiguang.ErrorKind.OTHER || k == com.hark.shiguang.ErrorKind.NETWORK) C.Accent else C.Danger, modifier = Modifier.size(36.dp))
+        }
+        Spacer(Modifier.height(Space.l + 2.dp))
+        Text(k.title, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(6.dp))
+        Text(k.hint, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center, modifier = Modifier.widthIn(max = 300.dp))
+        if (!message.isNullOrBlank() && message != k.title) Text(message, color = C.Faint, fontSize = TextSize.caption, textAlign = TextAlign.Center, maxLines = 3,
+            overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = Space.s).widthIn(max = 300.dp))
+        Spacer(Modifier.height(Space.l + 4.dp))
+        GradientButton(k.action, Modifier.width(180.dp)) {
+            when {
+                k == com.hark.shiguang.ErrorKind.NETWORK || k == com.hark.shiguang.ErrorKind.OTHER -> onRetry()
+                onFix != null -> onFix(k)
+                k == com.hark.shiguang.ErrorKind.AUTH -> com.hark.shiguang.Nav.push(if (HomeState.source == "dav") com.hark.shiguang.Route.DavAccounts else com.hark.shiguang.Route.ConnectionSettings)
+                else -> { HomeState.tab = 4; com.hark.shiguang.Nav.reset(com.hark.shiguang.Route.Home) }   // 证书 / 空间 / 位置：设置页里有对应入口
+            }
+        }
+        if (k != com.hark.shiguang.ErrorKind.NETWORK && k != com.hark.shiguang.ErrorKind.OTHER)
+            TextButton(onClick = onRetry, modifier = Modifier.padding(top = Space.xs)) { Text("重试", color = C.Sub) }
+    }
+}
+
 @Composable
 fun GradientButton(text: String, modifier: Modifier = Modifier, loading: Boolean = false, onClick: () -> Unit) {
     Box(

@@ -97,6 +97,36 @@ object C {
     val Card get() = P.card
 }
 
+/**
+ * 1.1.0 视觉规范 token（新代码只引用这些，不写裸数值）。产品气质：安静、干净，把照片放在最前面。
+ * - 颜色：C.*（主色只用于主操作、选中态、关键数字；功能色 Danger / Green / Gold）。
+ * - 间距 [Space]：4 的倍数，同组小、组间大。
+ * - 圆角 [Radius]：三级 + 底部面板。
+ * - 字号 [TextSize]：6 级，比例约 1.2；字重最多 Normal / Medium / SemiBold(Bold 只给大标题)。
+ */
+object Space {
+    val xs = 4.dp; val s = 8.dp; val m = 12.dp; val l = 16.dp; val xl = 24.dp; val xxl = 32.dp
+    /** Page side margin. */
+    val page = 16.dp
+    /** Minimum touch target (Material). */
+    val touch = 48.dp
+}
+
+object Radius {
+    /** Chips, small badges. */
+    val s = 8.dp
+    /** Buttons, inputs, list rows. */
+    val m = 12.dp
+    /** Cards, tiles (= C.Card). */
+    val l = 18.dp
+    /** Top corners of bottom sheets. */
+    val sheet = 28.dp
+}
+
+object TextSize {
+    val caption = 12.sp; val body = 14.sp; val bodyL = 15.sp; val title = 17.sp; val headline = 20.sp; val display = 30.sp
+}
+
 private fun typo(p: Palette) = Typography(
     displaySmall = TextStyle(fontSize = 30.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.4).sp, color = p.text),
     headlineSmall = TextStyle(fontSize = 19.sp, fontWeight = FontWeight.SemiBold, color = p.text),

@@ -357,7 +357,7 @@ private fun PhotosTab() {
         val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
         when {
             tl.photos.isEmpty() && tl.loading -> Column { TopSwitch(); SkeletonGrid(4, 20.dp) }
-            tl.photos.isEmpty() && tl.error != null -> Column { TopSwitch(); Box(Modifier.weight(1f)) { StateMessage(LI.nas(), "连不上飞牛", tl.error.orEmpty(), "重试") { scope.launch { runCatching { Endpoint.autoSelect() }; tl.refresh() } } } }
+            tl.photos.isEmpty() && tl.error != null -> Column { TopSwitch(); Box(Modifier.weight(1f)) { ErrorState(tl.error, onRetry = { scope.launch { runCatching { Endpoint.autoSelect() }; tl.refresh() } }) } }
             tl.photos.isEmpty() && tl.done -> Column { TopSwitch(); Box(Modifier.weight(1f)) { StateMessage(LI.photos(), "还没有照片", "在飞牛相册里添加照片文件夹后，这里会自动出现。") } }
             level == Level.YEAR -> {
                 val cards = remember(tl.months, tl.photos.size) {
@@ -434,7 +434,7 @@ private fun DavPhotosTab() {
     Box(Modifier.fillMaxSize().then(if (!lib.scanning) Modifier.nestedScroll(ptr.nestedScrollConnection) else Modifier)) {
         when {
             lib.photos.isEmpty() && lib.scanning -> Column { TopSwitch(); SkeletonGrid(4, 20.dp) }
-            lib.photos.isEmpty() && lib.error != null -> Column { TopSwitch(); Box(Modifier.weight(1f)) { StateMessage(LI.drive(), "连不上 WebDAV", lib.error.orEmpty(), "重试") { scope.launch { lib.scan() } } } }
+            lib.photos.isEmpty() && lib.error != null -> Column { TopSwitch(); Box(Modifier.weight(1f)) { ErrorState(lib.error, onRetry = { scope.launch { lib.scan() } }) } }
             shown.isEmpty() -> Column { TopSwitch(); PhotoModeSwitch(); PhotoFilterChips(); Box(Modifier.weight(1f)) {
                 if (filter == 3 && stills.isNotEmpty()) StateMessage(LI.photos(), "没有实况照片", "iPhone 实况（照片 + 同名 MOV）和安卓动态照片分析完后会出现在这里。")
                 else StateMessage(LI.photos(), "没有找到照片", "把照片放进这个 WebDAV 后下拉刷新。", "重新扫描") { scope.launch { lib.scan(full = true) } } } }
@@ -526,7 +526,7 @@ private fun AlbumsTab(dav: Boolean) {
                     }
                 }
                 val albums = HomeState.albums
-                if (albums == null && err != null) item(span = { GridItemSpan(maxLineSpan) }) { StateMessage(LI.albums(), "相册加载失败", err.orEmpty(), "重试") { load() } }
+                if (albums == null && err != null) item(span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.height(420.dp)) { ErrorState(err, onRetry = { load() }) } }
                 else if (albums == null) items(4) { Box(Modifier.aspectRatio(1f).clip(RoundedCornerShape(C.Card)).background(shimmerBrush())) }
                 else {
                     item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle("我的相册", "${albums.size} 个 · 长按管理") }
