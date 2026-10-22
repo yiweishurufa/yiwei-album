@@ -55,7 +55,12 @@ fun VideosTab(dav: Boolean) {
             LaunchedEffect(lib) { lib.ensure() }
             val vids by remember(lib) { derivedStateOf { lib.metaVersion; MediaIsolation.version; Hidden.visible(MediaIsolation.davVisible(lib.accountId, lib.photos.filter { it.isVideo })) } }
             val entries = remember(vids) { buildEntries(vids, true) }
-            if (vids.isEmpty()) Column { TopSwitch(); Title("视频", if (lib.scanning) "正在扫描…" else "0 个"); Box(Modifier.weight(1f)) { if (lib.scanning) SkeletonGrid(cols, 0.dp) else StateMessage(LI.videos(), "没有视频", "") } }
+            if (vids.isEmpty()) Column { TopSwitch(); Title("视频", if (lib.scanning) "正在扫描…" else "0 个"); Box(Modifier.weight(1f)) {
+                if (lib.scanning) SkeletonGrid(cols, 0.dp)
+                // H15: a failed load/scan shows why and offers 重试, same as the photo tab
+                else if (lib.error != null) StateMessage(LI.drive(), "连不上 WebDAV", lib.error!!, "重试") { scope.launch { lib.scan() } }
+                else StateMessage(LI.videos(), "没有视频", "")
+            } }
             else PhotoGrid(entries, cols, lib.scanning, onEnd = {}, onOpen = { Nav.push(Route.Viewer(vids, it)) }, state = grid, bottom = 100.dp + miniPlayerPad,
                 header = { Column { TopSwitch(); Title("视频", "${vids.size} 个" + if (lib.scanning) " · 正在扫描…" else "") } })
         } else {
