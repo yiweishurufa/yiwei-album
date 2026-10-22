@@ -30,7 +30,10 @@ android {
     }
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // 1.1.0: R8 代码压缩 + 资源压缩（规则见 proguard-rules.pro；CI 每次 assembleRelease 都会验证）
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.findByName("rel")
         }
     }
