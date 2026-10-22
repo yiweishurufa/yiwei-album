@@ -208,6 +208,7 @@ private fun MusicScanBar(lib: MusicLib) {
         scanning = lib.scanning,
         error = lib.error,
         progress = if (lib.scanning && lib.total > 0) lib.done / lib.total.toFloat() else null,
+        onRetry = { lib.scan(); ScanService.ensure(App.ctx) },
     )
 }
 

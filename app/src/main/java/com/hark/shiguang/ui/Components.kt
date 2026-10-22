@@ -22,6 +22,7 @@ import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -201,13 +202,18 @@ fun ScanProgressCard(
     error: String?,
     progress: Float?,
     modifier: Modifier = Modifier,
+    onRetry: (() -> Unit)? = null,
 ) {
     Column(modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(C.Surface).padding(horizontal = 14.dp, vertical = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(title, color = C.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (countText != null) Text(countText, color = C.Sub, fontSize = 12.sp)
         }
-        if (error != null && !scanning) Text(error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
+        if (error != null && !scanning) Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+            // H16: an error card always offers the way out
+            if (onRetry != null) TextButton(onClick = onRetry) { Text("重试", color = C.Accent, fontSize = 14.sp, fontWeight = FontWeight.Medium) }
+        }
         if (scanning) {
             if (progress == null) LinearProgressIndicator(color = C.Accent, trackColor = C.Surface2, modifier = Modifier.padding(top = 10.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)))
             else LinearProgressIndicator(progress = { progress }, color = C.Accent, trackColor = C.Surface2, modifier = Modifier.padding(top = 10.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)))
