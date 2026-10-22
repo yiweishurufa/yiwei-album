@@ -94,7 +94,8 @@ class MusicLib(val sourceKey: String) {
         if (loaded) return
         loaded = true
         runCatching { dirs = JSONObject(File(dir, "config.json").readText()).optJSONArray("dirs")?.objs().orEmpty().map { MusicDir(it.optString("path"), it.optString("name")) } }
-        runCatching { tracks.addAll(JSONArray(File(dir, "library.json").readText()).objs().map(Track::of)) }
+        // H1: older libraries may hold the same song twice (nested music folders) — duplicate ids crash the LazyColumn keys.
+        runCatching { tracks.addAll(JSONArray(File(dir, "library.json").readText()).objs().map(Track::of).distinctBy { it.id }) }
     }
 
     fun saveDirs(l: List<MusicDir>) {
@@ -149,6 +150,13 @@ class MusicLib(val sourceKey: String) {
         scope.launch { saveLib() }
     }
 
+    /** H1: the outermost folders only — a folder inside another selected one adds nothing to walk. */
+    private fun rootDirs(l: List<MusicDir>): List<MusicDir> {
+        val out = ArrayList<MusicDir>()
+        l.sortedBy { MediaIsolation.normPath(it.path).length }.forEach { d -> if (out.none { MediaIsolation.isUnder(d.path, it.path) }) out.add(d) }
+        return out
+    }
+
     private fun inDir(p: String, d: String): Boolean { val a = p.trimEnd('/'); val b = d.trimEnd('/'); return b.isEmpty() || a == b || a.startsWith("$b/") }
 
     // ---------------------------------------------------------------- scan
@@ -162,14 +170,19 @@ class MusicLib(val sourceKey: String) {
             try {
                 val files = ArrayList<Pair<FsEntry, String>>()           // audio file, folder
                 val folders = HashMap<String, List<FsEntry>>()          // folder → its files (covers, lrc)
-                for (d in dirs) walk(d.path, files, folders)
+                // H1: nested folders (/Music and /Music/周杰伦) are walked once, from the outermost one,
+                // and every file is kept once by its normalized path — the same song twice means two
+                // tracks with the same id, which crashes the song list (duplicate LazyColumn key).
+                for (d in rootDirs(dirs)) walk(d.path, files, folders)
+                val seen = HashSet<String>()
+                val unique = files.filter { (e, _) -> seen.add(MediaIsolation.normPath(e.path)) }
                 val old = tracks.associateBy { it.path }
-                val fresh = files.map { (e, folder) ->
+                val fresh = unique.map { (e, folder) ->
                     val o = old[e.path]
                     val lrc = sidecarLrc(e, folders[folder].orEmpty())
                     if (o != null && !rescrape && o.size == e.size && (e.mtime == 0L || o.mtime == 0L || o.mtime == e.mtime) && o.scanned) o.copy(lrcPath = lrc ?: o.lrcPath, folder = folder)
                     else guess(e, folder).copy(lrcPath = lrc)
-                }.sortedWith(compareBy({ it.folder }, { it.discNo }, { it.trackNo }, { it.name }))
+                }.distinctBy { it.id }.sortedWith(compareBy({ it.folder }, { it.discNo }, { it.trackNo }, { it.name }))
                 withContext(Dispatchers.Main) { tracks.clear(); tracks.addAll(fresh); version++ }
                 saveLib()
 
@@ -249,11 +262,11 @@ class MusicLib(val sourceKey: String) {
                             val files = l.filter { !it.isDir }
                             synchronized(folders) { folders[d] = files }
                             // B36: audio files that live inside a 影视 folder are not music.
-                            val audio = files.filter { Music.isAudio(it.name) && !it.name.startsWith("._") && !MediaIsolation.isMediaPath(sourceKey, it.path) }
+                            val audio = files.filter { Music.isAudio(it.name) && !it.name.startsWith("._") && !MediaIsolation.isMoviePath(sourceKey, it.path) }
                             synchronized(out) { audio.forEach { out.add(it to d) } }
                             // B36: never descend into 影视 folders — a music dir inside / next to a movie
                             // library must not pull movie soundtracks into the music library.
-                            next.addAll(l.filter { it.isDir && !it.name.startsWith(".") && !it.name.startsWith("@") && !it.name.startsWith("#") && !MediaIsolation.isMediaPath(sourceKey, it.path) }.map { it.path })
+                            next.addAll(l.filter { it.isDir && !it.name.startsWith(".") && !it.name.startsWith("@") && !it.name.startsWith("#") && !MediaIsolation.isMoviePath(sourceKey, it.path) }.map { it.path })
                             if (audio.isNotEmpty()) withContext(Dispatchers.Main) { found += audio.size; phase = "正在列出音乐文件 · 已找到 $found 首" }
                         }
                     }

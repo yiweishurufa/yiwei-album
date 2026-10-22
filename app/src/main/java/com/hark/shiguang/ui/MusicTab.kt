@@ -519,7 +519,14 @@ fun MusicSettingsScreen() {
         if (lib == null) { StateMessage(Icons.Rounded.MusicNote, "先添加一个来源", ""); return@Page }
         if (picking) { FolderPicker(lib.fs, lib.kind, onDismiss = { picking = false }, fmOnly = true) { path, name ->
             picking = false
-            if (lib.dirs.none { it.path == path }) { lib.saveDirs(lib.dirs + MusicDir(path, name)); lib.scan(); ScanService.ensure(ctx) }
+            // H1: a folder inside an already chosen one is already covered; a parent replaces its chosen subfolders.
+            val outer = lib.dirs.firstOrNull { MediaIsolation.isUnder(path, it.path) }
+            if (outer != null) toast(ctx, "已包含在「${outer.name}」里")
+            else {
+                val inner = lib.dirs.filter { MediaIsolation.isUnder(it.path, path) }
+                if (inner.isNotEmpty()) toast(ctx, "已合并 ${inner.size} 个子文件夹")
+                lib.saveDirs(lib.dirs - inner.toSet() + MusicDir(path, name)); lib.scan(); ScanService.ensure(ctx)
+            }
         }; return@Page }
         Column(Modifier.fillMaxSize().verticalScroll(androidx.compose.foundation.rememberScrollState()).navigationBarsPadding().padding(bottom = 40.dp)) {
             Section("音乐文件夹")

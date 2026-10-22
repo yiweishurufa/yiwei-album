@@ -48,6 +48,29 @@ object MediaIsolation {
         return runCatching { JSONObject(f.readText()).optJSONArray("dirs")?.objs().orEmpty().map { norm(it.optString("path")) }.filter { it.isNotEmpty() } }.getOrDefault(emptyList())
     }
 
+    /** Only the 影视 folders (movies/config.json) — the 音乐 scan skips these, never its own folders. */
+    fun movieRoots(sourceKey: String): List<String> = cache.getOrPut("movies|$sourceKey") { read(sourceKey, "movies") }
+
+    /**
+     * 用户 2026-10-22 反馈：音乐文件夹扫不出歌。[isMediaPath] 用的 [roots] 含音乐文件夹本身，音乐扫描用它过滤时
+     * 自己的每个文件都被跳过。音乐扫描必须用这个只看影视文件夹的版本。
+     */
+    fun isMoviePath(sourceKey: String, path: String): Boolean {
+        val r = movieRoots(sourceKey)
+        if (r.isEmpty() || path.isEmpty()) return false
+        val p = norm(path)
+        return r.any { root -> p == root || p.startsWith("$root/") }
+    }
+
+    /** Same normalization the folder matching uses ("fm:", leading/trailing "/", volN/uid stripped). */
+    fun normPath(p: String): String = norm(p)
+
+    /** True when folder [child] is [parent] or lies inside it (both normalized). */
+    fun isUnder(child: String, parent: String): Boolean {
+        val c = norm(child); val p = norm(parent)
+        return p.isEmpty() || c == p || c.startsWith("$p/")
+    }
+
     /** 1.0.3: true when [path] lies inside one of the 音乐 folders of [sourceKey]. */
     fun isMusicPath(sourceKey: String, path: String): Boolean {
         val r = musicRoots(sourceKey)
@@ -70,7 +93,7 @@ object MediaIsolation {
     fun davVisible(accountId: String, photos: List<Photo>): List<Photo> = exclude(davKey(accountId), photos) { it.cloudPath }
     fun fnVisible(photos: List<Photo>): List<Photo> = exclude(fnKey(), photos) { it.path }
 
-    fun invalidate(sourceKey: String? = null) { if (sourceKey == null) cache.clear() else { cache.remove(sourceKey); cache.remove("music|$sourceKey") }; version++ }
+    fun invalidate(sourceKey: String? = null) { if (sourceKey == null) cache.clear() else { cache.remove(sourceKey); cache.remove("music|$sourceKey"); cache.remove("movies|$sourceKey") }; version++ }
 
     /** S15: 飞牛 paths come as volN/uid/… AND as bare volN/… — both strip to the same relative path. */
     private val VOL = Regex("^vol\\d+/(?:\\d+/)?")
