@@ -1,5 +1,14 @@
 # 给下一个 AI 的交接说明：一维相册 1.0.2 → 1.0.3
 
+## 最新进度（2026-10-22 Hark 维护，按 TODO-用户反馈-2026-10-22.md 修复，均已本地 `:app:compileDebugKotlin` 通过并推 main，未真机验证）
+- 用户#3 + H1 音乐文件夹扫不出歌 / 嵌套文件夹重复歌曲闪退：812b309（`MediaIsolation.isMoviePath`，音乐扫描只排除影视文件夹；扫描去重、添加父子文件夹合并）
+- **在线更新改为只走 GitHub**：e4016a2（见上方警示；CI 上传 version.json，`BuildConfig.CI_RUN` 区分同 versionCode 的测试版）
+- 用户#2 + H4/H5 进影音页卡死：52274e0（MovieLib/MusicLib 异步读盘 + `ready`/`awaitReady()`；新代码读库前要 `awaitReady()` 或看 `ready`）
+- H2 WebDAV 排序/配对移出主线程：f47220f；H3 缩略图流式解码：9bd20f1；H7 扫描不随页面取消（DavLib.workScope）：8436bad
+- 用户#1 局域网只列真飞牛：5e545dc（Wi-Fi 网段 + fnOS 页面特征校验，`Endpoint.Found`）
+- H6 6da9ca9、H20 eac1371、H8 10a0a42、H9 dae7b5e、H10 c498346、H11 75fb4dd、H12 6f89119、H13 d09fff1、H14 61b9cae、H15 0e19e99、H16 2017b0d、H17 a2f8e1c、H18 ad17181、H19（部分）c57fb8e
+- 未做：H19 用户 CA 收紧；H18 Keystore 自加密；H13 Map 清缓存时清理；WebDAV 扫描中途结果持久化。全部待真机验证（尤其 fnOS 首页特征判断、音乐扫描、切页不崩）。
+
 > **⚠️ 在线更新只走 GitHub（用户 2026-10-22 定）**：App 内「检查更新」读 GitHub release `android-nightly` 里 CI 上传的 `version.json`（versionCode / versionName / build=CI 运行号 / notes / apk / sha256 / size），读不到时退回 GitHub API 的 assets；国内按 上次成功源 → ghfast.top → gh-proxy.com → GitHub 直连 依次尝试，只信任 `https://github.com/yiweishurufa/` 下的地址，下载后校验 SHA-256 + 包名 + 签名才安装（代码在 `AppUpdate.kt`，CI 在 `.github/workflows/android.yml`「整理安装包」一步）。**以后禁止再接 123 网盘或任何网盘做更新源。**
 
 
