@@ -273,6 +273,8 @@ internal fun DavDiscoverTab() {
             val memories = remember(v, lib.photos.size) { OnThisDay.from(Hidden.visible(lib.photos.filter { !it.isVideo })) }
             MemoriesSection(memories, recent = { lib.photos.filter { !it.isVideo } })
         }
+        // 1.1.0 回忆 → 旅行（自动旅行相册，设置里可关）
+        item { TravelAlbumsRow(lib, v) }
 
         // ---------------- AI 分类
         item { RowHeader("AI 分类", if (cats.isNotEmpty()) "${cats.size} 类" else "", if (AiConfig.configured) "AI 设置" else null) { Nav.push(Route.AiSettings) } }

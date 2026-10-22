@@ -155,6 +155,10 @@ fun SettingsScreen() {
             if (dav) {
                 Div()
                 NavRow(LI.folder(), "WebDAV 照片文件夹", if (davFolderSel.isEmpty()) "全部文件夹" else "已选 ${davFolderSel.size} 个文件夹") { showDavFolders = true }
+                Div()
+                ToggleRow(LI.pin(), "自动旅行相册", "按拍摄时间和位置，把离常住地 50 公里以上、15 张以上的出行整理成相册，显示在「发现 → 回忆」", TravelAlbums.enabled) {
+                    TravelAlbums.enabled = it
+                }
             }
             if (!dav) {
                 Div()

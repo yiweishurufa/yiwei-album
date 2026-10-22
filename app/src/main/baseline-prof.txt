@@ -27,6 +27,9 @@ HSPLcom/hark/shiguang/LiveMotion**;->**(**)**
 HSPLcom/hark/shiguang/LivePairing;->**(**)**
 HSPLcom/hark/shiguang/ui/HomeAlbumsKt**;->**(**)**
 HSPLcom/hark/shiguang/ui/HomeDiscoverKt**;->**(**)**
+HSPLcom/hark/shiguang/ui/TravelAlbumsKt**;->**(**)**
+HSPLcom/hark/shiguang/ui/TravelAlbums;->**(**)**
+HSPLcom/hark/shiguang/TripCluster;->**(**)**
 HSPLcom/hark/shiguang/ui/UiKitKt**;->**(**)**
 HSPLcom/hark/shiguang/ui/ErrorKinds**;->**(**)**
 HSPLandroidx/room/**;->**(**)**
