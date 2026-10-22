@@ -34,17 +34,42 @@ object Diag {
 
     fun mask(s: String): String = userinfo.replace(secret.replace(s) { m -> m.groupValues[1] + m.groupValues[2] + "***" }) { m -> m.groupValues[1] + "***@" }
 
+    /**
+     * H14: lines queue up and one background thread appends them in batches (about once a second), instead of an
+     * open-write-close of the file for every line — log() is also called on the main thread.
+     */
+    private val pending = java.util.concurrent.ConcurrentLinkedQueue<String>()
+    private val writer = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "yw-diag").apply { isDaemon = true } }
+    @Volatile private var scheduled = false
+    private const val MAX_LOG = 2L * 1024 * 1024
+
     @Synchronized fun log(tag: String, msg: String) {
         val line = "${fmt.format(Date())} [$tag] ${mask(msg)}"
         buf.addLast(line); if (buf.size > 400) buf.removeFirst()
-        if (::dir.isInitialized) runCatching { File(dir, "current.log").appendText(line + "\n") }
+        if (!::dir.isInitialized) return
+        pending.add(line)
+        if (!scheduled) { scheduled = true; runCatching { writer.schedule({ scheduled = false; flush() }, 1, java.util.concurrent.TimeUnit.SECONDS) }.onFailure { scheduled = false } }
     }
 
     fun e(tag: String, t: Throwable) = log(tag, "ERROR ${t.javaClass.simpleName}: ${t.message}")
 
-    private fun flush() {}
+    /** Writes every queued line now (crash handler, export, background batch). */
+    private fun flush() {
+        if (!::dir.isInitialized || pending.isEmpty()) return
+        synchronized(pending) {
+            val sb = StringBuilder()
+            while (true) { sb.append(pending.poll() ?: break).append('\n') }
+            if (sb.isEmpty()) return
+            runCatching {
+                val f = File(dir, "current.log")
+                if (f.length() > MAX_LOG) { val keep = f.readText().takeLast((MAX_LOG / 2).toInt()); f.writeText(keep) }
+                f.appendText(sb.toString())
+            }
+        }
+    }
 
     fun export(c: Context) {
+        flush()
         val out = File(dir, "shiguang-diag-${SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())}.txt")
         val sb = StringBuilder()
         sb.append("一维相册 诊断日志 v${BuildInfo.version}\n设备 ${Build.MANUFACTURER} ${Build.MODEL} Android ${Build.VERSION.RELEASE}\n\n")
