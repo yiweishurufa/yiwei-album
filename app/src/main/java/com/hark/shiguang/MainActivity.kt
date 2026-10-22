@@ -39,6 +39,8 @@ sealed class Route {
     data object Smart : Route()
     data object Duplicates : Route()
     data class DavGroups(val title: String, val accountId: String, val kind: String) : Route()
+    /** 1.1.0: WebDAV 大文件（按大小，Paging 3 从 Room 读）。 */
+    data class DavBigFiles(val accountId: String) : Route()
     data class Folders(val path: String, val title: String) : Route()
     data object Recycle : Route()
     data object DavAccounts : Route()
@@ -203,6 +205,7 @@ class MainActivity : ComponentActivity() {
                             Route.Smart -> SmartScreen()
                             Route.Duplicates -> DuplicatesScreen()
                             is Route.DavGroups -> DavGroupsScreen(r)
+                            is Route.DavBigFiles -> DavBigFilesScreen(r)
                             is Route.Folders -> FoldersScreen(r)
                             Route.Recycle -> RecycleScreen()
                             Route.DavAccounts -> DavAccountsScreen()

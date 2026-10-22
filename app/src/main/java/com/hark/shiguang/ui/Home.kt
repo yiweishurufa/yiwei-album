@@ -835,6 +835,8 @@ private fun DavDiscoverTab() {
                 ToolRow(LI.photos(), "截图", "手机截屏，看完可以批量删掉") {
                     openGroup("截图", "清理空间", Hidden.visible(lib.photos.filter { !it.isVideo && AdvFilter.isScreenshot(it) }))
                 }
+                HorizontalDivider(color = C.Line, modifier = Modifier.padding(start = 58.dp))
+                ToolRow(LI.drive(), "大文件", "按大小排列，先清理最占空间的") { Nav.push(Route.DavBigFiles(lib.accountId)) }
             }
         }
     }
