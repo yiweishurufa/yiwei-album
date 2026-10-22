@@ -229,6 +229,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // 1.1.0 画中画：8–11 在这里手动进入（12+ 由 setAutoEnterEnabled 自动进入），见 VideoPip
+    override fun onUserLeaveHint() { super.onUserLeaveHint(); VideoPip.onUserLeave(this) }
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        VideoPip.inPip = isInPictureInPictureMode
+    }
+
     private var stoppedAt = 0L
     override fun onStop() { super.onStop(); stoppedAt = System.currentTimeMillis() }
     override fun onStart() {

@@ -466,6 +466,7 @@ internal fun DanmakuSettingsCard() {
 fun MediaSettingsScreen() {
     val src = currentSource()
     var online by remember { mutableStateOf(MusicPrefs.online) }
+    var pip by remember { mutableStateOf(VideoPip.enabled) }
     Page("影音设置", src?.let { "${if (it.kind == "dav") "WebDAV" else "飞牛"} · ${it.title}" } ?: "") {
         Column(Modifier.fillMaxSize().verticalScrollCompat().navigationBarsPadding().padding(bottom = 40.dp)) {
             Section("文件夹（当前来源）")
@@ -475,6 +476,12 @@ fun MediaSettingsScreen() {
                 Div()
                 val mu = Music.lib()
                 NavRow(LI.music(), "音乐文件夹", mu?.dirs?.size?.let { if (it == 0) "还没选" else "$it 个 · ${mu.tracks.size} 首" } ?: "先添加来源") { Nav.push(Route.MusicSettings) }
+            }
+            Section("播放")
+            Card {
+                val ctx = LocalContext.current
+                ToggleRow(LI.videos(), "离开时画中画",
+                    if (VideoPip.supported(ctx)) "播放电影剧集时按 Home 键或上滑回桌面，视频缩成小窗继续播放" else "这台手机不支持画中画（需要 Android 8 及以上）", pip) { pip = it; VideoPip.enabled = it }
             }
             Section("音乐刮削（所有来源共用）")
             Card {

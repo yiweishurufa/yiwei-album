@@ -330,7 +330,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     // load the comments of the current file whenever it changes (or after a manual match)
     LaunchedEffect(curPath, dmOn, dmView, dmReload) {
         val dv = dmView ?: return@LaunchedEffect
-        dv.visibility = if (dmOn) android.view.View.VISIBLE else android.view.View.GONE
+        dv.visibility = if (dmOn && !VideoPip.inPip) android.view.View.VISIBLE else android.view.View.GONE
         dv.clear(); dmMatch = null
         if (!dmOn) { dmStatus = "弹幕已关闭"; return@LaunchedEffect }
         if (!DanmakuPrefs.configured) { dmStatus = DanmakuPrefs.HINT; return@LaunchedEffect }
@@ -358,6 +358,67 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         player.replaceMediaItem(i, itemFor(q, urls[q.path].orEmpty(), ms)); player.seekTo(i, pos)
     }
     BackHandler { if (extIdx < 0) save(); Nav.pop() }
+
+    // 1.1.0 画中画：把播放状态、视频宽高比和视频在屏幕上的位置告诉系统（离开 App 时进入小窗，见 VideoPip）
+    val inPip = VideoPip.inPip
+    fun pushPip() {
+        if (extIdx >= 0 || casting) { VideoPip.update(act, null); return }
+        val vs = player.videoSize
+        val w = (vs.width * (if (vs.pixelWidthHeightRatio > 0f) vs.pixelWidthHeightRatio else 1f)).toInt()
+        val (aw, ah) = PipMath.aspect(w, vs.height)
+        // sourceRectHint = the letterboxed video area inside the full-screen PlayerView (smoother enter animation)
+        val rect = playerView?.let { v ->
+            val r = android.graphics.Rect()
+            if (!v.getGlobalVisibleRect(r) || r.isEmpty) return@let null
+            val va = aw.toFloat() / ah; val ra = r.width().toFloat() / r.height()
+            if (ra > va) { val cw = (r.height() * va).toInt(); val l = r.left + (r.width() - cw) / 2; android.graphics.Rect(l, r.top, l + cw, r.bottom) }
+            else { val ch = (r.width() / va).toInt(); val t = r.top + (r.height() - ch) / 2; android.graphics.Rect(r.left, t, r.right, t + ch) }
+        }
+        VideoPip.update(act, VideoPip.Session(w, vs.height, player.isPlaying, player.hasNextMediaItem(), rect))
+    }
+    DisposableEffect(player) {
+        val pipListener = object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) = pushPip()
+            override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) = pushPip()
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) = pushPip()
+        }
+        // the play/pause and next buttons of the PiP window arrive as a package-local broadcast
+        val rcv = object : android.content.BroadcastReceiver() {
+            override fun onReceive(c: android.content.Context?, i: android.content.Intent?) {
+                when (i?.getIntExtra(VideoPip.EXTRA, 0)) {
+                    VideoPip.CMD_TOGGLE -> if (player.isPlaying) player.pause() else {
+                        if (player.playbackState == Player.STATE_ENDED) player.seekTo(0L)
+                        if (player.playbackState == Player.STATE_IDLE) player.prepare()
+                        player.play()
+                    }
+                    VideoPip.CMD_NEXT -> if (player.hasNextMediaItem()) { save(); player.seekToNextMediaItem(); player.play() }
+                }
+            }
+        }
+        player.addListener(pipListener)
+        androidx.core.content.ContextCompat.registerReceiver(ctx, rcv, android.content.IntentFilter(VideoPip.ACTION), androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED)
+        onDispose {
+            player.removeListener(pipListener)
+            runCatching { ctx.unregisterReceiver(rcv) }
+            VideoPip.update(act, null)
+        }
+    }
+    LaunchedEffect(player, casting, extIdx, playerView) { pushPip() }
+    // the activity is stopped (screen off, PiP window closed, PiP turned off and the user left): save and pause.
+    // While shown as a PiP window the activity is only paused, so playback continues there.
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, player) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP) { save(); player.pause() }
+        }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+    }
+    // PiP shows only the video: no controller, no danmaku (and the Compose overlays below are hidden too)
+    LaunchedEffect(inPip, playerView, dmView, dmOn) {
+        playerView?.let { pv -> pv.useController = !inPip; if (inPip) pv.hideController() }
+        dmView?.visibility = if (dmOn && !inPip) android.view.View.VISIBLE else android.view.View.GONE
+    }
 
     if (extIdx >= 0) {
         // 1.1.0: a format the built-in player cannot open at all (rmvb / rm / wmv / asf)
@@ -400,7 +461,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                 }
             }
         }, modifier = Modifier.fillMaxSize())
-        AnimatedVisibility(controls, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopStart)) {
+        AnimatedVisibility(controls && !inPip, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopStart)) {
             Row(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0x99000000), Color.Transparent))).padding(horizontal = 8.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { save(); Nav.pop() }) { Icon(LI.back(true), null, tint = Color.White) }
@@ -420,11 +481,11 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, null, tint = Color.White) }
             }
         }
-        hint?.let { h ->
+        hint?.takeIf { !inPip }?.let { h ->
             Text(h, color = Color.White, fontSize = 13.sp, modifier = Modifier.align(Alignment.TopCenter).padding(top = 64.dp, start = 24.dp, end = 24.dp)
                 .background(Color(0xB3000000), androidx.compose.foundation.shape.RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 8.dp))
         }
-        error?.let { e ->
+        error?.takeIf { !inPip }?.let { e ->
             Column(Modifier.align(Alignment.Center).background(Color(0xCC000000), androidx.compose.foundation.shape.RoundedCornerShape(14.dp)).padding(20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(e, color = Color.White, fontSize = 15.sp)
