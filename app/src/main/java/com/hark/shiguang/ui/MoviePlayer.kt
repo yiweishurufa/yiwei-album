@@ -100,7 +100,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     }
 
     if (item == null || queue.isEmpty()) {
-        Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) { Text("找不到这个视频", color = Color.White) }
+        Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) { Text(if (lib.ready) "找不到这个视频" else "正在读取影视库…", color = Color.White) }
         return
     }
     val bad = NameParser.ext(queue[start].file.name) in NameParser.UNPLAYABLE

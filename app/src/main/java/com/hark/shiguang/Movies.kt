@@ -603,7 +603,12 @@ class MovieLib(val sourceKey: String) {
     var error by mutableStateOf<String?>(null)
     var version by mutableIntStateOf(0)
     private val progress = java.util.concurrent.ConcurrentHashMap<String, Progress>()
-    private var loaded = false
+    /** 用户 2026-10-22 反馈 #2 / H4：库文件在 IO 线程读完才置 true；界面在此之前显示「正在读取」，不再在主线程读盘。 */
+    var ready by mutableStateOf(false)
+        private set
+    private val started = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val loadedSignal = CompletableDeferred<Unit>()
+    @Volatile private var dirsTouched = false
     private var job: Job? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -613,19 +618,31 @@ class MovieLib(val sourceKey: String) {
     private val imgDir: File get() = File(dir, "img").apply { mkdirs() }
     val fs: MovieFs get() = if (kind == "dav") DavFs(accountId) else FnFs()
 
+    /** Starts loading library.json / progress.json / fixes.json on the IO scope (once). Never blocks the caller. */
     fun ensure() {
-        if (loaded) return
-        loaded = true
-        loadFixes()
-        runCatching { dirs = JSONObject(File(dir, "config.json").readText()).optJSONArray("dirs")?.objs().orEmpty().map { MovieDir(it.optString("path"), it.optString("name"), it.optString("kind", "auto")) } }
-        runCatching { items.addAll(JSONArray(File(dir, "library.json").readText()).objs().map(MovieItem::of)) }
-        runCatching {
-            val o = JSONObject(File(dir, "progress.json").readText())
-            o.keys().forEach { k -> o.optJSONObject(k)?.let { progress[k] = Progress(it.optLong("p"), it.optLong("d"), it.optLong("t")) } }
+        if (!started.compareAndSet(false, true)) return
+        scope.launch {
+            loadFixes()
+            val d = runCatching { JSONObject(File(dir, "config.json").readText()).optJSONArray("dirs")?.objs().orEmpty().map { MovieDir(it.optString("path"), it.optString("name"), it.optString("kind", "auto")) } }.getOrNull()
+            val l = runCatching { JSONArray(File(dir, "library.json").readText()).objs().map(MovieItem::of).distinctBy { it.id } }.getOrDefault(emptyList())
+            runCatching {
+                val o = JSONObject(File(dir, "progress.json").readText())
+                o.keys().forEach { k -> o.optJSONObject(k)?.let { progress.putIfAbsent(k, Progress(it.optLong("p"), it.optLong("d"), it.optLong("t"))) } }
+            }
+            withContext(Dispatchers.Main) {
+                if (d != null && !dirsTouched) dirs = d
+                if (items.isEmpty()) items.addAll(l)
+                version++; ready = true
+            }
+            loadedSignal.complete(Unit)
         }
     }
 
+    /** Suspends until [ensure]'s load has finished (scans and lookups off the UI thread use this). */
+    suspend fun awaitReady() { ensure(); loadedSignal.await() }
+
     fun saveDirs(l: List<MovieDir>) {
+        dirsTouched = true
         dirs = l
         File(dir, "config.json").writeText(JSONObject().put("dirs", JSONArray().apply { l.forEach { put(JSONObject().put("path", it.path).put("name", it.name).put("kind", it.kind)) } }).toString(2))
         MediaIsolation.invalidate(sourceKey)   // 1.0.1 #2: 照片/视频 tabs leave these folders out
@@ -673,6 +690,7 @@ class MovieLib(val sourceKey: String) {
         if (job?.isActive == true) return
         ensure()
         job = scope.launch {
+            awaitReady()
             withContext(Dispatchers.Main) { scanning = true; error = null; done = 0; total = 0; phase = "正在列出文件" }
             try {
                 val found = ArrayList<Pair<MovieDir, Walked>>()
@@ -949,6 +967,6 @@ object Movies {
     private val libs = HashMap<String, MovieLib>()
     fun keyOf(): String? = if (com.hark.shiguang.ui.HomeState.source == "dav") Dav.current?.let { "dav:${it.id}" } else NasAccounts.current?.let { "fn:${it.id}" }
     fun lib(): MovieLib? = keyOf()?.let { lib(it) }
-    fun lib(key: String): MovieLib = libs.getOrPut(key) { MovieLib(key) }.also { it.ensure() }
+    fun lib(key: String): MovieLib = synchronized(libs) { libs.getOrPut(key) { MovieLib(key) } }.also { it.ensure() }
     fun forget(key: String) { libs.remove(key) }
 }

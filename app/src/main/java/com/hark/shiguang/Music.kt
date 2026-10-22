@@ -79,7 +79,12 @@ class MusicLib(val sourceKey: String) {
     var found by mutableIntStateOf(0)
     var error by mutableStateOf<String?>(null)
     var version by mutableIntStateOf(0)
-    private var loaded = false
+    /** 用户 2026-10-22 反馈 #2 / H4 / H5：库文件在 IO 线程读完、在主线程装进 [tracks] 后才置 true（加载完成才置位，线程安全）。 */
+    var ready by mutableStateOf(false)
+        private set
+    private val started = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val loadedSignal = CompletableDeferred<Unit>()
+    @Volatile private var dirsTouched = false
     private var job: Job? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -90,15 +95,27 @@ class MusicLib(val sourceKey: String) {
     val lyricsDir: File get() = File(dir, "lyrics").apply { mkdirs() }
     val fs: MovieFs get() = if (kind == "dav") DavFs(accountId) else FnFs()
 
+    /** Starts loading config.json / library.json on the IO scope (once). Never blocks the caller. */
     fun ensure() {
-        if (loaded) return
-        loaded = true
-        runCatching { dirs = JSONObject(File(dir, "config.json").readText()).optJSONArray("dirs")?.objs().orEmpty().map { MusicDir(it.optString("path"), it.optString("name")) } }
-        // H1: older libraries may hold the same song twice (nested music folders) — duplicate ids crash the LazyColumn keys.
-        runCatching { tracks.addAll(JSONArray(File(dir, "library.json").readText()).objs().map(Track::of).distinctBy { it.id }) }
+        if (!started.compareAndSet(false, true)) return
+        scope.launch {
+            val d = runCatching { JSONObject(File(dir, "config.json").readText()).optJSONArray("dirs")?.objs().orEmpty().map { MusicDir(it.optString("path"), it.optString("name")) } }.getOrNull()
+            // H1: older libraries may hold the same song twice (nested music folders) — duplicate ids crash the LazyColumn keys.
+            val l = runCatching { JSONArray(File(dir, "library.json").readText()).objs().map(Track::of).distinctBy { it.id } }.getOrDefault(emptyList())
+            withContext(Dispatchers.Main) {
+                if (d != null && !dirsTouched) dirs = d
+                if (tracks.isEmpty()) tracks.addAll(l)
+                version++; ready = true
+            }
+            loadedSignal.complete(Unit)
+        }
     }
 
+    /** Suspends until [ensure]'s load has finished (the player resolving a cold-start track, scans). */
+    suspend fun awaitReady() { ensure(); loadedSignal.await() }
+
     fun saveDirs(l: List<MusicDir>) {
+        dirsTouched = true
         dirs = l
         File(dir, "config.json").writeText(JSONObject().put("dirs", JSONArray().apply { l.forEach { put(JSONObject().put("path", it.path).put("name", it.name)) } }).toString(2))
         MediaIsolation.invalidate(sourceKey)   // 照片 / 视频 tabs and the 影视 scan leave these folders out
@@ -166,6 +183,7 @@ class MusicLib(val sourceKey: String) {
         if (job?.isActive == true) return
         ensure()
         job = scope.launch {
+            awaitReady()
             withContext(Dispatchers.Main) { scanning = true; error = null; done = 0; total = 0; found = 0; phase = "正在列出音乐文件" }
             try {
                 val files = ArrayList<Pair<FsEntry, String>>()           // audio file, folder

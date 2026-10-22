@@ -75,6 +75,7 @@ fun MusicTab() {
     if (key == null) { Column { TopSwitch(); Box(Modifier.weight(1f)) { StateMessage(Icons.Rounded.MusicNote, "先添加一个来源", "音乐库跟着左上角的来源走", "添加 WebDAV") { Nav.push(Route.DavAccounts) } } }; return }
     val lib = remember(key) { Music.lib(key) }
     LaunchedEffect(key) {
+        lib.awaitReady()   // #2 / H4: the library loads on IO; decide about the quiet rescan once it is in
         // first visit after a restart: pick up new files quietly (only new / changed files are read)
         autoScanIfStale("music.last.$key", lib.dirs.isNotEmpty(), lib.scanning) { lib.scan(); ScanService.ensure(App.ctx) }
     }
@@ -112,6 +113,7 @@ fun MusicTab() {
             }
         }
         item { Row(Modifier.padding(start = 16.dp, top = 2.dp, bottom = 8.dp)) { MediaAreaSwitch() } }
+        if (!lib.ready) { item { Box(Modifier.fillMaxWidth().height(440.dp)) { LibLoading() } }; return@LazyColumn }
         if (lib.dirs.isEmpty()) {
             item {
                 Box(Modifier.fillMaxWidth().height(440.dp)) {
@@ -517,6 +519,7 @@ fun MusicSettingsScreen() {
     val src = currentSource()
     Page("音乐库", src?.let { "${if (it.kind == "dav") "WebDAV" else "飞牛"} · ${it.title}" } ?: "") {
         if (lib == null) { StateMessage(Icons.Rounded.MusicNote, "先添加一个来源", ""); return@Page }
+        if (!lib.ready) { LibLoading(); return@Page }   // never save folders over a library that is still loading
         if (picking) { FolderPicker(lib.fs, lib.kind, onDismiss = { picking = false }, fmOnly = true) { path, name ->
             picking = false
             // H1: a folder inside an already chosen one is already covered; a parent replaces its chosen subfolders.

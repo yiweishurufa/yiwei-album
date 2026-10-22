@@ -33,6 +33,7 @@ fun MovieDetailScreen(r: Route.MovieDetail) {
     val lib = remember(r.sourceKey) { Movies.lib(r.sourceKey) }
     val v = lib.version
     val m = remember(v, lib.items.size) { lib.item(r.itemId) }
+    if (m == null && !lib.ready) { Page("影视") { LibLoading() }; return }
     if (m == null) { Page("影视") { StateMessage(LI.film(), "找不到这部作品", "可能已从影视目录移走，重新扫描试试") }; return }
     var season by remember(m.id) { mutableIntStateOf(m.seasons.keys.minOrNull()?.takeIf { it > 0 } ?: m.seasons.keys.minOrNull() ?: 1) }
     var versions by remember { mutableStateOf(false) }
@@ -319,6 +320,7 @@ fun MovieLibrarySettingsScreen() {
     val src = currentSource()
     Page("影视媒体库", src?.let { "${if (it.kind == "dav") "WebDAV" else "飞牛"} · ${it.title}" } ?: "") {
         if (lib == null) { StateMessage(LI.film(), "先添加一个来源", ""); return@Page }
+        if (!lib.ready) { LibLoading(); return@Page }   // never save folders over a library that is still loading
         if (picking) { FolderPicker(lib.fs, lib.kind, onDismiss = { picking = false }) { path, name ->
             picking = false
             if (lib.dirs.none { it.path == path }) lib.saveDirs(lib.dirs + MovieDir(path, name, "auto"))

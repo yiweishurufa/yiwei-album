@@ -251,9 +251,11 @@ class MusicPlayer(private val ctx: Context) : SimpleBasePlayer(Looper.getMainLoo
     }
 
     /** (url, headers, ext) for the queue item; null when the track or source is gone. */
-    private fun resolve(mi: MediaItem): Triple<String, Map<String, String>, String>? {
+    private suspend fun resolve(mi: MediaItem): Triple<String, Map<String, String>, String>? {
         val key = idOf(mi).substringBefore('|'); val id = idOf(mi).substringAfter('|')
-        val lib = Music.lib(key); val t = lib.track(id) ?: return null
+        val lib = Music.lib(key)
+        lib.awaitReady()   // H5: cold start from the notification — wait for the library instead of reading an empty one
+        val t = withContext(Dispatchers.Main) { lib.track(id) } ?: return null
         val fs = lib.fs
         val raw = fs.playUrl(MediaFile(t.path, t.name, t.size)) ?: return null
         val h = fs.headers(raw)

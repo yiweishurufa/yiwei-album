@@ -56,6 +56,7 @@ fun MoviesTab() {
     val lib = remember(key) { Movies.lib(key) }
     val grid = rememberMemGrid("movies-$key-${MoviesState.seg}")
     LaunchedEffect(key) {
+        lib.awaitReady()   // #2 / H4: the library loads on IO; decide about the quiet rescan once it is in
         // first visit after a restart: pick up new files quietly (only new ones are scraped)
         autoScanIfStale("movies.last.$key", lib.dirs.isNotEmpty(), lib.scanning) { lib.scan(); ScanService.ensure(App.ctx) }
     }
@@ -79,6 +80,7 @@ fun MoviesTab() {
             }
         }
         item(span = { GridItemSpan(maxLineSpan) }) { Row(Modifier.padding(start = 2.dp)) { MediaAreaSwitch() } }
+        if (!lib.ready) { items(9) { PosterSkeleton() }; return@LazyVerticalGrid }
         if (lib.dirs.isEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Box(Modifier.fillMaxWidth().height(460.dp)) {
@@ -161,6 +163,15 @@ private fun ScanBar(lib: MovieLib) {
     )
 }
 
+
+/** #2 / H4: shown while a 影视 / 音乐 library is still being read from disk on the IO thread. */
+@Composable
+fun LibLoading() {
+    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        CircularProgressIndicator(color = C.Accent, modifier = Modifier.size(28.dp))
+        Text("正在读取媒体库…", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 12.dp))
+    }
+}
 
 /** First visit after a restart: pick up new files quietly when the last scan is over 6 h old. */
 fun autoScanIfStale(storeKey: String, hasDirs: Boolean, scanning: Boolean, onScan: () -> Unit) {
