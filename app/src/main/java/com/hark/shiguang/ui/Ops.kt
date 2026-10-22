@@ -78,6 +78,22 @@ object CloudPhotos {
         urlOwner.entries.removeIf { it.value == accountId }
     }
 
+    /**
+     * H13: 「清理缓存」时调用。照片地址表原来只增不减（浏览过的文件夹、删掉的照片都留在内存里）；
+     * 这里只保留 [live]（当前图库里还在的照片）和仍存在的账户，其余条目丢掉。
+     * 被丢掉的文件夹页重新进入时会重新登记，不影响使用。
+     */
+    fun trimTo(live: Collection<Photo>) {
+        val keys = HashSet<String>(live.size * 2); val urls = HashSet<String>(live.size * 3)
+        for (p in live) { keys += p.key; urls += p.thumbS; urls += p.thumbM; urls += p.original; p.video?.let { urls += it }; p.liveVideo?.let { urls += it } }
+        val accounts = CloudAccounts.all.map { it.id }.toHashSet()
+        sources.keys.retainAll(accounts)
+        entries.keys.retainAll(keys)
+        entryOwner.keys.retainAll(keys)
+        urlOwner.entries.removeIf { it.key !in urls || it.value !in accounts }
+        com.hark.shiguang.Diag.log("CACHE", "url tables trimmed: entries=${entries.size} urls=${urlOwner.size}")
+    }
+
     private fun ensureAuth() {
         if (registered) return
         registered = true

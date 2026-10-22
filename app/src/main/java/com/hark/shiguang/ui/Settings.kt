@@ -229,6 +229,9 @@ fun SettingsScreen() {
                     // they are the evidence when something goes wrong, and the update would need re-downloading.
                     val left = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                         ctx.cacheDir.listFiles()?.filter { it.name != "diag" && it.name != "update" && !it.name.startsWith("crash") }?.forEach { it.deleteRecursively() }
+                        // H13: the in-memory url tables go too (redirect targets + entries of photos no longer in any library)
+                        DavThumb.clearUrlCache(); PlayHttp.resolved.clear()
+                        runCatching { CloudPhotos.trimTo(Dav.loadedLibs().flatMap { it.photos.toList() }) }.onFailure { Diag.e("CACHE", it) }
                         ctx.cacheDir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
                     }
                     cacheSize = left

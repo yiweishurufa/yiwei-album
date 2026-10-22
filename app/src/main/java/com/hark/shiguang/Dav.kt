@@ -583,6 +583,8 @@ object Dav {
     fun lib(): DavLib? = current?.let { a -> libs.getOrPut(a.id) { DavLib(a.id) } }
     fun lib(id: String): DavLib = libs.getOrPut(id) { DavLib(id) }
     fun select(id: String) { currentId = id; Store.davId = id }
+    /** Libraries currently in memory (for cache trimming). */
+    fun loadedLibs(): List<DavLib> = libs.values.toList()
     /**
      * B25: dropping an account repairs [Store.davId] (next remaining account, or empty) so [current] never
      * silently falls back to another account. The on-disk index/meta/faces are kept by default — pass

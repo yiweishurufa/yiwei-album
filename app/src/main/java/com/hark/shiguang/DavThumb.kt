@@ -84,6 +84,8 @@ object DavThumb {
      * resolve the same url, and each resolution is a network round trip. */
     private val finalUrlCache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Long>>()
     fun invalidateFinalUrl(url: String) { finalUrlCache.remove(url) }
+    /** H13: dropped by 「清理缓存」 (signed CDN urls expire anyway). */
+    fun clearUrlCache() { finalUrlCache.clear() }
 
     /** Follow redirects ourselves (123pan → signed CDN url) so the retriever streams with Range requests. */
     fun finalUrl(url: String): String {
