@@ -60,6 +60,9 @@ import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
+/** 1.1.0 剧集连播：本集结束前多久开始倒数。 */
+private const val NEXT_COUNTDOWN_MS = 5_000L
+
 /** One entry of the play queue. */
 private data class QItem(val path: String, val title: String, val file: MediaFile)
 
@@ -194,6 +197,11 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
             .setMediaMetadata(MediaMetadata.Builder().setTitle(q.title).build()).build()
     }
     val urls = remember(queue) { HashMap<String, String>(pre) }
+    // 1.1.0 剧集连播：倒数秒数（null = 不显示）、本集已取消连播的文件
+    val isShow = item.kind != "movie"
+    val autoNext = remember { PlayPrefs.autoNext }
+    var nextIn by remember { mutableStateOf<Int?>(null) }
+    var nextCancelledFor by remember { mutableStateOf("") }
 
     val player = remember(queue) {
         val upstream = OkHttpDataSource.Factory(PlayHttp.client)
@@ -219,6 +227,8 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                 .setPreferredTextLanguages(*(listOf(sl).filter { it.isNotEmpty() && it != "off" } + listOf("zh", "chi", "zho")).toTypedArray())
                 .setTrackTypeDisabled(MC.TRACK_TYPE_TEXT, sl == "off")
                 .build()
+            // 1.1.0: 「自动播放下一集」关闭时每集播完停在结尾（下一集按钮仍可用）
+            pauseAtEndOfMediaItems = queue.size > 1 && !autoNext
             if (startExternal) playWhenReady = false else { prepare(); playWhenReady = true }
         }
     }
@@ -236,6 +246,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         val id = player.currentMediaItem?.mediaId ?: return
         val d = player.duration
         if (d > 0 && d != MC.TIME_UNSET) lib.setProgress(id, player.currentPosition, d)
+        if (isShow) lib.setLastEpisode(showId, id)   // 1.1.0: 记住这部剧看到第几集（位置在上面的文件进度里）
     }
 
     DisposableEffect(player) {
@@ -248,6 +259,10 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                     val prev = queue.getOrNull(player.currentMediaItemIndex - 1)
                     prev?.let { p -> lib.progressOf(p.path)?.let { lib.setProgress(p.path, it.dur, it.dur) } }
                 }
+                if (isShow) mediaItem?.mediaId?.let { lib.setLastEpisode(showId, it) }
+                // a new episode: the countdown starts fresh, and a cancel only applied to the previous one
+                nextIn = null
+                player.pauseAtEndOfMediaItems = queue.size > 1 && !autoNext
                 error = null
             }
             override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
@@ -322,10 +337,32 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         val intro = PlayPrefs.intro(showId) * 1000L; val outro = PlayPrefs.outro(showId) * 1000L
         val pos = player.currentPosition; val dur = player.duration
         if (intro > 0 && pos in 0 until intro - 1500 && skipped.add("i$id")) { player.seekTo(intro); hint = "已跳过片头" }
-        if (outro > 0 && dur > 0 && dur != MC.TIME_UNSET && dur - pos in 1..outro && player.hasNextMediaItem() && skipped.add("o$id")) {
-            lib.setProgress(id, dur, dur); player.seekToNextMediaItem(); hint = "已跳过片尾"
+        if (outro > 0 && dur > 0 && dur != MC.TIME_UNSET && dur - pos in 1..outro && player.hasNextMediaItem() && nextCancelledFor != id && skipped.add("o$id")) {
+            lib.setProgress(id, dur, dur)
+            // 1.1.0: 自动连播关闭时只停在片尾，不替用户切到下一集
+            if (autoNext) { player.seekToNextMediaItem(); hint = "已跳过片尾" } else { player.pause(); hint = "已到片尾 · 自动播放下一集已关闭" }
         }
     } }
+    // 1.1.0 剧集连播：本集结束（设了跳过片尾时是片尾开始处）前 5 秒显示「下一集 N 秒后播放」，可取消
+    LaunchedEffect(player) {
+        if (!autoNext || queue.size < 2) return@LaunchedEffect
+        while (true) {
+            delay(250)
+            val id = player.currentMediaItem?.mediaId
+            val dur = player.duration
+            if (id == null || dur <= 0 || dur == MC.TIME_UNSET || !player.hasNextMediaItem() || nextCancelledFor == id || error != null || extIdx >= 0) { nextIn = null; continue }
+            val outro = PlayPrefs.outro(showId) * 1000L
+            val end = if (outro > 0 && outro < dur) dur - outro else dur
+            val speed = player.playbackParameters.speed.takeIf { it > 0f } ?: 1f
+            val left = ((end - player.currentPosition) / speed).toLong()
+            nextIn = if (left in 1..NEXT_COUNTDOWN_MS) ((left + 999) / 1000).toInt() else null
+        }
+    }
+    fun cancelNext() {
+        nextCancelledFor = player.currentMediaItem?.mediaId.orEmpty(); nextIn = null
+        player.pauseAtEndOfMediaItems = true   // stay at the end of this episode instead of moving on
+    }
+    fun playNextNow() { nextIn = null; save(); player.seekToNextMediaItem(); player.play() }
     LaunchedEffect(hint) { if (hint != null) { delay(6_000); hint = null } }
     // load the comments of the current file whenever it changes (or after a manual match)
     LaunchedEffect(curPath, dmOn, dmView, dmReload) {
@@ -484,6 +521,15 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         hint?.takeIf { !inPip }?.let { h ->
             Text(h, color = Color.White, fontSize = 13.sp, modifier = Modifier.align(Alignment.TopCenter).padding(top = 64.dp, start = 24.dp, end = 24.dp)
                 .background(Color(0xB3000000), androidx.compose.foundation.shape.RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 8.dp))
+        }
+        nextIn?.takeIf { !inPip }?.let { n ->
+            Row(Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 96.dp)
+                .background(Color(0xCC000000), androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).padding(start = 16.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text("下一集 $n 秒后播放", color = Color.White, fontSize = 14.sp)
+                TextButton(onClick = { cancelNext() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("取消", color = Color(0xCCFFFFFF)) }
+                TextButton(onClick = { playNextNow() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("立即播放", color = C.Accent) }
+            }
         }
         error?.takeIf { !inPip }?.let { e ->
             Column(Modifier.align(Alignment.Center).background(Color(0xCC000000), androidx.compose.foundation.shape.RoundedCornerShape(14.dp)).padding(20.dp),

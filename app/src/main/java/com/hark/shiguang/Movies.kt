@@ -33,6 +33,8 @@ class MovieLib(val sourceKey: String) {
     var error by mutableStateOf<String?>(null)
     var version by mutableIntStateOf(0)
     private val progress = java.util.concurrent.ConcurrentHashMap<String, Progress>()
+    /** 1.1.0: show id → path of the episode last played (shows.json; missing for data from older versions, see [ShowResume]). */
+    private val lastEp = java.util.concurrent.ConcurrentHashMap<String, String>()
     /** 用户 2026-10-22 反馈 #2 / H4：库文件在 IO 线程读完才置 true；界面在此之前显示「正在读取」，不再在主线程读盘。 */
     var ready by mutableStateOf(false)
         private set
@@ -58,6 +60,10 @@ class MovieLib(val sourceKey: String) {
             runCatching {
                 val o = JSONObject(File(dir, "progress.json").readText())
                 o.keys().forEach { k -> o.optJSONObject(k)?.let { progress.putIfAbsent(k, Progress(it.optLong("p"), it.optLong("d"), it.optLong("t"))) } }
+            }
+            runCatching {
+                val o = JSONObject(File(dir, "shows.json").readText())
+                o.keys().forEach { k -> o.optString(k).takeIf { it.isNotEmpty() }?.let { lastEp.putIfAbsent(k, it) } }
             }
             withContext(Dispatchers.Main) {
                 if (d != null && !dirsTouched) dirs = d
@@ -92,6 +98,17 @@ class MovieLib(val sourceKey: String) {
     }
     fun clearProgress(path: String) { progress.remove(path); saveProgress(); version++ }
 
+    /** 1.1.0: remembers which episode of show [showId] was played last (separate file, progress.json keeps its format). */
+    fun setLastEpisode(showId: String, path: String) {
+        if (showId.isEmpty() || path.isEmpty() || lastEp[showId] == path) return
+        lastEp[showId] = path
+        runCatching { File(dir, "shows.json").writeText(JSONObject().apply { lastEp.forEach { (k, v) -> put(k, v) } }.toString()) }
+        version++
+    }
+
+    /** 1.1.0: what 播放 / 继续播放 starts for a show (see [ShowResume]); null for a show without episodes. */
+    fun resumeShow(m: MovieItem): ShowResume.Pick? { version; return ShowResume.pick(m.episodes.map { it.path }, { progress[it] }, lastEp[m.id]) }
+
     /** Items with an unfinished file, most recent first, paired with what to resume. */
     fun continueWatching(): List<Pair<MovieItem, Episode?>> {
         version
@@ -101,10 +118,10 @@ class MovieLib(val sourceKey: String) {
                 m.files.mapNotNull { f -> progress[f.path]?.takeIf { !it.watched && it.pos > 30_000 } }.maxByOrNull { it.at }?.let { out.add(Triple(m, null, it.at)) }
             } else {
                 val eps = m.episodes
-                val last = eps.mapNotNull { e -> progress[e.path]?.let { e to it } }.maxByOrNull { it.second.at } ?: return@forEach
-                val (e, p) = last
-                val next = if (p.watched) eps.getOrNull(eps.indexOf(e) + 1) else e
-                if (next != null) out.add(Triple(m, next, p.at))
+                // only shows that were started (an episode has progress) appear here
+                val at = eps.mapNotNull { e -> progress[e.path]?.at }.maxOrNull() ?: return@forEach
+                val pick = resumeShow(m)?.takeIf { !it.finished } ?: return@forEach
+                eps.firstOrNull { it.path == pick.path }?.let { out.add(Triple(m, it, at)) }
             }
         }
         return out.sortedByDescending { it.third }.map { it.first to it.second }.take(12)

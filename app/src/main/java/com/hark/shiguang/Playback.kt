@@ -186,6 +186,9 @@ object PlayPrefs {
     fun subOffset(id: String): Long = obj(id).optLong("off", 0L)
     fun setSubOffset(id: String, ms: Long) = put(id) { it.put("off", ms) }
 
+    /** 1.1.0 影音设置「自动播放下一集」（全局，默认开）：剧集播完后倒数 5 秒自动播下一集。 */
+    var autoNext: Boolean get() = Store.getStr("play.autoNext", "1") == "1"; set(v) = Store.putStr("play.autoNext", if (v) "1" else "0")
+
     /** Subtitle text size as a fraction of the view height (media3 default 0.0533). */
     var subSize: Float get() = Store.getStr("play.subSize", "0.0533").toFloatOrNull() ?: 0.0533f; set(v) = Store.putStr("play.subSize", v.toString())
     /** Bottom padding fraction (media3 default 0.08). */

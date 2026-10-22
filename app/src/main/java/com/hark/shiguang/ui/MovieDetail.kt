@@ -46,15 +46,8 @@ fun MovieDetailScreen(r: Route.MovieDetail) {
     // what 播放 / 继续播放 starts
     val resume: Pair<String, Progress?>? = remember(v, m) {
         if (m.kind == "movie") m.files.firstOrNull()?.let { f -> m.files.mapNotNull { x -> lib.progressOf(x.path)?.takeIf { !it.watched }?.let { x.path to it } }.maxByOrNull { it.second.at } ?: (f.path to null) }
-        else {
-            val eps = m.episodes
-            val last = eps.mapNotNull { e -> lib.progressOf(e.path)?.let { e to it } }.maxByOrNull { it.second.at }
-            when {
-                last == null -> eps.firstOrNull()?.let { it.path to null }
-                last.second.watched -> eps.getOrNull(eps.indexOf(last.first) + 1)?.let { it.path to null } ?: (last.first.path to last.second)
-                else -> last.first.path to last.second
-            }
-        }
+        // 1.1.0: the episode last played and where (shows.json), falling back to the old most-recent-progress rule
+        else lib.resumeShow(m)?.let { it.path to it.progress }
     }
     val resumeEp = m.episodes.firstOrNull { it.path == resume?.first }
 
@@ -467,6 +460,7 @@ fun MediaSettingsScreen() {
     val src = currentSource()
     var online by remember { mutableStateOf(MusicPrefs.online) }
     var pip by remember { mutableStateOf(VideoPip.enabled) }
+    var autoNext by remember { mutableStateOf(PlayPrefs.autoNext) }
     Page("影音设置", src?.let { "${if (it.kind == "dav") "WebDAV" else "飞牛"} · ${it.title}" } ?: "") {
         Column(Modifier.fillMaxSize().verticalScrollCompat().navigationBarsPadding().padding(bottom = 40.dp)) {
             Section("文件夹（当前来源）")
@@ -482,6 +476,7 @@ fun MediaSettingsScreen() {
                 val ctx = LocalContext.current
                 ToggleRow(LI.videos(), "离开时画中画",
                     if (VideoPip.supported(ctx)) "播放电影剧集时按 Home 键或上滑回桌面，视频缩成小窗继续播放" else "这台手机不支持画中画（需要 Android 8 及以上）", pip) { pip = it; VideoPip.enabled = it }
+                ToggleRow(LI.play(), "自动播放下一集", "剧集播完前显示「下一集 5 秒后播放」，可以取消；每部剧记住看到第几集、看到哪里", autoNext) { autoNext = it; PlayPrefs.autoNext = it }
             }
             Section("音乐刮削（所有来源共用）")
             Card {

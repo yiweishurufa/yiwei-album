@@ -103,6 +103,29 @@ data class Progress(val pos: Long, val dur: Long, val at: Long) {
     val watched: Boolean get() = ratio >= 0.9f
 }
 
+/**
+ * 1.1.0 剧集续播：一部剧「看到第几集、看到哪里」。
+ * [last] 是 shows.json 里记下的最后在看的那一集（1.1.0 起每次播放剧集都会记）；旧数据没有这条记录时，
+ * 回退到以前的办法：所有集里最近一次有进度的那一集。位置始终来自每个文件自己的进度（progress.json，格式不变）。
+ */
+object ShowResume {
+    /** [path] to resume (or start), its progress (null = from the start); [finished] = the last episode was watched to the end. */
+    data class Pick(val path: String, val progress: Progress?, val finished: Boolean)
+
+    fun pick(episodes: List<String>, progressOf: (String) -> Progress?, last: String?): Pick? {
+        if (episodes.isEmpty()) return null
+        val cur = last?.takeIf { it in episodes }
+            ?: episodes.mapNotNull { e -> progressOf(e)?.let { e to it } }.maxByOrNull { it.second.at }?.first
+            ?: return Pick(episodes.first(), null, false)
+        val p = progressOf(cur)
+        if (p?.watched == true) {
+            val next = episodes.getOrNull(episodes.indexOf(cur) + 1) ?: return Pick(cur, p, true)
+            return Pick(next, progressOf(next)?.takeIf { !it.watched }, false)
+        }
+        return Pick(cur, p, false)
+    }
+}
+
 internal fun JSONArray?.strs(): List<String> = if (this == null) emptyList() else (0 until length()).map { optString(it) }.filter { it.isNotEmpty() }
 internal fun JSONArray.objs(): List<JSONObject> = (0 until length()).mapNotNull { optJSONObject(it) }
 
