@@ -308,7 +308,16 @@ private fun ZoomImage(p: Photo, onTap: () -> Unit, onZoom: (Boolean) -> Unit, on
         // Fetch the original once the user lingers or zooms in.
         LaunchedEffect(p.id) { kotlinx.coroutines.delay(600); hiRes = true }
         if (hiRes && !p.fileName.endsWith(".dng", true) && !p.fileName.endsWith(".arw", true) && !p.fileName.endsWith(".cr2", true) && !p.fileName.endsWith(".nef", true)) {
-            AsyncImage(ImageRequest.Builder(ctx).data(p.original).crossfade(250).size(4096).build(), null, layer, contentScale = ContentScale.Fit)
+            // H12: decode for the screen (longer side), not 4096 px — the pager keeps up to 3 pages alive. Zooming in
+            // past 1.5× switches to 2× the screen (≤ 4096) and the screen-sized copy stays as the placeholder.
+            val cfg = androidx.compose.ui.platform.LocalConfiguration.current
+            val screenPx = with(androidx.compose.ui.platform.LocalDensity.current) { maxOf(cfg.screenWidthDp, cfg.screenHeightDp).dp.roundToPx() }.coerceIn(720, 4096)
+            val zoomedIn = scale > 1.5f
+            val target = if (zoomedIn) (screenPx * 2).coerceAtMost(4096) else screenPx
+            val screenKey = remember(p.id) { mutableStateOf<coil.memory.MemoryCache.Key?>(null) }
+            AsyncImage(ImageRequest.Builder(ctx).data(p.original).crossfade(250).size(target)
+                .apply { if (zoomedIn) placeholderMemoryCacheKey(screenKey.value) }.build(), null, layer, contentScale = ContentScale.Fit,
+                onSuccess = { if (!zoomedIn) screenKey.value = it.result.memoryCacheKey })
         }
         if (showLive) LiveLayer(p)
     }
