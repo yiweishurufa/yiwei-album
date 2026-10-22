@@ -1,0 +1,253 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "60fb144fbb5ad8b01a6ae04563667c57",
+    "entities": [
+      {
+        "tableName": "dav_entry",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`account` TEXT NOT NULL, `path` TEXT NOT NULL, `name` TEXT NOT NULL, `size` INTEGER NOT NULL, `modified` INTEGER NOT NULL, `isVideo` INTEGER NOT NULL, `isDir` INTEGER NOT NULL, `month` TEXT NOT NULL, PRIMARY KEY(`account`, `path`))",
+        "fields": [
+          {
+            "fieldPath": "account",
+            "columnName": "account",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "path",
+            "columnName": "path",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "size",
+            "columnName": "size",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "modified",
+            "columnName": "modified",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isVideo",
+            "columnName": "isVideo",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isDir",
+            "columnName": "isDir",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "month",
+            "columnName": "month",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "account",
+            "path"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_dav_entry_account_month",
+            "unique": false,
+            "columnNames": [
+              "account",
+              "month"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_dav_entry_account_month` ON `${TABLE_NAME}` (`account`, `month`)"
+          },
+          {
+            "name": "index_dav_entry_account_modified",
+            "unique": false,
+            "columnNames": [
+              "account",
+              "modified"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_dav_entry_account_modified` ON `${TABLE_NAME}` (`account`, `modified`)"
+          },
+          {
+            "name": "index_dav_entry_account_size",
+            "unique": false,
+            "columnNames": [
+              "account",
+              "size"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_dav_entry_account_size` ON `${TABLE_NAME}` (`account`, `size`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "dav_scan_dir",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`account` TEXT NOT NULL, `dir` TEXT NOT NULL, `tag` TEXT, `kids` TEXT NOT NULL, PRIMARY KEY(`account`, `dir`))",
+        "fields": [
+          {
+            "fieldPath": "account",
+            "columnName": "account",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dir",
+            "columnName": "dir",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tag",
+            "columnName": "tag",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "kids",
+            "columnName": "kids",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "account",
+            "dir"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "dav_scan_media",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`account` TEXT NOT NULL, `dir` TEXT NOT NULL, `path` TEXT NOT NULL, `name` TEXT NOT NULL, `size` INTEGER NOT NULL, `modified` INTEGER NOT NULL, `isVideo` INTEGER NOT NULL, PRIMARY KEY(`account`, `path`))",
+        "fields": [
+          {
+            "fieldPath": "account",
+            "columnName": "account",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dir",
+            "columnName": "dir",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "path",
+            "columnName": "path",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "size",
+            "columnName": "size",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "modified",
+            "columnName": "modified",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isVideo",
+            "columnName": "isVideo",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "account",
+            "path"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_dav_scan_media_account_dir",
+            "unique": false,
+            "columnNames": [
+              "account",
+              "dir"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_dav_scan_media_account_dir` ON `${TABLE_NAME}` (`account`, `dir`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "dav_scan_state",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`account` TEXT NOT NULL, `roots` TEXT NOT NULL, `startedAt` INTEGER NOT NULL, `full` INTEGER NOT NULL, PRIMARY KEY(`account`))",
+        "fields": [
+          {
+            "fieldPath": "account",
+            "columnName": "account",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "roots",
+            "columnName": "roots",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedAt",
+            "columnName": "startedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "full",
+            "columnName": "full",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "account"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      }
+    ],
+    "views": [],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '60fb144fbb5ad8b01a6ae04563667c57')"
+    ]
+  }
+}

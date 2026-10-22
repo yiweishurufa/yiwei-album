@@ -2,6 +2,7 @@ import java.util.Properties
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("com.google.devtools.ksp")
 }
 android {
     namespace = "com.hark.shiguang"
@@ -58,6 +59,8 @@ android {
         }
     }
 }
+// Room 表结构导出到 app/schemas（进 git，便于以后写迁移）
+ksp { arg("room.schemaLocation", "$projectDir/schemas"); arg("room.incremental", "true") }
 dependencies {
     val bom = platform("androidx.compose:compose-bom:2024.06.00")
     implementation(bom)
@@ -90,6 +93,13 @@ dependencies {
     // 1.0.1 #8: on-device photo labels, BUNDLED model (works offline, no Google Play services). Not play-services-mlkit-image-labeling.
     implementation("com.google.mlkit:image-labeling:17.0.9")
     implementation("org.osmdroid:osmdroid-android:6.1.18")
+    // 1.1.0 阶段三：照片索引改 Room（增量写入、可续扫）+ Paging 3（大列表按页读）
+    implementation("androidx.room:room-runtime:2.6.1")
+    implementation("androidx.room:room-ktx:2.6.1")
+    implementation("androidx.room:room-paging:2.6.1")
+    ksp("androidx.room:room-compiler:2.6.1")
+    implementation("androidx.paging:paging-runtime-ktx:3.3.0")
+    implementation("androidx.paging:paging-compose:3.3.0")
     testImplementation("junit:junit:4.13.2")
     // JVM 单元测试里 android.jar 的 XmlPullParser 只是桩，用 kxml2 提供真实实现（WebDAV PROPFIND 解析测试）
     testImplementation("net.sf.kxml:kxml2:2.3.0")
