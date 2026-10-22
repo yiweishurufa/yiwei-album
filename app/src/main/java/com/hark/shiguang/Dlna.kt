@@ -146,7 +146,7 @@ object CastProxy {
     }
 
     /**
-     * 1.0.10: loopback-only proxy for the in-app libVLC fallback player (VLC can't send our auth headers itself).
+     * Loopback-only proxy for 「用其他播放器打开」 (1.1.0, was the libVLC fallback): other apps can't send our auth headers.
      * B3: served by a dedicated socket bound to 127.0.0.1 (never 0.0.0.0), and [handle] refuses non-loopback
      * peers for these routes, so another device on the LAN cannot pull the authenticated stream.
      */
@@ -163,7 +163,7 @@ object CastProxy {
         if (id.isNotEmpty()) routes.remove(id)
     }
 
-    /** 只停投屏用的局域网代理和路由，保留给 libVLC 本地播放用的回环代理（否则会断掉正在播放的音乐）。 */
+    /** 只停投屏用的局域网代理和路由，保留「用其他播放器打开」用的回环代理（否则会断掉外部播放器正在播的文件）。 */
     fun stopCast() { runCatching { server?.close() }; server = null; routes.entries.removeIf { !it.value.localOnly } }
 
     fun stop() { runCatching { server?.close() }; runCatching { localServer?.close() }; server = null; localServer = null; routes.clear() }

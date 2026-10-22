@@ -10,7 +10,6 @@ import androidx.media3.common.Tracks
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import org.json.JSONObject
-import org.videolan.libvlc.LibVLC
 
 /**
  * 1.0.9 playback helpers: quality badges (from the file name, refined by real track info after a play),
@@ -231,11 +230,29 @@ fun ffmpegRenderersFactory(ctx: Context): DefaultRenderersFactory =
         .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
         .setEnableDecoderFallback(true)
 
-/** Shared LibVLC construction for the two VLC paths (video player vs music compatibility engine). */
-object VlcEngine {
-    fun newLibVlc(ctx: Context, audioOnly: Boolean): LibVLC {
-        val opts = if (audioOnly) arrayListOf("--no-video", "--network-caching=3000", "--http-reconnect", "--no-stats")
-        else arrayListOf("--network-caching=2000", "--http-reconnect", "--no-stats")
-        return LibVLC(ctx.applicationContext, opts)
+/**
+ * 1.1.0：libVLC 已删除。Media3 放不了的格式（rmvb / rm / wmv / asf，ape / wma / DSD 等）改为「用其他播放器打开」。
+ * 需要鉴权的地址（WebDAV 密码、飞牛 token）不直接交给别的应用，而是经 [CastProxy.serveLocal] 的本机回环代理转发：
+ * 只有本机能访问（127.0.0.1），不会把密码写进链接；一维相册在后台被系统关掉后链接就失效。
+ */
+object ExternalPlayer {
+    /** Video containers media3 1.3.1 cannot open at all: the player offers 「用其他播放器打开」 right away. */
+    val VIDEO_EXT = setOf("rmvb", "rm", "wmv", "asf")
+
+    /** Opens [url] in another app. Returns a short message for a toast (null = opened without anything to say). */
+    fun open(ctx: Context, url: String, headers: Map<String, String>, name: String, audio: Boolean): String? {
+        val needsAuth = headers.isNotEmpty() && url.startsWith("http")
+        val target = if (needsAuth) runCatching { CastProxy.serveLocal(url, headers, name) }.getOrElse { return "无法生成本机临时地址：${it.message}" } else url
+        val mime = (if (audio) "audio/*" else "video/*")
+        val i = android.content.Intent(android.content.Intent.ACTION_VIEW).setDataAndType(android.net.Uri.parse(target), mime)
+            .putExtra("title", name).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        return try {
+            ctx.startActivity(android.content.Intent.createChooser(i, "用其他播放器打开").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+            Diag.log("PLAY", "external player: ${NameParser.ext(name)} auth=${needsAuth}")
+            if (needsAuth) "这个文件需要登录，已通过本机临时地址转发；播放时请不要彻底关闭一维相册" else null
+        } catch (e: android.content.ActivityNotFoundException) {
+            if (needsAuth) runCatching { CastProxy.revoke(target) }
+            "手机上没有能播放这个格式的应用，可以安装 VLC 或 MX Player 后再试"
+        }
     }
 }

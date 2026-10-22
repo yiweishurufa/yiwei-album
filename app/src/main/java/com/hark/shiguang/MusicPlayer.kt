@@ -1,9 +1,6 @@
 package com.hark.shiguang
 
 import android.content.Context
-import android.media.AudioAttributes as AA
-import android.media.AudioFocusRequest
-import android.media.AudioManager
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -24,8 +21,6 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.*
-import org.videolan.libvlc.LibVLC
-import org.videolan.libvlc.Media
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -35,10 +30,8 @@ import java.util.concurrent.ConcurrentHashMap
  * CURRENT track to one of two engines:
  *  - ExoPlayer (own instance, never shared with the 影视 player) for mp3 / flac / wav / m4a(aac, alac) / ogg / opus,
  *    with the Jellyfin FFmpeg audio decoders preferred (EXTENSION_RENDERER_MODE_PREFER);
- *  - libVLC (already in the APK for rmvb / wmv) for ape / wma / dsf / dff / wv / aiff, which media3 1.3.1 has no
- *    extractor for (the FFmpeg AAR contains the ape / wma / dsd decoders, but media3 cannot demux those containers).
- *    Also the fallback when ExoPlayer reports an unsupported format. VLC can't send our auth headers, so it reads through
- *    [CastProxy.serveLocal] on 127.0.0.1.
+ *  - 1.1.0: libVLC removed. ape / wma / dsf / dff / wv / aiff (no media3 1.3.1 extractor) are skipped with a note;
+ *    the song menu offers 「用其他播放器打开」 ([ExternalPlayer]).
  * Shuffle reorders the queue (current track first) and turning it off restores the original order, so "next" in the
  * notification, on the lock screen and on Bluetooth headsets always matches what the app shows.
  *
@@ -60,7 +53,7 @@ class MusicPlayer(private val ctx: Context) : SimpleBasePlayer(Looper.getMainLoo
     private var shuffle = false
     private var error: PlaybackException? = null
     private var gen = 0                       // bumps on every track load; stale async results are dropped
-    private var engine = 0                    // 0 none, 1 exo, 2 vlc
+    private var engine = 0                    // 0 none, 1 exo
     private var pendingSeek = 0L
     private var retried = false
     private val uids = java.util.IdentityHashMap<MediaItem, Any>()
@@ -81,16 +74,6 @@ class MusicPlayer(private val ctx: Context) : SimpleBasePlayer(Looper.getMainLoo
             .setHandleAudioBecomingNoisy(true).setWakeMode(C.WAKE_MODE_NETWORK).build().apply { addListener(exoListener) }
     }
     private val exo: ExoPlayer by exoLazy
-    private var vlcLib: LibVLC? = null
-    private var vlc: org.videolan.libvlc.MediaPlayer? = null
-    /** B3: loopback proxy URL the current VLC track reads through (revoked when the engine stops). */
-    private var vlcProxyUrl: String? = null
-    private var vlcPos = 0L; private var vlcLen = 0L; private var vlcPlaying = false
-
-    private val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-    private var focus: AudioFocusRequest? = null
-    private var wake: android.os.PowerManager.WakeLock? = null
-    private var wifi: android.net.wifi.WifiManager.WifiLock? = null
 
     // ------------------------------------------------------------------ state for media3
 
@@ -121,12 +104,11 @@ class MusicPlayer(private val ctx: Context) : SimpleBasePlayer(Looper.getMainLoo
     private fun durationOf(mi: MediaItem): Long {
         if (queue.getOrNull(index) === mi) {
             if (engine == 1) exo.duration.takeIf { it != C.TIME_UNSET && it > 0 }?.let { return it }
-            if (engine == 2 && vlcLen > 0) return vlcLen
         }
         return mi.mediaMetadata.extras?.getLong("dur") ?: 0L
     }
 
-    private fun position(): Long = when (engine) { 1 -> exo.currentPosition; 2 -> vlcPos; else -> pendingSeek }
+    private fun position(): Long = when (engine) { 1 -> exo.currentPosition; else -> pendingSeek }
 
     private fun idOf(mi: MediaItem) = mi.mediaId
 
@@ -178,7 +160,6 @@ class MusicPlayer(private val ctx: Context) : SimpleBasePlayer(Looper.getMainLoo
         if (pwr && state == Player.STATE_ENDED) { load(if (index >= queue.size - 1) 0 else index, 0); return Futures.immediateVoidFuture() }
         when (engine) {
             1 -> exo.playWhenReady = pwr
-            2 -> if (pwr) { if (requestFocus()) { vlc?.play(); locks(true) } } else { vlc?.pause(); locks(false) }
             else -> if (pwr && queue.isNotEmpty() && state == Player.STATE_IDLE) load(index, pendingSeek)
         }
         return Futures.immediateVoidFuture()
@@ -196,9 +177,7 @@ class MusicPlayer(private val ctx: Context) : SimpleBasePlayer(Looper.getMainLoo
 
     override fun handleRelease(): ListenableFuture<*> {
         stopEngines(); if (exoLazy.isInitialized()) runCatching { exo.release() }
-        // B7: the VLC MediaPlayer leaked — release it (listener detached + stopped first), not just the LibVLC.
-        runCatching { vlc?.setEventListener(null); vlc?.stop(); vlc?.release() }; vlc = null
-        runCatching { vlcLib?.release() }; vlcLib = null; scope.cancel()
+        scope.cancel()
         return Futures.immediateVoidFuture()
     }
 
@@ -227,7 +206,7 @@ class MusicPlayer(private val ctx: Context) : SimpleBasePlayer(Looper.getMainLoo
         val target = if (mediaItemIndex == C.INDEX_UNSET) index else mediaItemIndex
         val pos = if (positionMs == C.TIME_UNSET) 0 else positionMs
         if (target != index || engine == 0 || state == Player.STATE_ENDED) load(target.coerceIn(0, queue.size - 1), pos)
-        else when (engine) { 1 -> exo.seekTo(pos); 2 -> { vlc?.time = pos; vlcPos = pos } }
+        else if (engine == 1) exo.seekTo(pos)
         return Futures.immediateVoidFuture()
     }
 
@@ -248,7 +227,7 @@ class MusicPlayer(private val ctx: Context) : SimpleBasePlayer(Looper.getMainLoo
             if (my != gen) return@launch
             if (r == null) { fail("读不到这首歌的播放地址"); return@launch }
             val (url, h, ext) = r
-            if (ext in Music.VLC) startVlc(url, h, ext, startMs) else startExo(url, h, startMs)
+            if (ext in Music.UNSUPPORTED) fail("内置播放器不支持 ${ext.uppercase()}，可在歌曲菜单里「用其他播放器打开」") else startExo(url, h, startMs)
         }
     }
 
@@ -271,39 +250,6 @@ class MusicPlayer(private val ctx: Context) : SimpleBasePlayer(Looper.getMainLoo
         exo.setMediaItem(MediaItem.Builder().setUri(url).setMediaId(idOf(queue[index])).build(), startMs)
         exo.prepare(); exo.playWhenReady = pwr
         invalidateState()
-    }
-
-    private fun startVlc(url: String, h: Map<String, String>, ext: String, startMs: Long) {
-        runCatching {
-            val lib = vlcLib ?: VlcEngine.newLibVlc(ctx, audioOnly = true).also { vlcLib = it }
-            val mp = vlc ?: org.videolan.libvlc.MediaPlayer(lib).also { vlc = it }
-            vlcProxyUrl = null
-            val src = if (h.isEmpty()) url else CastProxy.serveLocal(url, h, "a.$ext").also { vlcProxyUrl = it }
-            val m = Media(lib, Uri.parse(src))
-            m.addOption(":no-video")
-            if (startMs > 0) m.addOption(":start-time=${startMs / 1000}")
-            mp.media = m; m.release()
-            vlcPos = startMs; vlcLen = 0; vlcPlaying = false
-            val my = gen
-            mp.setEventListener { e ->
-                main.post {
-                    if (my != gen || engine != 2) return@post
-                    when (e.type) {
-                        org.videolan.libvlc.MediaPlayer.Event.Playing -> { vlcPlaying = true; state = Player.STATE_READY; invalidateState() }
-                        org.videolan.libvlc.MediaPlayer.Event.Paused -> { vlcPlaying = false; invalidateState() }
-                        org.videolan.libvlc.MediaPlayer.Event.Buffering -> if (e.buffering < 100f && !vlcPlaying) { state = Player.STATE_BUFFERING; invalidateState() } else if (state == Player.STATE_BUFFERING) { state = Player.STATE_READY; invalidateState() }
-                        org.videolan.libvlc.MediaPlayer.Event.TimeChanged -> vlcPos = e.timeChanged
-                        org.videolan.libvlc.MediaPlayer.Event.LengthChanged -> { vlcLen = e.lengthChanged; MusicState.durationLearnt(idOf(queue[index]), vlcLen); invalidateState() }
-                        org.videolan.libvlc.MediaPlayer.Event.EndReached -> ended()
-                        org.videolan.libvlc.MediaPlayer.Event.EncounteredError -> fail("这个格式放不了（${ext.uppercase()}）")
-                    }
-                }
-            }
-            engine = 2; note = "兼容模式（VLC）"
-            state = Player.STATE_BUFFERING
-            if (pwr && requestFocus()) { mp.play(); locks(true) } else state = Player.STATE_READY  // paused: VLC opens the stream on play()
-            invalidateState()
-        }.onFailure { Diag.log("MUSIC", "vlc: ${it.message}"); fail("兼容播放器启动失败") }
     }
 
     private val exoListener = object : Player.Listener {
@@ -339,7 +285,7 @@ class MusicPlayer(private val ctx: Context) : SimpleBasePlayer(Looper.getMainLoo
                     if (my != gen) return@launch
                     if (r == null) { fail("读不到这首歌的播放地址"); return@launch }
                     exo.stop()
-                    if (unsupported) startVlc(r.first, r.second, r.third, pos) else startExo(r.first, r.second, pos)
+                    if (unsupported) fail("内置播放器放不了这个文件（${r.third.uppercase()}），可在歌曲菜单里「用其他播放器打开」") else startExo(r.first, r.second, pos)
                 }
                 return
             }
@@ -371,49 +317,11 @@ class MusicPlayer(private val ctx: Context) : SimpleBasePlayer(Looper.getMainLoo
 
     private fun stopEngines() {
         if (engine == 1) runCatching { exo.stop(); exo.clearMediaItems() }
-        if (engine == 2) runCatching { vlc?.setEventListener(null); vlc?.stop() }
-        if (engine == 2) { abandonFocus(); locks(false) }
-        // B3: playback ended / engine stopped — the loopback route must not outlive the track.
-        vlcProxyUrl?.let { runCatching { CastProxy.revoke(it) } }; vlcProxyUrl = null
-        engine = 0; vlcPlaying = false
+        engine = 0
     }
 
-    // ------------------------------------------------------------------ VLC: audio focus, noisy, wake locks (ExoPlayer does its own)
-
-    private val focusListener = AudioManager.OnAudioFocusChangeListener { f ->
-        main.post {
-            if (engine != 2) return@post
-            when (f) {
-                AudioManager.AUDIOFOCUS_LOSS -> { pwr = false; vlc?.pause(); locks(false); invalidateState() }
-                AudioManager.AUDIOFOCUS_LOSS_TRANSIENT, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> { vlc?.pause(); resumeOnGain = pwr }
-                AudioManager.AUDIOFOCUS_GAIN -> if (resumeOnGain && pwr) { vlc?.play(); resumeOnGain = false }
-            }
-        }
-    }
-    private var resumeOnGain = false
-
-    private fun requestFocus(): Boolean {
-        val r = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-            .setAudioAttributes(AA.Builder().setUsage(AA.USAGE_MEDIA).setContentType(AA.CONTENT_TYPE_MUSIC).build())
-            .setOnAudioFocusChangeListener(focusListener, main).build()
-        focus = r
-        return am.requestAudioFocus(r) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-    }
-    private fun abandonFocus() { focus?.let { runCatching { am.abandonAudioFocusRequest(it) } }; focus = null }
-
-    /** Headphones unplugged / Bluetooth gone while VLC plays (ExoPlayer handles this itself). */
-    fun onBecomingNoisy() { if (engine == 2 && pwr) { pwr = false; vlc?.pause(); locks(false); invalidateState() } }
-
-    private fun locks(on: Boolean) {
-        runCatching {
-            if (on) {
-                if (wake == null) wake = (ctx.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "yiwei:music").apply { setReferenceCounted(false) }
-                if (wifi == null) wifi = (ctx.applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager)
-                    .createWifiLock(android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF, "yiwei:music").apply { setReferenceCounted(false) }
-                wake?.acquire(6 * 3600_000L); wifi?.acquire()
-            } else { wake?.takeIf { it.isHeld }?.release(); wifi?.takeIf { it.isHeld }?.release() }
-        }
-    }
+    /** Headphones unplugged / Bluetooth gone: ExoPlayer pauses itself (setHandleAudioBecomingNoisy); kept for MusicService. */
+    fun onBecomingNoisy() {}
 
     companion object {
         /** MediaItem for a track (metadata shows in the notification / lock screen). */

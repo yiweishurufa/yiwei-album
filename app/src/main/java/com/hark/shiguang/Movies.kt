@@ -199,7 +199,7 @@ object NameParser {
     val SUBS = setOf("srt", "ass", "ssa", "vtt")
     val IMG = setOf("jpg", "jpeg", "png", "webp")
     /** Containers ExoPlayer can not play: listed, not played. */
-    /** 1.0.10: rmvb/rm/wmv/asf play through the libVLC fallback (ui/VlcPlayer.kt); only disc images are left. */
+    /** 1.1.0: rmvb/rm/wmv/asf are listed and offered 「用其他播放器打开」 (libVLC removed); only disc images are not playable. */
     val UNPLAYABLE = setOf("iso")
 
     // 1.0.1 #6: release-name cleaner. \b does not work around CJK, so Latin tags and Chinese tags are separate regexes.

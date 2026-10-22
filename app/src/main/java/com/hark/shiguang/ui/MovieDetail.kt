@@ -450,7 +450,7 @@ internal fun DanmakuSettingsCard() {
                     withContext(Dispatchers.IO) { DanDan.test() }
                 }
                 ToggleRow(LI.videos(), "移动网络也精确匹配", "精确匹配要读取视频开头 16 MB 计算指纹；关闭时移动网络下只按文件名匹配", dmCell) { dmCell = it; DanmakuPrefs.hashOnCell = it }
-                Text(if (DanmakuPrefs.configured) "播放时自动按文件匹配弹幕（弹弹play 国内可直连），播放器顶部「弹幕」可开关、手动匹配和调整样式。兼容模式（VLC）不显示弹幕。"
+                Text(if (DanmakuPrefs.configured) "播放时自动按文件匹配弹幕（弹弹play 国内可直连），播放器顶部「弹幕」可开关、手动匹配和调整样式。用其他播放器打开时不显示弹幕。"
                     else DanmakuPrefs.HINT + "。不填也不影响播放。",
                     style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 14.dp))
             }

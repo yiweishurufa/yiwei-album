@@ -248,6 +248,18 @@ private fun TrackRow(t: Track, sourceKey: String, showNo: Boolean = false, onCli
         DropdownMenu(menu, onDismissRequest = { menu = false }, modifier = Modifier.background(C.Surface)) {
             DropdownMenuItem(text = { Text("下一首播放", color = C.Text) }, onClick = { menu = false; MusicState.playNext(sourceKey, t); toast(ctx, "下一首播放") })
             DropdownMenuItem(text = { Text("加到播放列表", color = C.Text) }, onClick = { menu = false; MusicState.enqueue(sourceKey, t); toast(ctx, "已加到播放列表") })
+            // 1.1.0: libVLC removed — ape / wma / DSD etc. go to another app (auth through the loopback proxy)
+            DropdownMenuItem(text = { Text(if (t.ext in Music.UNSUPPORTED) "用其他播放器打开（内置不支持）" else "用其他播放器打开", color = C.Text) }, onClick = {
+                menu = false
+                Ops.launch {
+                    val r = withContext(Dispatchers.IO) { runCatching {
+                        val fs = Music.lib(sourceKey).fs
+                        val raw = fs.playUrl(MediaFile(t.path, t.name, t.size)) ?: error("读不到播放地址")
+                        raw to fs.headers(raw)
+                    } }
+                    r.onSuccess { (u, h) -> ExternalPlayer.open(ctx, u, h, t.name, audio = true)?.let { toast(ctx, it) } }.onFailure { toast(ctx, it.message ?: "打开失败") }
+                }
+            })
             if (t.album.isNotBlank()) DropdownMenuItem(text = { Text("查看专辑", color = C.Text) }, onClick = { menu = false; Nav.push(Route.MusicList("album", t.albumKey, t.displayAlbum)) })
             DropdownMenuItem(text = { Text("查看歌手", color = C.Text) }, onClick = { menu = false; Nav.push(Route.MusicList("artist", t.artists.first(), t.artists.first())) })
             DropdownMenuItem(text = { Column { Text("文件信息", color = C.Text); Text("${t.ext.uppercase()} · ${t.codec} · ${"%.1f".format(t.size / 1048576.0)} MB", color = C.Sub, fontSize = 11.sp)
@@ -564,7 +576,7 @@ fun MusicSettingsScreen() {
             Card { NavRow(Icons.Rounded.Cloud, "联网补全", if (MusicPrefs.online) "已开启 · 在「影音设置」里修改" else "已关闭 · 在「影音设置」里修改") { Nav.push(Route.MediaSettings) } }
             Section("格式")
             Card {
-                Text("mp3、flac、wav、m4a（AAC / ALAC）、ogg、opus 用内置播放器；ape、wma、wv、aiff、dsf / dff（DSD）用兼容模式（VLC）播放。个别文件放不了时会提示并自动跳到下一首。",
+                Text("mp3、flac、wav、m4a（AAC / ALAC）、ogg、opus 用内置播放器；ape、wma、wv、aiff、dsf / dff（DSD）内置播放器不支持，播放列表里会自动跳过，可长按歌曲选「用其他播放器打开」。",
                     style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
             }
             Section("缓存")

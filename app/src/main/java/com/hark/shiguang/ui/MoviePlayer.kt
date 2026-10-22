@@ -160,7 +160,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     var dvFixedFor by remember { mutableStateOf("") }
     var casting by remember { mutableStateOf(false) }
     var playerView by remember { mutableStateOf<PlayerView?>(null) }
-    // 1.0.1 #11 弹幕 (弹弹play) — media3 only, not in the libVLC fallback
+    // 1.0.1 #11 弹幕 (弹弹play)
     var curPath by remember { mutableStateOf(queue[start].path) }
     var dmOn by remember { mutableStateOf(DanmakuPrefs.enabled) }
     var dmView by remember { mutableStateOf<DanmakuView?>(null) }
@@ -171,12 +171,11 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     var dmSearch by remember { mutableStateOf(false) }
     var dmReload by remember { mutableIntStateOf(0) }
     val skipped = remember { HashSet<String>() }
-    // 1.0.10 libVLC fallback: rmvb/rm/wmv/asf always, any other file after media3 says the container/codec is unsupported
-    fun needsVlc(q: QItem) = NameParser.ext(q.file.name) in VlcSupport.EXT
-    val startVlc = needsVlc(queue[start])
-    var vlcIdx by remember { mutableIntStateOf(if (startVlc) start else -1) }
-    var vlcStart by remember { mutableLongStateOf(if (startVlc) lib.progressOf(queue[start].path)?.takeIf { !it.watched && it.pos > 5_000 }?.pos ?: 0L else 0L) }
-    var canVlc by remember { mutableStateOf(false) }
+    // 1.1.0: libVLC removed. rmvb/rm/wmv/asf (no media3 extractor) and files media3 reports as unsupported → 「用其他播放器打开」
+    fun needsExternal(q: QItem) = NameParser.ext(q.file.name) in ExternalPlayer.VIDEO_EXT
+    val startExternal = needsExternal(queue[start])
+    var extIdx by remember { mutableIntStateOf(if (startExternal) start else -1) }
+    var canExternal by remember { mutableStateOf(false) }
 
     /** External subtitles of [q], shifted by the show's subtitle delay when it is not 0. */
     fun itemFor(q: QItem, url: String, offset: Long): MediaItem {
@@ -220,13 +219,20 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                 .setPreferredTextLanguages(*(listOf(sl).filter { it.isNotEmpty() && it != "off" } + listOf("zh", "chi", "zho")).toTypedArray())
                 .setTrackTypeDisabled(MC.TRACK_TYPE_TEXT, sl == "off")
                 .build()
-            if (startVlc) playWhenReady = false else { prepare(); playWhenReady = true }
+            if (startExternal) playWhenReady = false else { prepare(); playWhenReady = true }
         }
     }
-    fun toVlc(i: Int, at: Long) { player.pause(); vlcStart = at; vlcIdx = i; error = null; canVlc = false }
+    /** Hands queue item [i] to another app (auth goes through the loopback proxy, see ExternalPlayer). */
+    fun openExternal(i: Int) {
+        val q = queue.getOrNull(i) ?: return
+        val u = urls[q.path].orEmpty()
+        if (u.isEmpty()) { hint = "还没拿到这个文件的播放地址，请稍后再试"; return }
+        player.pause()
+        ExternalPlayer.open(ctx, u, if (u.startsWith("http")) fs.headers(u) else emptyMap(), q.file.name, audio = false)?.let { toast(ctx, it) }
+    }
 
     fun save() {
-        if (vlcIdx >= 0) return // VlcPlayer saves its own progress
+        if (extIdx >= 0) return // played elsewhere: no position to save
         val id = player.currentMediaItem?.mediaId ?: return
         val d = player.duration
         if (d > 0 && d != MC.TIME_UNSET) lib.setProgress(id, player.currentPosition, d)
@@ -287,14 +293,14 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
             }
             override fun onPlayerError(e: PlaybackException) {
                 Diag.log("PLAY", "error ${e.errorCodeName}: ${e.cause?.javaClass?.simpleName} ${e.cause?.message?.take(120)}")
-                if (vlcIdx >= 0) return
+                if (extIdx >= 0) return
                 // B32: an IO failure means the cached redirect target is probably dead — drop it so the
                 // retry re-resolves instead of replaying the same stale signed url.
                 if (e.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS || e.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
                     e.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT || e.errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND) {
                     PlayHttp.invalidate(urls[player.currentMediaItem?.mediaId].orEmpty())
                 }
-                canVlc = e.errorCode in setOf(PlaybackException.ERROR_CODE_DECODER_INIT_FAILED, PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
+                canExternal = e.errorCode in setOf(PlaybackException.ERROR_CODE_DECODER_INIT_FAILED, PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
                     PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED, PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
                     PlaybackException.ERROR_CODE_DECODING_FAILED, PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED)
                 error = when (e.errorCode) {
@@ -351,18 +357,24 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         val pos = player.currentPosition
         player.replaceMediaItem(i, itemFor(q, urls[q.path].orEmpty(), ms)); player.seekTo(i, pos)
     }
-    BackHandler { if (vlcIdx < 0) save(); Nav.pop() }
+    BackHandler { if (extIdx < 0) save(); Nav.pop() }
 
-    if (vlcIdx >= 0) {
-        val q = queue[vlcIdx]
-        val u = urls[q.path].orEmpty()
-        VlcPlayer(u, if (u.startsWith("http")) fs.headers(u) else emptyMap(), q.file.name, q.title, vlcStart,
-            onProgress = { p, d -> if (d > 0) lib.setProgress(q.path, p, d) },
-            onEnded = {
-                val n = vlcIdx + 1
-                if (n < queue.size) { if (needsVlc(queue[n])) { vlcStart = 0L; vlcIdx = n } else { vlcIdx = -1; player.seekTo(n, 0L); player.prepare(); player.play() } }
-            },
-            onBack = { Nav.pop() })
+    if (extIdx >= 0) {
+        // 1.1.0: a format the built-in player cannot open at all (rmvb / rm / wmv / asf)
+        val q = queue[extIdx]
+        Column(Modifier.fillMaxSize().background(Color.Black).statusBarsPadding().padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(q.title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text("内置播放器不支持 ${NameParser.ext(q.file.name).uppercase()} 格式。可以交给手机上的其他播放器（如 VLC、MX Player）播放。",
+                color = Color(0xCCFFFFFF), fontSize = 14.sp, lineHeight = 20.sp, modifier = Modifier.padding(top = 10.dp, bottom = 18.dp))
+            GradientButton("用其他播放器打开", Modifier.fillMaxWidth()) { openExternal(extIdx) }
+            Row(Modifier.padding(top = 8.dp)) {
+                val n = extIdx + 1
+                if (n < queue.size) TextButton(onClick = {
+                    if (needsExternal(queue[n])) extIdx = n else { extIdx = -1; player.seekTo(n, 0L); player.prepare(); player.play() }
+                }) { Text("下一集", color = Color.White) }
+                TextButton(onClick = { Nav.pop() }) { Text("返回", color = Color(0xCCFFFFFF)) }
+            }
+        }
         return
     }
 
@@ -418,7 +430,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                 Text(e, color = Color.White, fontSize = 15.sp)
                 Row(Modifier.padding(top = 10.dp)) {
                     TextButton(onClick = { error = null; PlayHttp.invalidate(urls[player.currentMediaItem?.mediaId].orEmpty()); player.prepare(); player.play() }) { Text("重试", color = C.Accent) }
-                    if (canVlc) TextButton(onClick = { toVlc(player.currentMediaItemIndex, player.currentPosition) }) { Text("用兼容模式播放", color = C.Accent) }
+                    if (canExternal) TextButton(onClick = { openExternal(player.currentMediaItemIndex) }) { Text("用其他播放器打开", color = C.Accent) }
                     if (player.hasNextMediaItem()) TextButton(onClick = { error = null; player.seekToNextMediaItem(); player.prepare(); player.play() }) { Text("下一集", color = Color.White) }
                 }
             }

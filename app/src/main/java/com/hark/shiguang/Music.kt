@@ -433,8 +433,8 @@ object Music {
     val AUDIO = setOf("mp3", "flac", "ape", "wav", "m4a", "aac", "alac", "ogg", "oga", "opus", "wma", "dsf", "dff", "aiff", "aif", "aifc", "wv", "m4b")
     /** media3 extractors (with the Jellyfin FFmpeg decoder for ALAC / Opus / Vorbis fallbacks). */
     val EXO = setOf("mp3", "flac", "wav", "m4a", "aac", "alac", "ogg", "oga", "opus", "m4b")
-    /** No media3 extractor (APE, ASF/WMA, DSD, WavPack, AIFF in 1.3.1): played by libVLC, already in the APK for rmvb/wmv. */
-    val VLC = setOf("ape", "wma", "dsf", "dff", "wv", "aiff", "aif", "aifc")
+    /** No media3 extractor (APE, ASF/WMA, DSD, WavPack, AIFF in 1.3.1). 1.1.0: libVLC removed — offered 「用其他播放器打开」 instead. */
+    val UNSUPPORTED = setOf("ape", "wma", "dsf", "dff", "wv", "aiff", "aif", "aifc")
 
     fun isAudio(name: String) = NameParser.ext(name) in AUDIO
 

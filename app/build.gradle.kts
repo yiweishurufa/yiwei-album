@@ -50,8 +50,8 @@ android {
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
         jniLibs {
-            pickFirsts += "**/libc++_shared.so" // libVLC and other native deps may both ship it
-            useLegacyPackaging = true // 1.0.10: compress .so in the APK (libvlc.so is ~45 MB uncompressed per ABI)
+            pickFirsts += "**/libc++_shared.so" // several native deps (FFmpeg decoder, TFLite) may ship it
+            useLegacyPackaging = true // compress .so in the APK (smaller download; was needed for libvlc.so)
         }
     }
 }
@@ -77,9 +77,7 @@ dependencies {
     // 1.0.9: FFmpeg audio decoders (DTS / TrueHD / AC3 / EAC3 …) for media3 1.3.1, built by Jellyfin
     implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.3.1+2")
     implementation("androidx.profileinstaller:profileinstaller:1.3.1")
-    // 1.0.10: libVLC fallback player for rmvb/rm/wmv/asf (+ files media3 can't open). 3.7.2 = newest 3.x whose POM does not
-    // pull kotlin-stdlib 2.2 (3.7.3+ do; this project compiles with Kotlin 1.9.24). Adds ~2 ABIs of libvlc.so.
-    implementation("org.videolan.android:libvlc-all:3.7.2")
+    // 1.1.0: libVLC removed (≈45 MB of libvlc.so per ABI). Formats media3 can't open → 「用其他播放器打开」 (ExternalPlayer).
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
