@@ -33,10 +33,15 @@ import java.util.concurrent.TimeUnit
 object DavThumb {
     const val MARK = "#ywthumb"
     private const val HEAD = 128 * 1024
-    private val gate = Semaphore(8)
+    private val gate = Semaphore(6)
     private val videoGate = Semaphore(3)
+    /** H3: at most 3 originals downloading for thumbnails at once. */
+    private val fullGate = Semaphore(3)
+    /** H3: originals above this are not downloaded for a thumbnail (placeholder instead). */
+    private const val FULL_MAX = 40L * 1024 * 1024
+    // derived from FnClient.http: shares its connection pool and inherits NetEnv dns/socketFactory
     private val http: OkHttpClient by lazy {
-        OkHttpClient.Builder().dns(NetEnv.dns).socketFactory(NetEnv.socketFactory).connectTimeout(20, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).followRedirects(true).build()
+        com.hark.shiguang.data.FnClient.http.newBuilder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).followRedirects(true).build()
     }
     private val dir: File by lazy { File(App.ctx.cacheDir, "davthumb").apply { mkdirs() } }
 
@@ -53,9 +58,12 @@ object DavThumb {
         if (f.length() > 0) { if (System.currentTimeMillis() - f.lastModified() > 86_400_000L) f.setLastModified(System.currentTimeMillis()); return@withContext f }
         gate.withPermit {
             if (f.length() > 0) return@withPermit f
-            val bmp = (if (isVideo(url)) videoGate.withPermit { fromVideo(url) } else fromHead(url) ?: fromFull(url)) ?: error("缩略图加载失败")
+            val bmp = (if (isVideo(url)) videoGate.withPermit { fromVideo(url) } else fromHead(url) ?: fullGate.withPermit { fromFull(url) }) ?: error("缩略图加载失败")
             val tmp = File(dir, f.name + ".tmp")
-            tmp.outputStream().use { (if (maxOf(bmp.width, bmp.height) > 480) Bitmap.createScaledBitmap(bmp, bmp.width * 480 / maxOf(bmp.width, bmp.height), bmp.height * 480 / maxOf(bmp.width, bmp.height), true) else bmp).compress(Bitmap.CompressFormat.JPEG, 78, it) }
+            val big = maxOf(bmp.width, bmp.height)
+            val out = if (big > 480) Bitmap.createScaledBitmap(bmp, bmp.width * 480 / big, bmp.height * 480 / big, true) else bmp
+            try { tmp.outputStream().use { out.compress(Bitmap.CompressFormat.JPEG, 78, it) } }
+            finally { if (out !== bmp) out.recycle(); bmp.recycle() }   // H3: free the pixels now, not at the next GC
             if (!tmp.renameTo(f)) { tmp.copyTo(f, overwrite = true); tmp.delete() }
             f
         }
@@ -111,20 +119,42 @@ object DavThumb {
         rotate(b, ex.getAttributeInt(ExifInterface.TAG_ORIENTATION, 1))
     }.getOrNull()
 
-    private fun fromFull(url: String): Bitmap? = runCatching {
-        val bytes = http.newCall(req(url, false)).execute().use { r -> if (!r.isSuccessful) return null; r.body?.bytes() } ?: return null
-        val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
-        var s = 1; while (o.outWidth / (s * 2) >= 400 && o.outHeight / (s * 2) >= 400) s *= 2
-        val b = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = s }) ?: return null
-        val orient = runCatching { ExifInterface(ByteArrayInputStream(bytes)).getAttributeInt(ExifInterface.TAG_ORIENTATION, 1) }.getOrDefault(1)
-        rotate(b, orient)
-    }.getOrNull()
+    /**
+     * H3: the original is streamed to a temp file (never a whole ByteArray in memory), refused above [FULL_MAX],
+     * then decoded with inJustDecodeBounds + inSampleSize to ~400 px straight from the file.
+     */
+    private fun fromFull(url: String): Bitmap? {
+        val tmp = File(dir, "full-" + HashUtil.md5(url) + ".part")
+        return try {
+            http.newCall(req(url, false)).execute().use { r ->
+                if (!r.isSuccessful) return null
+                val body = r.body ?: return null
+                val len = body.contentLength()
+                if (len > FULL_MAX) { Diag.log("THUMB", "skip full download: ${len / 1048576} MB"); return null }
+                body.byteStream().use { ins -> tmp.outputStream().use { os ->
+                    val buf = ByteArray(64 * 1024); var got = 0L
+                    while (true) { val n = ins.read(buf); if (n < 0) break; got += n; if (got > FULL_MAX) return null; os.write(buf, 0, n) }
+                } }
+            }
+            val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(tmp.path, o)
+            if (o.outWidth <= 0 || o.outHeight <= 0) return null
+            var s = 1; while (o.outWidth / (s * 2) >= 400 && o.outHeight / (s * 2) >= 400) s *= 2
+            val b = BitmapFactory.decodeFile(tmp.path, BitmapFactory.Options().apply { inSampleSize = s }) ?: return null
+            val orient = runCatching { ExifInterface(tmp.path).getAttributeInt(ExifInterface.TAG_ORIENTATION, 1) }.getOrDefault(1)
+            rotate(b, orient)
+        } catch (e: Throwable) {
+            Diag.log("THUMB", "full decode failed: ${e.javaClass.simpleName}")
+            null
+        } finally { tmp.delete() }
+    }
 
     private fun rotate(b: Bitmap, o: Int): Bitmap {
         val deg = when (o) { ExifInterface.ORIENTATION_ROTATE_90 -> 90f; ExifInterface.ORIENTATION_ROTATE_180 -> 180f; ExifInterface.ORIENTATION_ROTATE_270 -> 270f; else -> 0f }
         if (deg == 0f) return b
-        return Bitmap.createBitmap(b, 0, 0, b.width, b.height, Matrix().apply { postRotate(deg) }, true)
+        val r = Bitmap.createBitmap(b, 0, 0, b.width, b.height, Matrix().apply { postRotate(deg) }, true)
+        if (r !== b) b.recycle()   // H3
+        return r
     }
 
     fun clear() { dir.listFiles()?.forEach { it.delete() } }
