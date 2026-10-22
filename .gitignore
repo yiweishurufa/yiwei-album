@@ -6,3 +6,5 @@ build/
 .idea/
 tools/*.log
 keystore.properties
+*.keystore
+# 正式签名文件只放在仓库外（例如 /workspace/secure/yiwei-album-release/），signing/yiwei-album-test.p12 是公开的测试签名，保留

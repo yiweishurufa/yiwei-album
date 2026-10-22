@@ -201,7 +201,7 @@ object AppUpdate {
         } catch (e: SignatureMismatch) {
             Diag.log("UPD", "download failed: signature mismatch, installer NOT launched")
             progress = -1f; runCatching { nm?.cancel(4109) }; runCatching { out.delete() }
-            signatureMismatchAbort(c)
+            signatureMismatchAbort(c, e.message ?: "签名不一致，需先卸载旧版")
         } catch (e: Exception) {
             Diag.log("UPD", "update failed: ${e.message}")
             progress = -1f; runCatching { nm?.cancel(4109) }
@@ -213,7 +213,18 @@ object AppUpdate {
     }
 
     /** Thrown when a downloaded APK is signed by a different key than the installed app. */
-    class SignatureMismatch : Exception("签名不一致，需先卸载旧版")
+    class SignatureMismatch(msg: String = "签名不一致，需先卸载旧版") : Exception(msg)
+
+    /**
+     * 一维相册发布用过的签名证书 SHA-256。
+     * - 84ff9c2e…：CI 测试签名（signing/yiwei-album-test.p12，公开密钥）。TODO(正式签名启用后)：过渡期结束时移除，见 TODO-用户反馈-2026-10-22.md。
+     * - 04812323…：1.0.2 及以前用户自己的正式签名（yiwei-release.jks，不在仓库里）。
+     * 换成新的正式签名时，把新证书指纹加进来。
+     */
+    private val TRUSTED_SIGNERS = setOf(
+        "84ff9c2e3dcc19685117a31f77fa1ff530131663c4fda58a9a60660ee8880fe7",
+        "04812323e88a940c72008ab5c5ba171ab8c094376d366627501b55ef3f0bc4c3",
+    )
 
     /** SHA-256 of the first signer certificate of an APK file, or null when it cannot be read. */
     private fun apkSignerSha256(c: Context, apk: File): String? = runCatching {
@@ -241,17 +252,24 @@ object AppUpdate {
     private fun checkSignature(c: Context, apk: File) {
         val want = currentSignerSha256(c)
         val got = apkSignerSha256(c, apk)
-        if (want == null || got == null || want != got) {
-            Diag.log("UPD", "signature mismatch (currentReadable=${want != null}, apkReadable=${got != null}), installer NOT launched")
-            throw SignatureMismatch()
+        when (UpdateRules.classifySigner(want, got, TRUSTED_SIGNERS)) {
+            UpdateRules.Signer.SAME -> return
+            UpdateRules.Signer.TRUSTED_OTHER -> {
+                Diag.log("UPD", "apk signed by the other yiwei key (test <-> release), installer NOT launched")
+                throw SignatureMismatch("新版本换了签名（测试签名 ↔ 正式签名），系统不允许直接覆盖。请先在设置里「同步设置到其他手机」备份设置，卸载旧版后再用「浏览器下载」安装")
+            }
+            UpdateRules.Signer.UNKNOWN -> {
+                Diag.log("UPD", "signature unknown (currentReadable=${want != null}, apkReadable=${got != null}), installer NOT launched")
+                throw SignatureMismatch(if (want == null || got == null) "读不出安装包签名，为安全起见已取消安装" else "安装包签名不是一维相册发布用的签名，可能被篡改，已拒绝安装")
+            }
         }
     }
 
     /** B5: record + surface a signature mismatch (dialog via [signatureMismatch]); returns false for the caller. */
-    private suspend fun signatureMismatchAbort(c: Context): Boolean {
-        signatureMismatch = "签名不一致，需先卸载旧版"
+    private suspend fun signatureMismatchAbort(c: Context, msg: String): Boolean {
+        signatureMismatch = msg
         withContext(Dispatchers.Main) {
-            android.widget.Toast.makeText(c, "签名不一致，需先卸载旧版", android.widget.Toast.LENGTH_LONG).show()
+            android.widget.Toast.makeText(c, msg, android.widget.Toast.LENGTH_LONG).show()
         }
         return false
     }
