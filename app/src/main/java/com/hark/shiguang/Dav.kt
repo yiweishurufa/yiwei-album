@@ -119,19 +119,38 @@ class DavLib(val accountId: String) {
         }
     }
 
-    private fun setPhotos(l: List<Photo>) {
-        val fixed = l.map { p ->
-            val m = meta[p.cloudPath] ?: return@map p
-            var q = p
-            if (m.time.isNotEmpty()) q = q.copy(time = m.time)
-            if (p.isVideo && m.dur > 0 && p.duration <= 0) q = q.copy(duration = m.dur)
-            if (!p.isVideo && m.mv != 0L && !p.isLive) q = q.copy(isLive = true, liveType = 2)
-            q
+    /** Bumped by every [setPhotos]; a slower, older computation never overwrites a newer list. */
+    private val photosGen = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /**
+     * H2: meta fix-up + 实况配对 + 按时间排序 (up to 60 000 items) run on Dispatchers.Default;
+     * the main thread only swaps the finished list in.
+     */
+    private suspend fun setPhotos(l: List<Photo>) {
+        val my = photosGen.incrementAndGet()
+        val sorted = withContext(Dispatchers.Default) {
+            val fixed = l.map { p ->
+                val m = meta[p.cloudPath] ?: return@map p
+                var q = p
+                if (m.time.isNotEmpty()) q = q.copy(time = m.time)
+                if (p.isVideo && m.dur > 0 && p.duration <= 0) q = q.copy(duration = m.dur)
+                if (!p.isVideo && m.mv != 0L && !p.isLive) q = q.copy(isLive = true, liveType = 2)
+                q
+            }
+            LivePairing.pair(fixed, meta).sortedByDescending { it.time }
         }
-        photos.clear(); photos.addAll(LivePairing.pair(fixed, meta).sortedByDescending { it.time })
+        withContext(Dispatchers.Main) {
+            if (my != photosGen.get()) return@withContext
+            photos.clear(); photos.addAll(sorted)
+        }
     }
 
-    fun retime() { setPhotos(photos.toList()) }
+    private var retimeJob: Job? = null
+    /** H2: called often (duration backfill every 10 videos, analyzer) — coalesced to one re-sort per ~1.5 s. Main thread. */
+    fun retime() {
+        if (retimeJob?.isActive == true) return
+        retimeJob = uiScope.launch { delay(1500); setPhotos(photos.toList()) }
+    }
 
     /** After a delete on the server: drop the files from the index, analysis, faces and virtual albums. */
     suspend fun removeLocal(paths: List<String>) {
@@ -193,14 +212,16 @@ class DavLib(val accountId: String) {
         val t0 = System.currentTimeMillis()
         val selected = getSelectedDirs()
         val roots = if (selected.isEmpty()) listOf("/") else topSelectedDirs(selected)
+        val shownCount = photos.size   // read once on the calling thread; onBatch runs on IO
         val onBatch: (List<CloudEntry>) -> Unit = { b ->
             val snap: List<CloudEntry>? = synchronized(all) {
                 all.addAll(b)
                 val now = System.currentTimeMillis()
-                // show progress: at most every 1.5 s (only if nothing cached yet or it grew past the cache)
-                if (now - lastShow > 1500 && all.size >= photos.size) { lastShow = now; ArrayList(all) } else null
+                // H2: show progress at most every 5 s (only if nothing cached yet or it grew past the cache);
+                // the conversion and the sort run off the main thread
+                if (now - lastShow > SCAN_SHOW_MS && all.size >= shownCount) { lastShow = now; ArrayList(all) } else null
             }
-            if (snap != null) uiScope.launch { val ps = CloudPhotos.toPhotos(accountId, snap); if (scanning) setPhotos(ps) }
+            if (snap != null) uiScope.launch { val ps = withContext(Dispatchers.Default) { CloudPhotos.toPhotos(accountId, snap) }; if (scanning) setPhotos(ps) }
         }
         runCatching {
             cache = withContext(Dispatchers.IO) {
@@ -426,7 +447,7 @@ class DavLib(val accountId: String) {
 
     fun aiDone(): Int = photos.count { !it.isVideo && meta[it.cloudPath]?.aiCat?.isNotEmpty() == true }
 
-    companion object { const val MANIFEST = "/.yiwei-albums.json"; const val RECENT_MONTHS = 3; const val MAX_ITEMS = 60000 }
+    companion object { const val MANIFEST = "/.yiwei-albums.json"; const val RECENT_MONTHS = 3; const val MAX_ITEMS = 60000; /** H2: timeline refresh interval while scanning. */ const val SCAN_SHOW_MS = 5000L }
 }
 
 /**
