@@ -30,7 +30,14 @@ class ScanService : Service() {
         val n = build("正在整理", "准备中…", 0, 0)
         runCatching {
             if (Build.VERSION.SDK_INT >= 34) startForeground(ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC) else startForeground(ID, n)
-        }.onFailure { stopSelf(); return START_NOT_STICKY }
+        }.onFailure { e ->
+            // H6: started with startForegroundService → we MUST call startForeground before stopping, or the system
+            // kills the whole app with "did not then call Service.startForeground()". Retry with the plainest notification.
+            Diag.log("SCAN", "startForeground failed: ${e.javaClass.simpleName} ${e.message}")
+            runCatching { startForeground(ID, minimal()) }.onFailure { Diag.log("SCAN", "minimal startForeground failed too: ${it.javaClass.simpleName}") }
+            runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
+            stopSelf(); return START_NOT_STICKY
+        }
         if (!looping) {
             looping = true
             scope.launch {
@@ -71,6 +78,15 @@ class ScanService : Service() {
 
     private fun status() = ScanStatus.current()
 
+    /** H6: no actions, no progress, no content intent — the least that can fail. */
+    private fun minimal(): Notification {
+        val nm = getSystemService(NotificationManager::class.java)
+        if (Build.VERSION.SDK_INT >= 26 && nm?.getNotificationChannel(CH) == null)
+            runCatching { nm?.createNotificationChannel(NotificationChannel(CH, "后台整理", NotificationManager.IMPORTANCE_LOW)) }
+        val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, CH) else @Suppress("DEPRECATION") Notification.Builder(this)
+        return b.setSmallIcon(R.drawable.ic_notify).setContentTitle("一维相册").build()
+    }
+
     private fun build(title: String, text: String, done: Int, total: Int, paused: Boolean = false): Notification {
         val nm = getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= 26 && nm?.getNotificationChannel(CH) == null)
@@ -100,10 +116,19 @@ class ScanService : Service() {
         @Volatile private var looping = false
         fun ensure(c: Context) {
             if (looping) return
+            // H6: a foreground service may only be started while the app is in front (Android 12+ throws otherwise);
+            // from the background the scan simply runs without the keep-alive notification.
+            if (!inForeground()) { Diag.log("SCAN", "app in background: foreground service not started"); return }
             runCatching {
                 val i = Intent(c.applicationContext, ScanService::class.java)
                 if (Build.VERSION.SDK_INT >= 26) c.applicationContext.startForegroundService(i) else c.applicationContext.startService(i)
-            }
+            }.onFailure { Diag.log("SCAN", "start service failed: ${it.javaClass.simpleName}") }
         }
+
+        private fun inForeground(): Boolean = runCatching {
+            val info = android.app.ActivityManager.RunningAppProcessInfo()
+            android.app.ActivityManager.getMyMemoryState(info)
+            info.importance <= android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE
+        }.getOrDefault(true)
     }
 }
