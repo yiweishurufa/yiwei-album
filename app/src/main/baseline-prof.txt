@@ -19,4 +19,15 @@ HSPLcom/hark/shiguang/ui/C;->**(**)**
 HSPLcom/hark/shiguang/ui/LI;->**(**)**
 HSPLcom/hark/shiguang/ui/MoviesTabKt**;->**(**)**
 HSPLcom/hark/shiguang/ui/ViewerKt**;->**(**)**
+# 1.1.0: files split out of Home.kt/Dav.kt + Room photo index (startup reads the index, timeline draws from it)
+HSPLcom/hark/shiguang/DavIndex**;->**(**)**
+HSPLcom/hark/shiguang/index/**;->**(**)**
+HSPLcom/hark/shiguang/Features**;->**(**)**
+HSPLcom/hark/shiguang/LiveMotion**;->**(**)**
+HSPLcom/hark/shiguang/LivePairing;->**(**)**
+HSPLcom/hark/shiguang/ui/HomeAlbumsKt**;->**(**)**
+HSPLcom/hark/shiguang/ui/HomeDiscoverKt**;->**(**)**
+HSPLcom/hark/shiguang/ui/UiKitKt**;->**(**)**
+HSPLcom/hark/shiguang/ui/ErrorKinds**;->**(**)**
+HSPLandroidx/room/**;->**(**)**
 Lcom/hark/shiguang/**;
