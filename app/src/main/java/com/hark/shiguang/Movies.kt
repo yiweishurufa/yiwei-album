@@ -444,7 +444,8 @@ object NfoParser {
 // ============================================================ TMDB
 
 object Tmdb {
-    val http: OkHttpClient = OkHttpClient.Builder().connectTimeout(12, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
+    // H9: derived from FnClient.http — shared connection pool, inherits NetEnv dns/socketFactory
+    val http: OkHttpClient = com.hark.shiguang.data.FnClient.http.newBuilder().connectTimeout(12, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
     var key: String get() = Store.getStr("tmdb.key"); set(v) = Store.putStr("tmdb.key", v.trim())
     var apiBase: String get() = Store.getStr("tmdb.api"); set(v) = Store.putStr("tmdb.api", v.trim().trimEnd('/'))
     var imgBase: String get() = Store.getStr("tmdb.img"); set(v) = Store.putStr("tmdb.img", v.trim().trimEnd('/'))

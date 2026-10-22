@@ -58,7 +58,8 @@ class DanmakuNotConfigured : Exception(DanmakuPrefs.HINT)
 
 object DanDan {
     private const val BASE = "https://api.dandanplay.net"
-    private val http: OkHttpClient = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).followRedirects(true).build()
+    // H9: derived from FnClient.http — shared connection pool, inherits NetEnv dns/socketFactory
+    private val http: OkHttpClient = com.hark.shiguang.data.FnClient.http.newBuilder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).followRedirects(true).build()
     private val JSON = "application/json; charset=utf-8".toMediaType()
 
     fun signHeaders(path: String, appId: String = DanmakuPrefs.appId, secret: String = DanmakuPrefs.appSecret, now: Long = System.currentTimeMillis() / 1000): Map<String, String> {
