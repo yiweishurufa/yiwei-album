@@ -102,9 +102,9 @@ fun MusicTab() {
             Row(Modifier.padding(top = 6.dp, start = 18.dp, end = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("影音", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = C.Text, letterSpacing = (-0.4).sp, modifier = Modifier.weight(1f))
                 if (lib.dirs.isNotEmpty()) IconButton(onClick = { lib.scan(); ScanService.ensure(App.ctx) }, enabled = !lib.scanning) {
-                    Icon(LI.refresh(), null, tint = if (lib.scanning) C.Faint else C.Text, modifier = Modifier.size(21.dp))
+                    Icon(LI.refresh(), "重新扫描音乐", tint = if (lib.scanning) C.Faint else C.Text, modifier = Modifier.size(21.dp))
                 }
-                IconButton(onClick = { Nav.push(Route.MusicSettings) }) { Icon(LI.settings(), null, tint = C.Text, modifier = Modifier.size(22.dp)) }
+                IconButton(onClick = { Nav.push(Route.MusicSettings) }) { Icon(LI.settings(), "音乐库设置", tint = C.Text, modifier = Modifier.size(22.dp)) }
             }
         }
         item { Row(Modifier.padding(start = 16.dp, top = 2.dp, bottom = 8.dp)) { MediaAreaSwitch() } }
@@ -178,7 +178,7 @@ private fun buildMusicView(all: List<Track>, q: String, sub: Int): MusicView {
 
 @Composable
 private fun SearchBox() {
-    Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth().height(44.dp).clip(RoundedCornerShape(14.dp)).background(C.Surface).padding(horizontal = 12.dp),
+    Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth().height(48.dp).clip(RoundedCornerShape(14.dp)).background(C.Surface).padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically) {
         Icon(LI.search(), null, tint = C.Sub, modifier = Modifier.size(18.dp))
         Box(Modifier.weight(1f).padding(start = 8.dp), contentAlignment = Alignment.CenterStart) {
@@ -186,7 +186,8 @@ private fun SearchBox() {
             BasicTextField(MusicUi.query, { MusicUi.query = it }, singleLine = true, textStyle = MaterialTheme.typography.bodyMedium.copy(color = C.Text, fontSize = 15.sp),
                 cursorBrush = SolidColor(C.Accent), modifier = Modifier.fillMaxWidth())
         }
-        if (MusicUi.query.isNotEmpty()) Icon(LI.close(), null, tint = C.Sub, modifier = Modifier.size(18.dp).clip(CircleShape).clickable { MusicUi.query = "" })
+        // H17: 48dp touch target (was an 18dp icon) and a spoken label
+        if (MusicUi.query.isNotEmpty()) IconButton(onClick = { MusicUi.query = "" }, modifier = Modifier.offset(x = 8.dp)) { Icon(LI.close(), "清除搜索", tint = C.Sub, modifier = Modifier.size(18.dp)) }
     }
 }
 
@@ -349,9 +350,9 @@ fun MiniPlayer(modifier: Modifier = Modifier) {
             }
             IconButton(onClick = { MusicState.toggle() }) {
                 if (MusicState.buffering && MusicState.isPlaying) CircularProgressIndicator(color = C.Accent, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
-                else Icon(if (MusicState.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, tint = C.Text, modifier = Modifier.size(28.dp))
+                else Icon(if (MusicState.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (MusicState.isPlaying) "暂停" else "播放", tint = C.Text, modifier = Modifier.size(28.dp))
             }
-            IconButton(onClick = { MusicState.next() }) { Icon(Icons.Rounded.SkipNext, null, tint = C.Text, modifier = Modifier.size(26.dp)) }
+            IconButton(onClick = { MusicState.next() }) { Icon(Icons.Rounded.SkipNext, "下一首", tint = C.Text, modifier = Modifier.size(26.dp)) }
         }
         Box(Modifier.fillMaxWidth().height(2.dp).background(C.Surface2)) {
             if (dur > 0) Box(Modifier.fillMaxWidth((pos.toFloat() / dur).coerceIn(0f, 1f)).fillMaxHeight().background(C.Accent))

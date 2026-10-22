@@ -269,9 +269,10 @@ fun LoginScreen() {
                 Text("域名会自动补全 https/http 和端口（443、5667、5666、8000），端口可手动改。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
             }
             Text(if (scanning) "正在搜索局域网…" else "搜索局域网里的飞牛", color = C.Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(top = 10.dp, start = 4.dp).clickable(enabled = !scanning) {
+                // H17: 48dp tall touch target for the 13sp text link
+                modifier = Modifier.padding(top = 2.dp).minimumInteractiveComponentSize().clip(RoundedCornerShape(8.dp)).clickable(enabled = !scanning) {
                     scanning = true; scope.launch { found = Endpoint.discover(); scanning = false }
-                })
+                }.padding(horizontal = 4.dp))
             found?.let { l ->
                 if (l.isEmpty()) Text("没找到飞牛。确认手机和 NAS 在同一个 Wi-Fi；开着 VPN 时可以先关掉再搜。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 4.dp, top = 6.dp))
                 l.forEach { f ->
