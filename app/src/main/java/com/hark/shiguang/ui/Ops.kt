@@ -96,25 +96,34 @@ object CloudPhotos {
         ensureAuth()
         val src = source(accountId) ?: return@coroutineScope emptyList()
         val gate = Semaphore(6)
-        list.filter { it.isImage || it.isVideo }.map { e ->
-            async(Dispatchers.IO) {
-                val raw = if (e.thumbUrl == null || e.isVideo) gate.withPermit { runCatching { src.rawUrl(e) }.getOrNull() } else null
-                val thumb = e.thumbUrl ?: raw?.let { com.hark.shiguang.DavThumb.mark(it) } ?: return@async null
-                listOfNotNull(thumb, raw).forEach { urlOwner[it] = accountId }
-                val time = if (e.modified > 0) synchronized(fmt) { fmt.format(Date(e.modified)) } else "1970:01:01 00:00:00"
-                val p = Photo(
-                    id = e.id.hashCode(), uuid = e.id, isVideo = e.isVideo, isLive = false, fileName = e.name, time = time,
-                    width = 0, height = 0, duration = 0, collected = false,
-                    thumbS = thumb, thumbM = thumb, original = if (e.isImage) (raw ?: thumb) else thumb,
-                    video = if (e.isVideo) raw else null,
-                    make = "", model = "", fNumber = "", exposure = "", iso = "", focal = "", size = e.size, geo = "",
-                    path = e.path, source = accountId, cloudPath = e.path,
-                )
-                entries[p.key] = e
-                entryOwner[p.key] = accountId
-                p
-            }
-        }.awaitAll().filterNotNull()
+        fun build(e: CloudEntry, raw: String?): Photo? {
+            val thumb = e.thumbUrl ?: raw?.let { com.hark.shiguang.DavThumb.mark(it) } ?: return null
+            listOfNotNull(thumb, raw).forEach { urlOwner[it] = accountId }
+            val time = if (e.modified > 0) synchronized(fmt) { fmt.format(Date(e.modified)) } else "1970:01:01 00:00:00"
+            val p = Photo(
+                id = e.id.hashCode(), uuid = e.id, isVideo = e.isVideo, isLive = false, fileName = e.name, time = time,
+                width = 0, height = 0, duration = 0, collected = false,
+                thumbS = thumb, thumbM = thumb, original = if (e.isImage) (raw ?: thumb) else thumb,
+                video = if (e.isVideo) raw else null,
+                make = "", model = "", fNumber = "", exposure = "", iso = "", focal = "", size = e.size, geo = "",
+                path = e.path, source = accountId, cloudPath = e.path,
+            )
+            entries[p.key] = e
+            entryOwner[p.key] = accountId
+            return p
+        }
+        val media = list.filter { it.isImage || it.isVideo }
+        val needRaw = { e: CloudEntry -> e.thumbUrl == null || e.isVideo }
+        if (src is com.hark.shiguang.cloud.WebDavSource) {
+            // H13: a WebDAV raw url is only string building — no coroutine per item (60 000 items = 60 000 coroutines before)
+            // (off the caller's thread: the cold-start index load calls this from the main thread)
+            withContext(Dispatchers.Default) { media.mapNotNull { e -> build(e, if (needRaw(e)) runCatching { src.rawUrl(e) }.getOrNull() else null) } }
+        } else {
+            // sources whose raw url needs a network call: concurrent, but in chunks instead of one coroutine per item at once
+            media.chunked(256).flatMap { chunk ->
+                chunk.map { e -> async(Dispatchers.IO) { build(e, if (needRaw(e)) gate.withPermit { runCatching { src.rawUrl(e) }.getOrNull() } else null) } }.awaitAll()
+            }.filterNotNull()
+        }
     }
 }
 
