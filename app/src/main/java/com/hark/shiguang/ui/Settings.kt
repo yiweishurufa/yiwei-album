@@ -209,6 +209,13 @@ fun SettingsScreen() {
 
         // ---- 隐私与存储
         Section("隐私与存储")
+        // H18: tell the user when passwords could not be stored encrypted on this phone
+        if (Store.insecure || com.hark.shiguang.cloud.CloudAccounts.insecure) {
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(C.Danger.copy(alpha = 0.12f)).padding(12.dp)) {
+                Text("这台手机的加密存储不可用，飞牛 / WebDAV 的密码和登录凭据只能以普通方式保存在本机。介意的话请不要在这台手机上保存密码，或在下方「关于 → 导出诊断日志」发给开发者。",
+                    color = C.Text, fontSize = 13.sp, lineHeight = 19.sp)
+            }
+        }
         Card {
             ToggleRow(LI.lock(), "应用锁", if (android.os.Build.VERSION.SDK_INT >= 28) "打开时验证指纹或锁屏密码" else "需要 Android 9 及以上", lockOn) {
                 if (android.os.Build.VERSION.SDK_INT >= 28) { lockOn = it; Store.lockOn = it }

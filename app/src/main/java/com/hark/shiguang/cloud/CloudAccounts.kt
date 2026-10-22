@@ -19,6 +19,9 @@ object CloudAccounts {
     private const val KEY = "accounts"
 
     private var prefs: SharedPreferences? = null
+    /** H18: true when the encrypted store failed and accounts are kept in plain prefs. */
+    @Volatile var insecure: Boolean = false
+        private set
     private val lock = Any()
     @Volatile private var cache: List<CloudAccount> = emptyList()
 
@@ -34,6 +37,9 @@ object CloudAccounts {
                     EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
                 )
             } catch (e: Exception) {
+                // H18: passwords of WebDAV / 网盘 accounts would land in plain prefs — record it so 设置 can warn
+                insecure = true
+                com.hark.shiguang.Diag.log("SEC", "encrypted cloud accounts unavailable, using plain prefs (${e.javaClass.simpleName})")
                 ctx.getSharedPreferences(FILE_PLAIN, Context.MODE_PRIVATE)
             }
             cache = load()

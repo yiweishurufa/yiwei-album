@@ -18,6 +18,7 @@ class App : Application(), ImageLoaderFactory {
         Store.init(this)
         ScanPolicy.migrate()
         Diag.init(this)
+        if (Store.insecure) Diag.log("SEC", "encrypted prefs unavailable, using plain prefs (${Store.insecureReason})")   // H18
         CrashLog.install(this)
         runCatching { com.hark.shiguang.cloud.CloudAccounts.init(this) }
         NasAccounts.init()
@@ -53,6 +54,12 @@ class App : Application(), ImageLoaderFactory {
 
 object Store {
     private lateinit var sp: SharedPreferences
+    /** H18: true when the encrypted store could not be opened and passwords / tokens sit in plain prefs. Settings warns. */
+    @Volatile var insecure: Boolean = false
+        private set
+    /** H18: why the encrypted store failed (logged once Diag is up). */
+    @Volatile var insecureReason: String = ""
+        private set
     fun init(c: Context) {
         sp = runCatching {
             EncryptedSharedPreferences.create(
@@ -60,7 +67,10 @@ object Store {
                 EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
             )
-        }.getOrElse { c.getSharedPreferences("plain", Context.MODE_PRIVATE) }
+        }.getOrElse { e ->
+            insecure = true; insecureReason = "Store: ${e.javaClass.simpleName}"
+            c.getSharedPreferences("plain", Context.MODE_PRIVATE)
+        }
     }
     var url: String get() = sp.getString("url", "") ?: ""; set(v) = sp.edit().putString("url", v).apply()
     var user: String get() = sp.getString("user", "") ?: ""; set(v) = sp.edit().putString("user", v).apply()
