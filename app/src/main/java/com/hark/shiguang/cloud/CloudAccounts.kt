@@ -19,6 +19,8 @@ object CloudAccounts {
     private const val KEY = "accounts"
 
     private var prefs: SharedPreferences? = null
+    /** H18: true when [prefs] is the plain file and the JSON is stored sealed by [com.hark.shiguang.SecureBox]. */
+    private var sealed = false
     /** H18: true when the encrypted store failed and accounts are kept in plain prefs. */
     @Volatile var insecure: Boolean = false
         private set
@@ -29,7 +31,8 @@ object CloudAccounts {
         synchronized(lock) {
             if (prefs != null) return
             val ctx = c.applicationContext
-            prefs = try {
+            val plain = ctx.getSharedPreferences(FILE_PLAIN, Context.MODE_PRIVATE)
+            val enc = try {
                 val key = MasterKey.Builder(ctx).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
                 EncryptedSharedPreferences.create(
                     ctx, FILE_ENC, key,
@@ -37,10 +40,24 @@ object CloudAccounts {
                     EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
                 )
             } catch (e: Exception) {
-                // H18: passwords of WebDAV / 网盘 accounts would land in plain prefs — record it so 设置 can warn
-                insecure = true
-                com.hark.shiguang.Diag.log("SEC", "encrypted cloud accounts unavailable, using plain prefs (${e.javaClass.simpleName})")
-                ctx.getSharedPreferences(FILE_PLAIN, Context.MODE_PRIVATE)
+                com.hark.shiguang.Diag.log("SEC", "encrypted cloud accounts unavailable, using Keystore-sealed plain prefs (${e.javaClass.simpleName})")
+                null
+            }
+            if (enc != null) {
+                // H18: an earlier fallback left accounts in the plain file → move them into the encrypted store and wipe the plain copy
+                plain.getString(KEY, null)?.let { old ->
+                    val json = com.hark.shiguang.SecureBox.open(old)
+                    if (json != null && enc.getString(KEY, null) == null) enc.edit().putString(KEY, json).commit()
+                    plain.edit().remove(KEY).commit()
+                }
+                prefs = enc
+            } else {
+                // H18: plain prefs, but the accounts JSON (passwords, tokens) is sealed with an Android Keystore key; old plain JSON is rewritten
+                prefs = plain; sealed = true
+                plain.getString(KEY, null)?.takeIf { !com.hark.shiguang.SecureBox.isSealed(it) }?.let { old ->
+                    com.hark.shiguang.SecureBox.seal(old)?.let { plain.edit().putString(KEY, it).commit() }
+                }
+                insecure = !com.hark.shiguang.SecureBox.available || plain.getString(KEY, null)?.let { !com.hark.shiguang.SecureBox.isSealed(it) } == true
             }
             cache = load()
         }
@@ -81,7 +98,8 @@ object CloudAccounts {
     }
 
     private fun load(): List<CloudAccount> {
-        val raw = prefs?.getString(KEY, null) ?: return emptyList()
+        val stored = prefs?.getString(KEY, null) ?: return emptyList()
+        val raw = if (sealed) com.hark.shiguang.SecureBox.open(stored) ?: return emptyList() else stored
         return try {
             val arr = JSONArray(raw)
             (0 until arr.length()).mapNotNull { i -> fromJson(arr.optJSONObject(i)) }
@@ -93,7 +111,8 @@ object CloudAccounts {
     private fun persist(list: List<CloudAccount>) {
         val arr = JSONArray()
         list.forEach { arr.put(toJson(it)) }
-        prefs?.edit()?.putString(KEY, arr.toString())?.apply()
+        val json = arr.toString()
+        prefs?.edit()?.putString(KEY, if (sealed) com.hark.shiguang.SecureBox.seal(json) ?: json else json)?.apply()
     }
 
     fun toJson(a: CloudAccount): JSONObject {

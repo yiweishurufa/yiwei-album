@@ -61,44 +61,71 @@ object Store {
     /** H18: why the encrypted store failed (logged once Diag is up). */
     @Volatile var insecureReason: String = ""
         private set
+    /** H18: keys holding passwords / tokens / API keys — sealed with [SecureBox] when the plain fallback store is in use. */
+    fun isSecretKey(k: String): Boolean = k == "pass" || k == "token" || k == "nasAccounts" || k == "dm.appSecret" || k == "tmdb.key" || k == "tmdb.api" ||
+        k == "ai.key" || k.startsWith("ai.key.") || k.startsWith("sign.")
+    /** Non-null only while the plain fallback store is in use. */
+    private var box: SecretPrefs? = null
+
     fun init(c: Context) {
-        sp = runCatching {
+        val enc = runCatching {
             EncryptedSharedPreferences.create(
                 c, "secure", MasterKey.Builder(c).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
                 EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
             )
-        }.getOrElse { e ->
-            insecure = true; insecureReason = "Store: ${e.javaClass.simpleName}"
-            c.getSharedPreferences("plain", Context.MODE_PRIVATE)
+        }
+        val plain = c.getSharedPreferences("plain", Context.MODE_PRIVATE)
+        sp = enc.getOrElse { e ->
+            // H18: fall back to plain prefs, but seal every secret with an Android Keystore key (old plain secrets are rewritten)
+            insecureReason = "Store: ${e.javaClass.simpleName}"
+            val b = SecretPrefs(plain, ::isSecretKey); box = b
+            val left = runCatching { b.migratePlain() }.getOrDefault(1)
+            insecure = left > 0 || !SecureBox.available
+            if (insecure) insecureReason += "; Keystore: ${SecureBox.error.ifEmpty { "unavailable" }}"
+            plain
+        }
+        // H18: the encrypted store works again after an earlier fallback → move the old plain/sealed values in and wipe the plain file
+        if (enc.isSuccess && plain.all.isNotEmpty()) runCatching {
+            val e = sp.edit()
+            for ((k, v) in plain.all) when (v) {
+                is String -> (if (SecureBox.isSealed(v)) SecureBox.open(v) else v)?.let { if (!sp.contains(k)) e.putString(k, it) }
+                is Boolean -> if (!sp.contains(k)) e.putBoolean(k, v)
+                is Int -> if (!sp.contains(k)) e.putInt(k, v)
+                is Long -> if (!sp.contains(k)) e.putLong(k, v)
+                is Float -> if (!sp.contains(k)) e.putFloat(k, v)
+            }
+            if (e.commit()) plain.edit().clear().commit()
         }
     }
-    var url: String get() = sp.getString("url", "") ?: ""; set(v) = sp.edit().putString("url", v).apply()
-    var user: String get() = sp.getString("user", "") ?: ""; set(v) = sp.edit().putString("user", v).apply()
-    var pass: String get() = sp.getString("pass", "") ?: ""; set(v) = sp.edit().putString("pass", v).apply()
-    var token: String get() = sp.getString("token", "") ?: ""; set(v) = sp.edit().putString("token", v).apply()
+    private fun str(k: String, d: String = ""): String = box?.get(k, d) ?: (sp.getString(k, d) ?: d)
+    private fun setStr(k: String, v: String) { val e = sp.edit(); box?.put(e, k, v) ?: e.putString(k, v); e.apply() }
+    var url: String get() = str("url", ""); set(v) = setStr("url", v)
+    var user: String get() = str("user", ""); set(v) = setStr("user", v)
+    var pass: String get() = str("pass", ""); set(v) = setStr("pass", v)
+    var token: String get() = str("token", ""); set(v) = setStr("token", v)
     var columns: Int get() = sp.getInt("cols", 4); set(v) = sp.edit().putInt("cols", v).apply()
-    var themeMode: String get() = sp.getString("themeMode", "DARK") ?: "DARK"; set(v) = sp.edit().putString("themeMode", v).apply()
+    var themeMode: String get() = str("themeMode", "DARK"); set(v) = setStr("themeMode", v)
     var accent: Int get() = sp.getInt("accent", 0); set(v) = sp.edit().putInt("accent", v).apply()
     var gridSquare: Boolean get() = sp.getBoolean("gridSquare", true); set(v) = sp.edit().putBoolean("gridSquare", v).apply()
     /** "fn" or "dav": which world the home screen shows. */
-    var source: String get() = sp.getString("source", "fn") ?: "fn"; set(v) = sp.edit().putString("source", v).apply()
-    var davId: String get() = sp.getString("davId", "") ?: ""; set(v) = sp.edit().putString("davId", v).apply()
-    var nasAccounts: String get() = sp.getString("nasAccounts", "[]") ?: "[]"; set(v) = sp.edit().putString("nasAccounts", v).apply()
-    var nasCurrent: String get() = sp.getString("nasCurrent", "") ?: ""; set(v) = sp.edit().putString("nasCurrent", v).apply()
+    var source: String get() = str("source", "fn"); set(v) = setStr("source", v)
+    var davId: String get() = str("davId", ""); set(v) = setStr("davId", v)
+    var nasAccounts: String get() = str("nasAccounts", "[]"); set(v) = setStr("nasAccounts", v)
+    var nasCurrent: String get() = str("nasCurrent", ""); set(v) = setStr("nasCurrent", v)
     /** auto / lan / wan */
-    var netMode: String get() = sp.getString("netMode", "auto") ?: "auto"; set(v) = sp.edit().putString("netMode", v).apply()
+    var netMode: String get() = str("netMode", "auto"); set(v) = setStr("netMode", v)
     var lockOn: Boolean get() = sp.getBoolean("lockOn", false); set(v) = sp.edit().putBoolean("lockOn", v).apply()
-    var lanUrl: String get() = sp.getString("lan", "") ?: ""; set(v) = sp.edit().putString("lan", v).apply()
-    var wanUrl: String get() = sp.getString("wan", "") ?: ""; set(v) = sp.edit().putString("wan", v).apply()
+    var lanUrl: String get() = str("lan", ""); set(v) = setStr("lan", v)
+    var wanUrl: String get() = str("wan", ""); set(v) = setStr("wan", v)
     var autoSwitch: Boolean get() = sp.getBoolean("autoSwitch", true); set(v) = sp.edit().putBoolean("autoSwitch", v).apply()
     var backupOn: Boolean get() = sp.getBoolean("backupOn", false); set(v) = sp.edit().putBoolean("backupOn", v).apply()
     var backupWifiOnly: Boolean get() = sp.getBoolean("backupWifi", true); set(v) = sp.edit().putBoolean("backupWifi", v).apply()
     var backupSince: Long get() = sp.getLong("backupSince", 0L); set(v) = sp.edit().putLong("backupSince", v).apply()
-    var backupTarget: String get() = sp.getString("backupTarget", "") ?: ""; set(v) = sp.edit().putString("backupTarget", v).apply()
+    var backupTarget: String get() = str("backupTarget", ""); set(v) = setStr("backupTarget", v)
     var timelineLevel: Int get() = sp.getInt("tlLevel", 2); set(v) = sp.edit().putInt("tlLevel", v).apply()
-    fun getStr(k: String, d: String = ""): String = sp.getString(k, d) ?: d
-    fun putStr(k: String, v: String) = sp.edit().putString(k, v).apply()
+    fun getStr(k: String, d: String = ""): String = str(k, d)
+    fun putStr(k: String, v: String) = setStr(k, v)
     fun removeKey(k: String) = sp.edit().remove(k).apply()
     /** All non-secret settings, for QR / WebDAV sync. */
     /** All non-secret settings, for QR sync. */
