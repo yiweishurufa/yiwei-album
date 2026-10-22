@@ -43,7 +43,8 @@ object LivePairing {
         for (p in list) {
             if (!p.isVideo && p.isCloud && ext(p.fileName) in IMG) {
                 val mov = movs[parent(p.cloudPath) + "/" + base(p.fileName)]
-                val dur = meta[mov?.cloudPath]?.dur ?: 0
+                // meta is a ConcurrentHashMap: get(null) throws NPE, so only look up when a same-name MOV exists.
+                val dur = mov?.let { meta[it.cloudPath]?.dur } ?: 0
                 if (mov != null && dur in 1..6) {
                     out.add(p.copy(isLive = true, liveType = 1, liveVideo = mov.video)); used.add(mov.cloudPath); continue
                 }
