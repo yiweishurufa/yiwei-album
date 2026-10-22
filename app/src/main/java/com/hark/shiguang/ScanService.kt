@@ -96,7 +96,7 @@ class ScanService : Service() {
         b.setSmallIcon(R.drawable.ic_notify).setContentTitle(title).setContentText(text).setOngoing(!paused).setOnlyAlertOnce(true).setContentIntent(open)
         if (total > 0) b.setProgress(total, done.coerceAtMost(total), false)
         // pause only makes sense for analysis / faces / AI (listing and 影视 finish by themselves)
-        val pausable = paused || Analyzer.running || Faces.running || AiRunner.running
+        val pausable = paused || Analyzer.running || Faces.running || AiRunner.running || OcrRunner.running
         if (pausable) {
             val act = if (paused) ACTION_RESUME else ACTION_PAUSE
             val i = Intent(this, ScanService::class.java).setAction(act)

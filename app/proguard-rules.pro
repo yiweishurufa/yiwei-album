@@ -22,6 +22,10 @@
 -keep class com.google.mlkit.** { *; }
 -keep class com.google.android.gms.internal.mlkit_vision_** { *; }
 -dontwarn com.google.mlkit.**
+# 1.1.0 文字识别（中文，打包模型版）：识别管线在 native 层，Java 侧的选项/结果类按名字回调
+-keep class com.google.mlkit.vision.text.** { *; }
+-keep class com.google.android.gms.internal.mlkit_vision_text_common.** { *; }
+-keep class com.google.android.gms.internal.mlkit_vision_text_bundled_common.** { *; }
 -dontwarn com.google.android.gms.**
 
 # osmdroid：瓦片源、缓存按类名创建

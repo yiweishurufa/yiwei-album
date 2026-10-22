@@ -518,6 +518,7 @@ object Dav {
             if (ScanPolicy.paused || lib.photos.isEmpty()) return
             runCatching { Analyzer.start(c, lib, false) }
             runCatching { Faces.start(c, lib, false) }
+            runCatching { OcrRunner.start(c, lib, false) }
             if (AiRunner.on) runCatching { AiRunner.startDav(c, lib) }
         }
     }

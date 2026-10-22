@@ -20,6 +20,8 @@ object ScanStatus {
             val fl = Faces.lib(lib.accountId)
             if (Analyzer.running) return Triple("本地分析 ${lib.analyzed} / ${lib.imagesCount()}", "地点、重复、相似、实况", lib.analyzed to lib.imagesCount())
             if (Faces.running) return Triple("人脸识别 ${fl.done} / ${fl.total}", "只在本机进行", fl.done to fl.total)
+            // 1.1.0 图中文字
+            if (OcrRunner.running) return Triple("识别图中文字 ${OcrRunner.done} / ${OcrRunner.total}", "只在本机进行 · 用缩略图", OcrRunner.done to OcrRunner.total)
         }
         if (AiRunner.running) return Triple("AI 整理 ${AiRunner.done} / ${AiRunner.total}", "${AiRunner.status.ifEmpty { "整理中" }} · 只发送缩略图", AiRunner.done to AiRunner.total)
         Movies.lib()?.takeIf { it.scanning }?.let { m -> return Triple("正在扫描影音", m.phase.ifEmpty { "整理海报和简介" }, m.done to m.total) }

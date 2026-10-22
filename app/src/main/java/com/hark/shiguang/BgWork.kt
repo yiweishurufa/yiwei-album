@@ -98,7 +98,7 @@ class LibraryWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
                 // constraints already hold; manual=false keeps every runner's own pause / switch checks
                 ScanStarter.startAll(applicationContext, lib, manual = false)
                 delay(3_000)
-                BgWork.waitWhile(started) { !ScanPolicy.paused && (Analyzer.running || Faces.running || AiRunner.running) }
+                BgWork.waitWhile(started) { !ScanPolicy.paused && (Analyzer.running || Faces.running || AiRunner.running || OcrRunner.running) }
             }
             Diag.log("WORK", "library run done in ${(System.currentTimeMillis() - started) / 1000}s")
             Result.success()

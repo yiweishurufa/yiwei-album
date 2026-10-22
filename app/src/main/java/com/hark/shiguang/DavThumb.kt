@@ -50,6 +50,9 @@ object DavThumb {
     /** B20: drop the cached thumbnail for [url] (called when the photo is added / removed / replaced). */
     fun invalidate(url: String) { runCatching { File(dir, HashUtil.md5(url) + ".jpg").delete() } }
     fun invalidateUrls(urls: Iterable<String>) { urls.forEach { invalidate(it) } }
+
+    /** 1.1.0 图中文字：已缓存的网格缩略图（≤480 px），没有就返回 null。只看磁盘，从不联网、从不下原图。 */
+    fun cached(url: String): File? = File(dir, HashUtil.md5(url) + ".jpg").takeIf { it.length() > 0 }
     suspend fun file(url: String): File = withContext(Dispatchers.IO) {
         val f = File(dir, HashUtil.md5(url) + ".jpg")
         // B20: thumbnails never invalidated before — a file older than 7 days is re-fetched, so a replaced

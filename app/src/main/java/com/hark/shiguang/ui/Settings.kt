@@ -188,6 +188,11 @@ fun SettingsScreen() {
             if (dav) {
                 Div()
                 NavRow(LI.person(), "人脸识别", "置信度 ${"%.2f".format(FaceConfig.conf)} · 至少 ${FaceConfig.minPhotos} 张 · 差异 ${"%.2f".format(FaceConfig.diff)}") { HomeState.showFaceCfg = true }
+                // 1.1.0 图中文字（端上 OCR）
+                Div()
+                val ocrLib = Dav.lib()
+                LaunchedEffect(ocrLib?.accountId) { ocrLib?.let { OcrRunner.refresh(it) } }
+                ToggleRow(LI.search(), "识别图中文字（用于搜索）", ocrSub(ocrLib), OcrRunner.enabled) { OcrRunner.set(ctx, it) }
             }
         }
 
@@ -459,4 +464,16 @@ private fun UserCaDialog(onDismiss: () -> Unit) {
             Text("改动后新建的连接生效；已打开的页面可下拉刷新。", color = C.Sub, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
         }
     }, confirmButton = { TextButton(onClick = onDismiss) { Text("完成", color = C.Accent) } })
+}
+
+/** 「识别图中文字」开关下的说明 + 进度。 */
+private fun ocrSub(lib: DavLib?): String {
+    if (!OcrRunner.enabled) return "关闭。打开后在手机上识别照片里的字，搜索时能按图中文字找到照片"
+    val cur = lib != null && OcrRunner.countsFor == lib.accountId
+    val prog = if (!cur) "" else if (OcrRunner.total == 0) "" else
+        "已识别 ${OcrRunner.done.coerceAtMost(OcrRunner.total)} / ${OcrRunner.total} 张" +
+            (if (OcrRunner.withText > 0) "，${OcrRunner.withText} 张有文字" else "") +
+            (if (OcrRunner.running) " · 识别中" else if (OcrRunner.done + OcrRunner.noImage < OcrRunner.total) " · " + ScanPolicy.waitingText() else "") +
+            (if (OcrRunner.noImage > 0) "\n${OcrRunner.noImage} 张暂无缩略图，在照片页浏览过后会补上" else "")
+    return listOf(prog, "只在本机识别，用缩略图，不下原图；小字可能认不出").filter { it.isNotEmpty() }.joinToString("\n")
 }

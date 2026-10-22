@@ -294,6 +294,7 @@ object ScanPolicy {
         runCatching { AiRunner.pause() }
         runCatching { Analyzer.stop() }
         runCatching { Faces.stop() }
+        runCatching { OcrRunner.stop() }
     }
     fun resumeAll(c: Context, startAiDav: Boolean, nasPhotos: List<Photo> = emptyList()) {
         paused = false
@@ -302,6 +303,7 @@ object ScanPolicy {
         if (lib != null && lib.photos.isNotEmpty()) {
             runCatching { Analyzer.start(c, lib, true) }
             runCatching { Faces.start(c, lib, true) }
+            runCatching { OcrRunner.start(c, lib, true) }
             if (startAiDav) runCatching { AiRunner.startDav(c, lib, manual = true) }
         }
         if (nasPhotos.isNotEmpty() && AiConfig.nasToo && AiRunner.on)
@@ -310,7 +312,7 @@ object ScanPolicy {
 }
 
 /**
- * One starter for the analysis + faces + AI trio (automatic starts honour [ScanPolicy], manual ones
+ * One starter for the analysis + faces + AI trio (+ 1.1.0 图中文字 OCR; automatic starts honour [ScanPolicy], manual ones
  * do not — [manual] must stay true for the AI card's 「立即继续」 or the Wi-Fi / charging rules are bypassed
  * for every caller). Call sites keep their own paused / empty guards; only the trio itself is shared.
  */
@@ -319,6 +321,7 @@ object ScanStarter {
         if (!manual && !Analyzer.canScan(c)) return
         runCatching { Analyzer.start(c, lib, manual) }
         runCatching { Faces.start(c, lib, manual) }
+        runCatching { OcrRunner.start(c, lib, manual) }
         if (AiRunner.on) runCatching { AiRunner.startDav(c, lib, manual = manual) }
     }
 }

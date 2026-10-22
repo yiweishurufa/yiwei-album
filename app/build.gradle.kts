@@ -92,6 +92,9 @@ dependencies {
     implementation("com.google.mlkit:face-detection:16.1.7")
     // 1.0.1 #8: on-device photo labels, BUNDLED model (works offline, no Google Play services). Not play-services-mlkit-image-labeling.
     implementation("com.google.mlkit:image-labeling:17.0.9")
+    // 1.1.0 图中文字搜索：ML Kit 文字识别 v2 中文版，BUNDLED（模型打包进 APK，离线可用，不依赖 Google Play 服务）。
+    // 不要换成 play-services-mlkit-text-recognition-chinese（那个要通过 Play 下载模型，国内手机用不了）。
+    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
     implementation("org.osmdroid:osmdroid-android:6.1.18")
     // 1.1.0 阶段三：照片索引改 Room（增量写入、可续扫）+ Paging 3（大列表按页读）
     implementation("androidx.work:work-runtime-ktx:2.9.1")
