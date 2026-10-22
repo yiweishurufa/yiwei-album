@@ -759,7 +759,7 @@ object Analyzer {
             try {
                 val real = DavThumb.finalUrl(url)
                 val h = if (real == url) (ImageAuth.headersFor(url) ?: emptyMap()) else emptyMap()
-                mmr.setDataSource(real, h)
+                if (TlsTrust.needsOkHttpSource(real)) mmr.setDataSource(OkHttpMediaSource(com.hark.shiguang.cloud.CloudHttp.client, real, h)) else mmr.setDataSource(real, h)
                 result.set(((mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L) / 1000L).toInt())
             } catch (e: Throwable) {
                 Diag.log("DAV", "video duration failed: ${e.javaClass.simpleName} ${e.message?.take(80)}")

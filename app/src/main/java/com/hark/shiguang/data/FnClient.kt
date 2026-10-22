@@ -55,6 +55,7 @@ object FnClient {
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .pingInterval(15, TimeUnit.SECONDS)
+        .let { com.hark.shiguang.TlsTrust.apply(it) }   // H19: user-installed CAs only for hosts the user picked
         .build()
 
     fun normalize(input: String): String {

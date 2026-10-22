@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
+    <!-- H19: 用户安装的 CA 不再全局信任；只对 设置 → 隐私与存储 → 信任用户证书的主机 里勾选的主机生效（TlsTrust.kt，经 OkHttp） -->
     <base-config cleartextTrafficPermitted="true">
-        <trust-anchors><certificates src="system" /><certificates src="user" /></trust-anchors>
+        <trust-anchors><certificates src="system" /></trust-anchors>
     </base-config>
 </network-security-config>

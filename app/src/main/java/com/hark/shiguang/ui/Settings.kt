@@ -95,6 +95,7 @@ fun SettingsScreen() {
     var noCharge by remember { mutableStateOf(ScanPolicy.allowNoCharge) }
     var forever by remember { mutableStateOf(Store.getStr("nas.deleteForever") == "1") }
     var syncOpen by remember { mutableStateOf(false) }
+    var caOpen by remember { mutableStateOf(false) }
     var davFolderSel by remember { mutableStateOf(Dav.lib()?.getSelectedDirs() ?: emptyList()) }
     var showDavFolders by remember { mutableStateOf(false) }
     // 第 4 批：平板/折叠屏——内容区最大宽度 720dp 居中，宽屏不再通栏拉伸。
@@ -240,6 +241,8 @@ fun SettingsScreen() {
             }
             Div()
             NavRow(LI.copy(), "同步设置到其他手机", "二维码或设置码，不含密码") { syncOpen = true }
+            Div()
+            NavRow(LI.lock(), "信任用户证书的主机", "手机里自己安装的证书（自签名 NAS）只对勾选的地址生效") { caOpen = true }
         }
 
         // ---- 关于
@@ -272,6 +275,7 @@ fun SettingsScreen() {
         }
     }
     }
+    if (caOpen) UserCaDialog { caOpen = false }
     if (syncOpen) ActionListDialog("同步设置", onDismiss = { syncOpen = false }, actions = listOf(
         "显示设置二维码" to { syncOpen = false; showQr = true },
         "从截图识别二维码" to { syncOpen = false; pickQr.launch("image/*") },
@@ -455,4 +459,26 @@ fun Avatar(name: String, size: androidx.compose.ui.unit.Dp, ring: Boolean = fals
         .border(if (ring) 2.dp else 0.dp, if (ring) C.Text else Color.Transparent, CircleShape), contentAlignment = Alignment.Center) {
         Text(name.take(1).uppercase().ifEmpty { "我" }, color = C.OnAccent, fontWeight = FontWeight.Bold, fontSize = (size.value * 0.38f).sp)
     }
+}
+
+/** H19: per-host switch for user-installed CA certificates (self-signed NAS / WebDAV). */
+@Composable
+private fun UserCaDialog(onDismiss: () -> Unit) {
+    val hosts = remember { (TlsTrust.accountHosts() + TlsTrust.allowedHosts()).distinct().sorted() }
+    var allowed by remember { mutableStateOf(TlsTrust.allowedHosts()) }
+    AlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface, title = { Text("信任用户证书的主机", color = C.Text) }, text = {
+        Column {
+            Text("手机「设置 → 安全 → 加密与凭据」里自己安装的证书，只对下面打开的地址生效；其他地址只认系统证书，抓包工具装的证书无法冒充它们。只有自签名证书的 NAS / WebDAV 才需要打开。",
+                color = C.Sub, fontSize = 13.sp, lineHeight = 19.sp)
+            Spacer(Modifier.height(8.dp))
+            if (hosts.isEmpty()) Text("还没有使用 https 的账户。", color = C.Sub, fontSize = 14.sp)
+            hosts.forEach { h ->
+                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(h, color = C.Text, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                    Switch(checked = h in allowed, onCheckedChange = { on -> TlsTrust.setAllowed(h, on); allowed = TlsTrust.allowedHosts() })
+                }
+            }
+            Text("改动后新建的连接生效；已打开的页面可下拉刷新。", color = C.Sub, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+        }
+    }, confirmButton = { TextButton(onClick = onDismiss) { Text("完成", color = C.Accent) } })
 }

@@ -103,7 +103,7 @@ object DavThumb {
         val mmr = android.media.MediaMetadataRetriever()
         return try {
             val h = if (real == url) (ImageAuth.headersFor(url) ?: emptyMap()) else emptyMap()
-            mmr.setDataSource(real, h)
+            if (TlsTrust.needsOkHttpSource(real)) mmr.setDataSource(OkHttpMediaSource(http, real, h)) else mmr.setDataSource(real, h)
             val t = 1_000_000L
             val b = if (android.os.Build.VERSION.SDK_INT >= 27) mmr.getScaledFrameAtTime(t, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 400, 400)
                     else mmr.getFrameAtTime(t, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)

@@ -82,7 +82,7 @@ class WebDavSource(a: CloudAccount) : CloudSource {
         } catch (e: java.net.UnknownHostException) { throw Exception("无法解析服务器地址")
         } catch (e: java.net.SocketTimeoutException) { throw Exception("连接超时")
         } catch (e: java.net.ConnectException) { throw Exception("无法连接服务器")
-        } catch (e: javax.net.ssl.SSLException) { throw Exception("SSL 连接失败")
+        } catch (e: javax.net.ssl.SSLException) { throw Exception(com.hark.shiguang.TlsTrust.SSL_HINT)
         } catch (e: java.io.IOException) { throw Exception("网络错误：" + (e.message ?: e.javaClass.simpleName)) }
     }
 

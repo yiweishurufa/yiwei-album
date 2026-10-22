@@ -23,6 +23,7 @@ class App : Application(), ImageLoaderFactory {
         Thread { CrashLog.recordSystemExit(this) }.apply { priority = Thread.MIN_PRIORITY }.start()   // 2026-10-22: native crash / ANR
         runCatching { com.hark.shiguang.cloud.CloudAccounts.init(this) }
         NasAccounts.init()
+        runCatching { TlsTrust.migrate() }   // H19: keep already-working https accounts trusted after the upgrade
         ctx = this
         ScanWatch.init(this)
         TmdbNet.start(this)   // 1.0.1: TMDB 直连 / 自动代理

@@ -208,7 +208,7 @@ internal object CloudHttp {
         } catch (e: java.net.ConnectException) {
             throw Exception("无法连接服务器")
         } catch (e: javax.net.ssl.SSLException) {
-            throw Exception("SSL 连接失败")
+            throw Exception(com.hark.shiguang.TlsTrust.SSL_HINT)
         } catch (e: java.io.IOException) {
             throw Exception("网络错误：" + (e.message ?: e.javaClass.simpleName))
         }
