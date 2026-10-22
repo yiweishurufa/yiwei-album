@@ -40,8 +40,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.SubcomposeAsyncImage
-import coil.compose.SubcomposeAsyncImageContent
 import coil.request.ImageRequest
 import com.hark.shiguang.data.Photo
 import java.time.LocalDate
@@ -59,16 +57,18 @@ fun shimmerBrush(): Brush {
 
 @Composable
 fun NetImage(url: String?, modifier: Modifier = Modifier, scale: ContentScale = ContentScale.Crop, crossfade: Boolean = true) {
+    // H11: plain AsyncImage over a static placeholder color — no subcomposition and no endless shimmer per cell,
+    // which made poster grids and song rows drop frames. shimmerBrush() stays for first-screen skeletons only.
     val ctx = LocalContext.current
-    SubcomposeAsyncImage(
-        model = ImageRequest.Builder(ctx).data(url).crossfade(crossfade).build(),
-        contentDescription = null, contentScale = scale, modifier = modifier,
-        loading = { Box(Modifier.fillMaxSize().background(shimmerBrush())) },
-        error = { Box(Modifier.fillMaxSize().background(C.Surface2), contentAlignment = Alignment.Center) {
-            Icon(Icons.Rounded.BrokenImage, null, tint = C.Faint, modifier = Modifier.size(22.dp))
-        } },
-        success = { SubcomposeAsyncImageContent() },
-    )
+    var failed by remember(url) { mutableStateOf(false) }
+    Box(modifier.background(if (failed) C.Surface2 else C.Surface), contentAlignment = Alignment.Center) {
+        coil.compose.AsyncImage(
+            model = ImageRequest.Builder(ctx).data(url).crossfade(crossfade).build(),
+            contentDescription = null, contentScale = scale, modifier = Modifier.matchParentSize(),
+            onState = { failed = it is coil.compose.AsyncImagePainter.State.Error },
+        )
+        if (failed) Icon(Icons.Rounded.BrokenImage, null, tint = C.Faint, modifier = Modifier.size(22.dp))
+    }
 }
 
 fun fmtDuration(sec: Int): String = if (sec >= 3600) "%d:%02d:%02d".format(sec / 3600, sec / 60 % 60, sec % 60) else "%d:%02d".format(sec / 60, sec % 60)
