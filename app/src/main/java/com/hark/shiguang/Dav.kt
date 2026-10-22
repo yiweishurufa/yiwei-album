@@ -68,22 +68,39 @@ class DavLib(val accountId: String) {
     @Volatile private var loadState = LoadState.NOT_LOADED
     private val ensureMutex = Mutex()
     private val uiScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    /**
+     * H7: loading and scanning run here, not in the caller's (page) scope — switching tabs used to cancel the
+     * first full scan, record it as FAILED「…was cancelled」and start over next time. Callers only wait for it.
+     */
+    private val workScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var ensureJob: Deferred<Unit>? = null
+    private var scanJob: Job? = null
 
-    /** B18: cancels this lib's UI scope (progress ticker etc.). Called from [Dav.forget]. */
-    fun close() { uiScope.cancel() }
+    /** B18: cancels this lib's UI scope (progress ticker etc.) and its load / scan work. Called from [Dav.forget]. */
+    fun close() { uiScope.cancel(); workScope.cancel() }
 
     fun imagesCount() = photos.count { !it.isVideo }
 
     /** True once every index segment is in [photos] (cold start shows the newest months first). */
     var fullyLoaded by mutableStateOf(false)
 
+    /** Loads the index (and runs the first scan when there is none). Leaving the page does not stop it (H7). */
     suspend fun ensure() {
+        if (loadState == LoadState.LOADED) return
+        val j = synchronized(this) { ensureJob?.takeIf { it.isActive } ?: workScope.async { ensureWork() }.also { ensureJob = it } }
+        j.await()
+    }
+
+    private suspend fun ensureWork() {
         ensureMutex.withLock {
             if (loadState == LoadState.LOADED) return
             loadState = LoadState.LOADING
             try {
                 ensureLocked()
                 loadState = LoadState.LOADED
+            } catch (e: CancellationException) {
+                loadState = LoadState.NOT_LOADED   // H7: cancelled is not failed — retried silently next time
+                throw e
             } catch (e: Exception) {
                 loadState = LoadState.FAILED
                 error = e.message
@@ -192,6 +209,15 @@ class DavLib(val accountId: String) {
      * afterwards from their own queues (Analyzer / AiRunner / Faces), so the timeline is complete as soon as listing ends.
      */
     suspend fun scan(full: Boolean = false) {
+        val j = synchronized(this) {
+            scanJob?.takeIf { it.isActive } ?: workScope.launch {
+                try { scanWork(full) } finally { if (scanning) scanning = false }   // H7: always reset, even when cancelled
+            }.also { scanJob = it }
+        }
+        j.join()
+    }
+
+    private suspend fun scanWork(full: Boolean) {
         if (scanning) return
         val s = src ?: run { error = "WebDAV 账户不存在"; return }
         scanning = true; error = null
@@ -233,6 +259,7 @@ class DavLib(val accountId: String) {
                         merged.dirs.putAll(res.cache.dirs)
                         if (!res.complete) allComplete = false
                     }.onFailure { e ->
+                        if (e is CancellationException) throw e
                         // 单个选中根目录列表失败：保留该目录的旧索引，避免该目录照片突然消失；多根时继续扫其余目录。
                         allComplete = false
                         val fallback = previous.filter { it.path == root || (root != "/" && it.path.startsWith(root + "/")) }
@@ -243,7 +270,7 @@ class DavLib(val accountId: String) {
                 complete = allComplete
                 merged
             }
-        }.onFailure { error = it.message }
+        }.onFailure { if (it is CancellationException) { ticker.cancel(); throw it }; error = it.message }
         ticker.cancel()
         scanListed = prog.listed.get(); scanKnown = prog.known.get(); scanFound = prog.found.get()
         Diag.log("DAV", "scan ${if (doFull) "full" else "incremental"} roots=$roots: ${prog.listed.get()} folders (${prog.skipped.get()} unchanged, skipped), ${all.size} media, complete=$complete, ${System.currentTimeMillis() - t0} ms")
@@ -285,7 +312,7 @@ class DavLib(val accountId: String) {
         if (error == null) ScanFollowUp.afterScan(App.ctx, this)
     }
 
-    suspend fun refreshFolders() { runCatching { src!!.list("/").filter { it.isDir && !it.name.startsWith(".") } }.onSuccess { folders = it }.onFailure { if (folders == null) folders = emptyList() } }
+    suspend fun refreshFolders() { runCatching { src!!.list("/").filter { it.isDir && !it.name.startsWith(".") } }.onSuccess { folders = it }.onFailure { if (it is CancellationException) throw it; if (folders == null) folders = emptyList() } }
 
     // ---------------------------------------------------------------- WebDAV 照片文件夹选择（空 = 全部文件夹）
     /** 用户选中的 WebDAV 照片文件夹（规范化后的绝对路径）；空列表表示全部文件夹。 */
@@ -327,7 +354,7 @@ class DavLib(val accountId: String) {
 
     // ---------------------------------------------------------------- virtual albums (manifest in WebDAV root)
     suspend fun refreshAlbums() {
-        runCatching { readAlbums() }.onSuccess { albums = it }.onFailure { if (albums == null) albums = emptyList(); error = it.message }
+        runCatching { readAlbums() }.onSuccess { albums = it }.onFailure { if (it is CancellationException) throw it; if (albums == null) albums = emptyList(); error = it.message }
     }
 
     private suspend fun readAlbums(): List<VAlbum> {
