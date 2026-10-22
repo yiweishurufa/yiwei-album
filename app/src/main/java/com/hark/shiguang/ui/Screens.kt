@@ -207,7 +207,7 @@ fun LoginScreen() {
     var need2fa by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     var err by remember { mutableStateOf<String?>(null) }
-    var found by remember { mutableStateOf<List<String>?>(null) }
+    var found by remember { mutableStateOf<List<com.hark.shiguang.data.Endpoint.Found>?>(null) }
     var scanning by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val focus = LocalFocusManager.current
@@ -273,13 +273,16 @@ fun LoginScreen() {
                     scanning = true; scope.launch { found = Endpoint.discover(); scanning = false }
                 })
             found?.let { l ->
-                if (l.isEmpty()) Text("没找到。确认手机和 NAS 在同一个 Wi-Fi。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 4.dp, top = 6.dp))
+                if (l.isEmpty()) Text("没找到飞牛。确认手机和 NAS 在同一个 Wi-Fi；开着 VPN 时可以先关掉再搜。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 4.dp, top = 6.dp))
                 l.forEach { f ->
                     Row(Modifier.padding(top = 6.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(C.Surface).clickable {
-                        url = f.substringAfter("://").substringBefore(":"); port = f.substringAfterLast(":")
+                        url = f.host; port = f.port
                     }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(LI.nas(), null, tint = C.Accent, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(10.dp))
-                        Text(f.removePrefix("http://"), color = C.Text, fontSize = 14.sp)
+                        Column {
+                            Text(f.name.ifEmpty { "飞牛 NAS" }, color = C.Text, fontSize = 14.sp)
+                            Text(f.url.removePrefix("http://"), color = C.Sub, fontSize = 12.sp)
+                        }
                     }
                 }
             }

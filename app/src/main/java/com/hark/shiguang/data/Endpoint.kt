@@ -223,22 +223,74 @@ object Endpoint {
         chosen
     }
 
-    /** Scans the phone's /24 LAN for hosts answering on 5666 (fnOS web port). */
-    suspend fun discover(): List<String> = withContext(Dispatchers.IO) {
+    /** A 飞牛 found on the LAN: base url ("http://192.168.1.5:5666") and a display name ("" when unknown). */
+    data class Found(val url: String, val name: String) {
+        val host: String get() = url.substringAfter("://").substringBefore(":")
+        val port: String get() = url.substringAfterLast(":")
+    }
+
+    /** VPN / cellular / virtual interfaces never hold the NAS (sing-box 172.19.0.x, rmnet, clat…). */
+    private val NOT_LAN = listOf("tun", "ppp", "ipsec", "rmnet", "ccmni", "clat", "v4-", "dummy", "veth", "docker", "wg", "utun", "lo")
+
+    /** The Wi-Fi / Ethernet network, so probes bypass a TUN-mode VPN that would answer every TCP handshake itself. */
+    private fun lanNetwork(): android.net.Network? = runCatching {
+        val cm = com.hark.shiguang.App.ctx.getSystemService(android.net.ConnectivityManager::class.java) ?: return null
+        @Suppress("DEPRECATION")
+        cm.allNetworks.firstOrNull { n ->
+            val c = cm.getNetworkCapabilities(n) ?: return@firstOrNull false
+            (c.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) || c.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET)) &&
+                !c.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN)
+        }
+    }.getOrNull()
+
+    /**
+     * 用户 2026-10-22 反馈 #1：搜索局域网列出整段 IP。以前 5666 端口 TCP 连上就算飞牛；手机开着 TUN 模式 VPN 时握手由本机
+     * 隧道应答，254 个地址全部「连上」。现在：
+     *  1. 只扫 Wi-Fi / 以太网接口的 /24（跳过 VPN、蜂窝、虚拟网卡），socket 绑定 Wi-Fi 网络；
+     *  2. 连上 5666 后再 GET http://ip:5666/，页面里有 fnOS / 飞牛 特征才算；
+     *  3. 按地址去重，名字取页面标题或局域网主机名。
+     * 超时短（TCP 350 ms、HTTP 1.5 s），并发 32，不占满 Dispatchers.IO。
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    suspend fun discover(): List<Found> = withContext(Dispatchers.IO) {
+        val net = lanNetwork()
         val ips = runCatching {
-            NetworkInterface.getNetworkInterfaces().toList().filter { it.isUp && !it.isLoopback }
+            NetworkInterface.getNetworkInterfaces().toList().filter { nif -> nif.isUp && !nif.isLoopback && !nif.isVirtual && NOT_LAN.none { nif.name.lowercase().startsWith(it) } }
                 .flatMap { it.inetAddresses.toList() }.filterIsInstance<Inet4Address>().map { it.hostAddress ?: "" }
                 .filter { isPrivate("http://$it") }
         }.getOrDefault(emptyList())
         val prefixes = ips.map { it.substringBeforeLast('.') }.distinct().take(2)
-        prefixes.flatMap { pre ->
+        val io = Dispatchers.IO.limitedParallelism(32)
+        val sf = net?.socketFactory
+        val open = prefixes.flatMap { pre ->
             (1..254).map { i ->
-                async {
+                async(io) {
                     val h = "$pre.$i"
-                    val ok = runCatching { Socket().use { s -> s.connect(InetSocketAddress(h, 5666), 350); true } }.getOrDefault(false)
-                    if (ok) "http://$h:5666" else null
+                    val ok = runCatching { (sf?.createSocket() ?: Socket()).use { s -> s.connect(InetSocketAddress(h, 5666), 350); true } }.getOrDefault(false)
+                    if (ok) h else null
                 }
             }
-        }.awaitAll().filterNotNull()
+        }.awaitAll().filterNotNull().distinct()
+        Diag.log("NET", "discover: ${prefixes.size} subnets, ${open.size} hosts answer on 5666, wifiNet=${net != null}")
+        if (open.size > 40) Diag.log("NET", "discover: suspicious — most of the subnet answers (VPN?); fnOS check decides")
+        val client = FnClient.http.newBuilder().connectTimeout(1000, TimeUnit.MILLISECONDS).readTimeout(1500, TimeUnit.MILLISECONDS)
+            .callTimeout(2500, TimeUnit.MILLISECONDS).followRedirects(true).apply { if (sf != null) socketFactory(sf) }.build()
+        open.map { h -> async(io) { fnosCheck(client, h) } }.awaitAll().filterNotNull().distinctBy { it.url }.sortedBy { it.host.substringAfterLast('.').toIntOrNull() ?: 0 }
     }
+
+    private val TITLE = Regex("<title[^>]*>([^<]{1,80})</title>", RegexOption.IGNORE_CASE)
+    private val FNOS_MARKS = listOf("fnos", "飞牛", "fn-os", "trim-")
+
+    /** null unless http://[h]:5666/ looks like the fnOS web UI. */
+    private fun fnosCheck(client: okhttp3.OkHttpClient, h: String): Found? = runCatching {
+        client.newCall(Request.Builder().url("http://$h:5666/").header("Cache-Control", "no-cache").build()).execute().use { r ->
+            val body = r.body?.source()?.let { src -> src.request(64 * 1024); src.buffer.snapshot().utf8().take(64 * 1024) }.orEmpty()
+            val hay = (body + " " + r.request.url + " " + r.headers.joinToString(" ") { it.first + ":" + it.second }).lowercase()
+            if (FNOS_MARKS.none { hay.contains(it) }) { Diag.log("NET", "discover: .${h.substringAfterLast('.')} answers 5666 but is not fnOS"); return@runCatching null }
+            val title = TITLE.find(body)?.groupValues?.get(1)?.trim().orEmpty()
+            // reverse lookup can hang on some routers: at most 800 ms
+            val hostName = runCatching { java.util.concurrent.CompletableFuture.supplyAsync { java.net.InetAddress.getByName(h).canonicalHostName }.get(800, TimeUnit.MILLISECONDS) }.getOrNull()?.takeIf { it != h && !it.matches(Regex("[0-9.]+")) }.orEmpty()
+            Found("http://$h:5666", hostName.removeSuffix(".lan").removeSuffix(".local").ifEmpty { title })
+        }
+    }.getOrNull()
 }
