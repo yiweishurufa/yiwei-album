@@ -445,7 +445,23 @@ object SearchState {
     var loading by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
     var note by mutableStateOf("")
-    fun reset() { results = null; error = null; note = "" }
+    /** 1.1.0：结果里靠「图中文字」找到的照片（排在最前面，单独一组标注）。 */
+    var ocrPaths by mutableStateOf<Set<String>>(emptySet())
+    fun reset() { results = null; error = null; note = ""; ocrPaths = emptySet() }
+}
+
+/** 搜索结果分组：靠图中文字找到的在前（标「图中文字」），其余标「其他结果」；没有图中文字命中时和以前一样不分组。 */
+fun searchEntries(res: List<Photo>, ocr: Set<String>): List<Entry> {
+    val k = if (ocr.isEmpty()) 0 else res.takeWhile { it.cloudPath in ocr }.size
+    if (k == 0) return buildEntries(res, false)
+    val out = ArrayList<Entry>(res.size + 2)
+    out += Entry.Header("ocr", "图中文字", "照片里有这些字 · ${num(k)} 张")
+    for (i in 0 until k) out += Entry.Cell(res[i], i)
+    if (k < res.size) {
+        out += Entry.Header("other", "其他结果", "${num(res.size - k)} 张")
+        for (i in k until res.size) out += Entry.Cell(res[i], i)
+    }
+    return out
 }
 
 @Composable
@@ -457,7 +473,7 @@ fun SearchScreen() {
         if (q.isBlank() && !AdvFilter.active) { SearchState.reset(); return }
         SearchState.query = q; focus.clearFocus()
         scope.launch {
-            SearchState.loading = true; SearchState.error = null
+            SearchState.loading = true; SearchState.error = null; SearchState.ocrPaths = emptySet()
             runCatching {
                 if (q.isBlank()) {
                     val (pool, note) = AdvFilter.pool(HomeState.source == "dav")
@@ -471,12 +487,19 @@ fun SearchScreen() {
                     val lib = com.hark.shiguang.Dav.lib() ?: error("没有 WebDAV 账户")
                     lib.ensure()
                     val (res, exact) = lib.aiSearch(concepts)
+                    // 1.1.0 图中文字：按原句匹配照片里识别出的字，命中的排在最前面
+                    val ocr = com.hark.shiguang.OcrRunner.search(lib, q.trim())
+                    val ocrSet = ocr.mapTo(HashSet()) { it.cloudPath }
                     val done = lib.aiDone(); val total = lib.imagesCount()
+                    val ocrOn = com.hark.shiguang.OcrRunner.enabled
+                    val ocrLeft = with(com.hark.shiguang.OcrRunner) { if (ocrOn && countsFor == lib.accountId && this.total > 0 && this.done + noImage < this.total) "图中文字已识别 ${this.done} / ${this.total} 张" else null }
                     SearchState.note = listOfNotNull(
-                        if (!exact && res.isNotEmpty()) "没有完全符合的，下面是部分符合的" else null,
-                        if (!aiOn) "未配置 AI，只能按地点和文件名找" else if (done < total) "AI 已整理 $done / $total 张，结果可能不全" else null,
+                        if (!exact && res.any { it.cloudPath !in ocrSet }) "没有完全符合的，下面是部分符合的" else null,
+                        if (!aiOn) (if (ocrOn) "未配置 AI，只能按地点、文件名和图中文字找" else "未配置 AI，只能按地点和文件名找") else if (done < total) "AI 已整理 $done / $total 张，结果可能不全" else null,
+                        ocrLeft,
                     ).joinToString(" · ")
-                    res
+                    SearchState.ocrPaths = ocrSet
+                    if (ocr.isEmpty()) res else ocr + res.filter { it.cloudPath !in ocrSet }
                 } else {
                     val base = Repo.search(q.trim())
                     val extra = com.hark.shiguang.AiRunner.nasSearchIds(concepts.flatten())
@@ -531,10 +554,10 @@ fun SearchScreen() {
                         }
                     }
                     Spacer(Modifier.height(10.dp))
-                    Text(if (HomeState.source == "dav") "WebDAV 照片按 AI 整理出的标签和描述来搜，整理越多越准。" else "需要在飞牛相册中开启 AI 智能识别，才能用自然语言搜索。", style = MaterialTheme.typography.bodySmall)
+                    Text(if (HomeState.source == "dav") "WebDAV 照片按 AI 整理出的标签和描述来搜，整理越多越准。" + (if (com.hark.shiguang.OcrRunner.enabled) "也能直接搜照片里的文字，比如店名、票据上的字。" else "") else "需要在飞牛相册中开启 AI 智能识别，才能用自然语言搜索。", style = MaterialTheme.typography.bodySmall)
                 }
                 res.isEmpty() -> StateMessage(Icons.Rounded.ImageSearch, "没有找到相关照片", SearchState.note.ifEmpty { "换个说法试试，比如「蓝天」「孩子在笑」。" })
-                else -> PhotoGrid(buildEntries(res, false), adaptiveCols(4), false, onEnd = {}, onOpen = { Nav.push(Route.Viewer(res, it)) }, top = 4.dp, bottom = 40.dp,
+                else -> PhotoGrid(remember(res, SearchState.ocrPaths) { searchEntries(res, SearchState.ocrPaths) }, adaptiveCols(4), false, onEnd = {}, onOpen = { Nav.push(Route.Viewer(res, it)) }, top = 4.dp, bottom = 40.dp,
                     header = { Column(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp)) {
                         Text("找到 ${num(res.size)} 项", style = MaterialTheme.typography.bodySmall)
                         if (SearchState.note.isNotEmpty()) Text(SearchState.note, color = C.Gold, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
