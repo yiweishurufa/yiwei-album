@@ -581,6 +581,9 @@ fun DavDialog(old: CloudAccount?, onDismiss: () -> Unit, onSaved: (CloudAccount)
             preset?.let { p -> Text(p.help, color = C.Sub, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(bottom = 10.dp)) }
             Field2("名称", title) { title = it }
             Field2("服务器地址（含路径）", url) { url = it }
+            // H19: Basic auth over plain http to a public address sends the password in clear text
+            if (plainHttpPublic(url)) Text("这是公网上的 http 地址（不加密），用户名和密码会以明文发出，路上的设备都能看到。建议改用 https 地址。",
+                color = C.Danger, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(bottom = 8.dp))
             Field2(preset?.userHint?.let { "用户名（$it）" } ?: "用户名", user) { user = it }
             Field2(if (preset?.key == "123" || preset?.key == "jgy") "应用密码" else "密码", pass, secret = true) { pass = it }
             if (preset == null) Text("例：https://webdav.123pan.cn/webdav、https://dav.jianguoyun.com/dav/、http://<IP>:5244/dav", color = C.Sub, fontSize = 12.sp)
@@ -597,6 +600,18 @@ fun DavDialog(old: CloudAccount?, onDismiss: () -> Unit, onSaved: (CloudAccount)
     }, confirmButton = {
         TextButton(enabled = !busy, onClick = { save() }) { if (busy) CircularProgressIndicator(Modifier.size(18.dp), color = C.Accent, strokeWidth = 2.dp) else Text("连接", color = C.Accent) }
     }, dismissButton = { TextButton(onClick = onDismiss) { Text("取消", color = C.Sub) } })
+}
+
+/** H19: true for an explicit http:// address whose host is not on the LAN (private IPv4, .local/.lan, Tailscale 100.64/10). */
+fun plainHttpPublic(input: String): Boolean {
+    val u = input.trim().lowercase()
+    if (!u.startsWith("http://")) return false
+    val host = u.removePrefix("http://").substringBefore('/').substringBefore('@').let { if (it.startsWith("[")) it.substringBefore(']') + "]" else it.substringBefore(':') }
+    if (host.isEmpty()) return false
+    if (com.hark.shiguang.data.Endpoint.isPrivate("http://$host/") || host == "localhost" || host.endsWith(".local") || host.endsWith(".lan") || host.startsWith("[")) return false
+    val m = Regex("^100\\.(\\d+)\\.").find(host)
+    if (m != null && (m.groupValues[1].toIntOrNull() ?: 0) in 64..127) return false
+    return true
 }
 
 @Composable
