@@ -312,7 +312,7 @@ class DavLib(val accountId: String) {
         if (error == null) ScanFollowUp.afterScan(App.ctx, this)
     }
 
-    suspend fun refreshFolders() { runCatching { src!!.list("/").filter { it.isDir && !it.name.startsWith(".") } }.onSuccess { folders = it }.onFailure { if (it is CancellationException) throw it; if (folders == null) folders = emptyList() } }
+    suspend fun refreshFolders() { runCatching { (src ?: error("WebDAV 账户不可用")).list("/").filter { it.isDir && !it.name.startsWith(".") } }.onSuccess { folders = it }.onFailure { if (it is CancellationException) throw it; if (folders == null) folders = emptyList() } }
 
     // ---------------------------------------------------------------- WebDAV 照片文件夹选择（空 = 全部文件夹）
     /** 用户选中的 WebDAV 照片文件夹（规范化后的绝对路径）；空列表表示全部文件夹。 */
@@ -731,7 +731,7 @@ object Analyzer {
             if (!isActive || !ok() || videoPlaying) { if (videoPlaying) Diag.log("DAV", "video durations paused: video playing"); break }
             chunk.map { p -> async(Dispatchers.IO) {
                 runCatching {
-                    val d = durationOf(p.video!!)
+                    val d = p.video?.let { durationOf(it) } ?: 0
                     val m = lib.meta[p.cloudPath] ?: Meta().also { lib.meta[p.cloudPath] = it }
                     m.dur = if (d > 0) d else -1
                 }.onFailure { Diag.log("DAV", "videoDurations ${p.cloudPath}: ${it.message}") }

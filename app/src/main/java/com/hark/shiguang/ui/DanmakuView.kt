@@ -193,7 +193,7 @@ fun DanmakuSearchDialog(initial: String, episode: Int?, onPick: (DmMatch) -> Uni
     fun go() = scope.launch {
         busy = true; err = null
         runCatching { withContext(Dispatchers.IO) { DanDan.search(q.trim(), null, false, ep.toIntOrNull()) } }
-            .onSuccess { l -> res = l.flatMap { it.second }.take(80); if (res!!.isEmpty()) err = "没有结果，换个名字（中文 / 日文 / 英文都行）或去掉集数" }
+            .onSuccess { l -> val got = l.flatMap { it.second }.take(80); res = got; if (got.isEmpty()) err = "没有结果，换个名字（中文 / 日文 / 英文都行）或去掉集数" }
             .onFailure { err = it.message }
         busy = false
     }

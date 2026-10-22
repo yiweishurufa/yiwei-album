@@ -379,7 +379,7 @@ fun CollectionScreen(r: Route.Collection) {
         val topPad = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 64.dp
         when {
             src.photos.isEmpty() && src.loading -> SkeletonGrid(cols, topPad)
-            src.photos.isEmpty() && src.error != null -> StateMessage(Icons.Rounded.CloudOff, "加载失败", src.error!!, "重试") { scope.launch { src.refresh() } }
+            src.photos.isEmpty() && src.error != null -> StateMessage(Icons.Rounded.CloudOff, "加载失败", src.error.orEmpty(), "重试") { scope.launch { src.refresh() } }
             src.photos.isEmpty() -> StateMessage(Icons.Rounded.PhotoLibrary, "这里还是空的", "")
             else -> PhotoGrid(entries, cols, src.loading, onEnd = { scope.launch { src.next() } }, onOpen = { Nav.push(Route.Viewer(shown, it)) }, state = grid, top = topPad, bottom = 40.dp)
         }
@@ -503,7 +503,7 @@ fun SearchScreen() {
         Box(Modifier.weight(1f)) {
             when {
                 SearchState.loading -> SkeletonGrid(4, 0.dp)
-                SearchState.error != null -> StateMessage(Icons.Rounded.SearchOff, "搜索失败", SearchState.error!!)
+                SearchState.error != null -> StateMessage(Icons.Rounded.SearchOff, "搜索失败", SearchState.error.orEmpty())
                 res == null -> Column(Modifier.padding(18.dp)) {
                     Text("试试这样搜", style = MaterialTheme.typography.titleSmall)
                     Spacer(Modifier.height(12.dp))

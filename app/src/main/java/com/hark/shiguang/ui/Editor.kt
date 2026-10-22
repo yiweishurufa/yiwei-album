@@ -88,7 +88,7 @@ fun EditScreen(p: Photo) {
         Box(Modifier.weight(1f).fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
             val bmp = rotated
             when {
-                err != null -> Text(err!!, color = Color.White)
+                err != null -> Text(err.orEmpty(), color = Color.White)
                 bmp == null -> CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp)
                 else -> CropView(bmp, crop, aspect, bright, contrast, editable = tool == 0) { crop = it }
             }

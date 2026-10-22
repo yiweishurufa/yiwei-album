@@ -115,9 +115,9 @@ object MemoryVideo {
                         mux.start(); muxStarted = true
                     }
                     idx >= 0 -> {
-                        val buf = enc.getOutputBuffer(idx)!!
+                        val buf = enc.getOutputBuffer(idx)
                         if (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) info.size = 0
-                        if (info.size > 0 && muxStarted) {
+                        if (buf != null && info.size > 0 && muxStarted) {
                             buf.position(info.offset); buf.limit(info.offset + info.size)
                             mux.writeSampleData(vTrack, buf, info)
                         }
@@ -135,7 +135,7 @@ object MemoryVideo {
                 frame.getPixels(argb, 0, W, 0, 0, W, H)
                 var inIdx: Int
                 do { inIdx = enc.dequeueInputBuffer(10_000); if (inIdx < 0) drain(false) } while (inIdx < 0)
-                val img = enc.getInputImage(inIdx)!!
+                val img = enc.getInputImage(inIdx) ?: error("视频编码器不可用")
                 fillYuv(img, argb)
                 enc.queueInputBuffer(inIdx, 0, W * H * 3 / 2, f * 1_000_000L / FPS, 0)
                 drain(false)

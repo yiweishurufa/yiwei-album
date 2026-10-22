@@ -213,7 +213,8 @@ object Ops {
         val req = Request.Builder().url(url).apply { headers.forEach { (k, v) -> header(k, v) } }.build()
         FnClient.http.newCall(req).execute().use { r ->
             if (!r.isSuccessful) error("下载失败（HTTP ${r.code}）")
-            f.outputStream().use { o -> r.body!!.byteStream().copyTo(o) }
+            val body = r.body ?: error("下载失败（空响应）")
+            f.outputStream().use { o -> body.byteStream().copyTo(o) }
         }
         return f
     }

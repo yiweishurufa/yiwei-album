@@ -83,7 +83,7 @@ object Hidden {
         val base = "/p/api/v1/stream/p/t/$id"
         return Photo(id = id, uuid = uuid, isVideo = video, isLive = o.optBoolean("l"), fileName = o.optString("n"), time = o.optString("t"),
             width = o.optInt("w"), height = o.optInt("h"), duration = o.optInt("d"), collected = false,
-            thumbS = FnClient.abs("$base/s/$uuid")!!, thumbM = FnClient.abs("$base/m/$uuid")!!, original = FnClient.abs("$base/o/$uuid")!!,
+            thumbS = FnClient.absOf("$base/s/$uuid"), thumbM = FnClient.absOf("$base/m/$uuid"), original = FnClient.absOf("$base/o/$uuid"),
             video = if (video) FnClient.abs("/p/api/v1/stream/v/$id") else null,
             make = o.optString("mk"), model = o.optString("md"), fNumber = "", exposure = "", iso = "", focal = "", size = o.optLong("s"), geo = "", path = o.optString("p"))
     }

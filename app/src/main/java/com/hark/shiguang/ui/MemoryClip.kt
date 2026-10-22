@@ -83,7 +83,7 @@ fun MemoryClipScreen(s: ExtScreen.MemoryClip) {
                     Row(Modifier.padding(horizontal = 12.dp)) { TextButton(onClick = { job?.cancel(); job = null }) { Text("取消", color = C.Sub) } }
                 }
                 file != null -> {
-                    val f = file!!
+                    val f = file ?: return@Column
                     Text("已生成 · ${"%.1f".format(f.length() / 1048576.0)} MB", color = C.Text, fontSize = 15.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp))
                     Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         GradientButton("分享到微信等", Modifier.weight(1f)) { runCatching { MemoryVideo.share(ctx, f) }.onFailure { toast(ctx, "没有可分享的应用") } }

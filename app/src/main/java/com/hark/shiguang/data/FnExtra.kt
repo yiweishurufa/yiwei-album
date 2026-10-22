@@ -307,7 +307,7 @@ object NasX {
             3 -> MotionSource(p.original, streamHeaders(p.original), true, "ftypisom")
             else -> {
                 val fromThumb = p.video != null
-                val v = p.video ?: FnClient.abs("/p/api/v1/stream/v/${p.id}")!! // UNVERIFIED for live type 1 without thumbnail.videoUrl
+                val v = p.video ?: FnClient.absOf("/p/api/v1/stream/v/${p.id}") // UNVERIFIED for live type 1 without thumbnail.videoUrl
                 com.hark.shiguang.Diag.log("LIVE", "fn live type=$t id=${p.id} verified=false src=${if (fromThumb) "thumbnail.videoUrl" else "fallback /p/api/v1/stream/v/<id>"} (UNVERIFIED mapping)")
                 MotionSource(v, streamHeaders(v), false, verified = false)
             }

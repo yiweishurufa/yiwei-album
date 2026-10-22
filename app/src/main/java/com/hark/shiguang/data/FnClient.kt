@@ -190,6 +190,9 @@ object FnClient {
             j
         }
 
+    /** Non-null variant for paths built in code (never blank): no `!!` at call sites. */
+    fun absOf(u: String): String = abs(u) ?: u
+
     fun abs(u: String?): String? = when {
         u.isNullOrBlank() -> null
         u.startsWith("http") -> u
@@ -255,9 +258,9 @@ data class Photo(
                 width = j.optInt("width"), height = j.optInt("height"),
                 duration = j.optInt("mediaDuration"),
                 collected = j.optInt("isCollect") == 1,
-                thumbS = FnClient.abs(th?.optString("sUrl")?.takeIf { it.isNotBlank() && it != "null" } ?: "$base/s/$uuid")!!,
-                thumbM = FnClient.abs(th?.optString("mUrl")?.takeIf { it.isNotBlank() && it != "null" } ?: "$base/m/$uuid")!!,
-                original = FnClient.abs(th?.optString("originalUrl")?.takeIf { it.isNotBlank() && it != "null" } ?: "$base/o/$uuid")!!,
+                thumbS = FnClient.absOf(th?.optString("sUrl")?.takeIf { it.isNotBlank() && it != "null" } ?: "$base/s/$uuid"),
+                thumbM = FnClient.absOf(th?.optString("mUrl")?.takeIf { it.isNotBlank() && it != "null" } ?: "$base/m/$uuid"),
+                original = FnClient.absOf(th?.optString("originalUrl")?.takeIf { it.isNotBlank() && it != "null" } ?: "$base/o/$uuid"),
                 video = FnClient.abs(th?.optString("videoUrl")?.takeIf { it.isNotBlank() && it != "null" })
                     ?: if (video) FnClient.abs("/p/api/v1/stream/v/$id") else null,
                 make = s("make"), model = s("model"),

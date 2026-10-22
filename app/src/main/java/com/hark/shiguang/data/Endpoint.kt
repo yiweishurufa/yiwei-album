@@ -83,7 +83,7 @@ object Endpoint {
         for (base in order) {
             val r = runCatching { kotlinx.coroutines.withTimeout(12_000) { FnClient.login(base, u, p, otp) } }
             r.onSuccess { tk -> latency = probes.filterNotNull().firstOrNull { it.first == base }?.second ?: latency; return@coroutineScope base to tk }
-            val e = r.exceptionOrNull()!!
+            val e = r.exceptionOrNull() ?: continue
             Diag.log("LOGIN", "try $base -> ${e.message}")
             if (e is ApiException && e.code != -1) throw e   // NAS answered: wrong password / 2FA
             last = e

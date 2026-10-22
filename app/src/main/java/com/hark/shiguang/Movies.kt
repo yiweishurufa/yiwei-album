@@ -129,7 +129,7 @@ class DavFs(private val accountId: String) : MovieFs {
     }
     override suspend fun readText(path: String): String? = withContext(Dispatchers.IO) { runCatching { src?.readText(path) }.getOrNull() }
     override suspend fun bytes(path: String): ByteArray? = withContext(Dispatchers.IO) { src?.allBytes(path, 32L * 1024 * 1024) }
-    override fun playUrl(f: MediaFile): String? = runBlocking { runCatching { src?.rawUrl(CloudEntry(f.name, f.path, false, f.size, 0, null, false, true)) }.getOrNull() }
+    override fun playUrl(f: MediaFile): String? = runCatching { src?.fileUrl(f.path) }.getOrNull()
     override fun headers(url: String): Map<String, String> = src?.headers(url) ?: emptyMap()
 }
 
@@ -832,7 +832,8 @@ class MovieLib(val sourceKey: String) {
 
     // ---------------------------------------------------------------- scrape
 
-    private fun cacheImage(key: String, load: () -> ByteArray?): String? {
+    // inline: the loader may call suspend functions (no runBlocking inside the scraper)
+    private inline fun cacheImage(key: String, load: () -> ByteArray?): String? {
         val f = File(imgDir, MessageDigest.getInstance("MD5").digest(key.toByteArray()).joinToString("") { "%02x".format(it) }.take(20) + ".jpg")
         if (f.exists() && f.length() > 0) return f.absolutePath
         val b = runCatching { load() }.getOrNull() ?: return null
@@ -868,8 +869,8 @@ class MovieLib(val sourceKey: String) {
             val stemNames = stem?.let { listOf("$it-poster.jpg", "$it-poster.png", "$it.jpg") }.orEmpty()
             val posterE = sidecar(m.folder, folderFiles, stemNames + listOf("poster.jpg", "poster.png", "folder.jpg", "folder.png", "cover.jpg", "cover.png", "movie.jpg"))
             val fanE = sidecar(m.folder, folderFiles, listOfNotNull(stem?.let { "$it-fanart.jpg" }) + listOf("fanart.jpg", "fanart.png", "backdrop.jpg", "background.jpg", "landscape.jpg"))
-            posterE?.let { e -> cacheImage("$sourceKey|${e.path}") { runBlocking { f.bytes(e.path) } } }?.let { m = m.copy(poster = it, source = m.source.ifEmpty { "local" }) }
-            fanE?.let { e -> cacheImage("$sourceKey|${e.path}") { runBlocking { f.bytes(e.path) } } }?.let { m = m.copy(backdrop = it) }
+            posterE?.let { e -> cacheImage("$sourceKey|${e.path}") { f.bytes(e.path) } }?.let { m = m.copy(poster = it, source = m.source.ifEmpty { "local" }) }
+            fanE?.let { e -> cacheImage("$sourceKey|${e.path}") { f.bytes(e.path) } }?.let { m = m.copy(backdrop = it) }
             // episode NFOs (titles) for tv
             if (m.kind == "tv" && m.source == "nfo") m = m.copy(seasons = m.seasons.mapValues { (_, eps) -> eps.map { e ->
                 val dirFiles = found.firstNotNullOfOrNull { it.second.byDir[parent(e.path)] }.orEmpty()

@@ -147,8 +147,8 @@ object LiveMotion {
             if (p.isCloud && p.liveVideo != null) {
                 val src = CloudPhotos.source(p.source) ?: error("网盘账户已移除")
                 Transfers.download(c, p.liveVideo, "$name.mov", src.headers(p.liveVideo), true)
-            } else if (!p.isCloud && NasX.motionVideo(p)?.embedded == false) {
-                val m = NasX.motionVideo(p)!!
+            } else if (!p.isCloud && NasX.motionVideo(p)?.takeIf { !it.embedded } != null) {
+                val m = NasX.motionVideo(p) ?: error("这张照片没有实况视频")
                 Transfers.download(c, m.url, "$name.mp4", m.headers, true)
             } else {
                 val f = embeddedFile(p) ?: error("这张照片没有实况视频")

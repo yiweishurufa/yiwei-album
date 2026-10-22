@@ -135,7 +135,7 @@ class FaceEdits(private val dir: File) {
             if (c.isEmpty()) continue
             val gs = c.mapNotNull { group[it.id] }
             if (gs.isEmpty()) { plain.add(c); continue }
-            val major = gs.groupingBy { it }.eachCount().maxByOrNull { it.value }!!.key
+            val major = gs.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key ?: gs.first()
             c.forEach { f -> groups.getOrPut(group[f.id] ?: major) { mutableListOf() }.add(f) }
         }
         fun person(m: List<FaceRec>, g: String): FacePerson? {

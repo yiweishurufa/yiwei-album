@@ -213,6 +213,9 @@ class WebDavSource(a: CloudAccount) : CloudSource {
 
     override suspend fun rawUrl(e: CloudEntry): String = urlOf(e.path, false)
 
+    /** Same as [rawUrl] without suspending (WebDAV urls are built locally, no network). */
+    fun fileUrl(path: String): String = urlOf(path, false)
+
     override fun headers(url: String): Map<String, String> {
         val a = auth ?: return emptyMap()
         val host = url.toHttpUrlOrNull()?.host ?: return emptyMap()

@@ -337,7 +337,7 @@ private fun PhotosTab() {
         val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
         when {
             tl.photos.isEmpty() && tl.loading -> Column { TopSwitch(); SkeletonGrid(4, 20.dp) }
-            tl.photos.isEmpty() && tl.error != null -> Column { TopSwitch(); Box(Modifier.weight(1f)) { StateMessage(LI.nas(), "连不上飞牛", tl.error!!, "重试") { scope.launch { runCatching { Endpoint.autoSelect() }; tl.refresh() } } } }
+            tl.photos.isEmpty() && tl.error != null -> Column { TopSwitch(); Box(Modifier.weight(1f)) { StateMessage(LI.nas(), "连不上飞牛", tl.error.orEmpty(), "重试") { scope.launch { runCatching { Endpoint.autoSelect() }; tl.refresh() } } } }
             tl.photos.isEmpty() && tl.done -> Column { TopSwitch(); Box(Modifier.weight(1f)) { StateMessage(LI.photos(), "还没有照片", "在飞牛相册里添加照片文件夹后，这里会自动出现。") } }
             level == Level.YEAR -> {
                 val cards = remember(tl.months, tl.photos.size) {
@@ -412,7 +412,7 @@ private fun DavPhotosTab() {
     Box(Modifier.fillMaxSize().then(if (!lib.scanning) Modifier.nestedScroll(ptr.nestedScrollConnection) else Modifier)) {
         when {
             lib.photos.isEmpty() && lib.scanning -> Column { TopSwitch(); SkeletonGrid(4, 20.dp) }
-            lib.photos.isEmpty() && lib.error != null -> Column { TopSwitch(); Box(Modifier.weight(1f)) { StateMessage(LI.drive(), "连不上 WebDAV", lib.error!!, "重试") { scope.launch { lib.scan() } } } }
+            lib.photos.isEmpty() && lib.error != null -> Column { TopSwitch(); Box(Modifier.weight(1f)) { StateMessage(LI.drive(), "连不上 WebDAV", lib.error.orEmpty(), "重试") { scope.launch { lib.scan() } } } }
             stills.isEmpty() -> Column { TopSwitch(); PhotoModeSwitch(); Box(Modifier.weight(1f)) { StateMessage(LI.photos(), "没有找到照片", "把照片放进这个 WebDAV 后下拉刷新。", "重新扫描") { scope.launch { lib.scan(full = true) } } } }
             else -> {
                 PhotoGrid(entries, adaptiveCols(level.cols.coerceAtMost(7)), lib.scanning, onEnd = {}, onOpen = { Nav.push(Route.Viewer(stills, it)) }, state = grid, top = 0.dp, bottom = 100.dp + miniPlayerPad,
@@ -502,7 +502,7 @@ private fun AlbumsTab(dav: Boolean) {
                     }
                 }
                 val albums = HomeState.albums
-                if (albums == null && err != null) item(span = { GridItemSpan(maxLineSpan) }) { StateMessage(LI.albums(), "相册加载失败", err!!, "重试") { load() } }
+                if (albums == null && err != null) item(span = { GridItemSpan(maxLineSpan) }) { StateMessage(LI.albums(), "相册加载失败", err.orEmpty(), "重试") { load() } }
                 else if (albums == null) items(4) { Box(Modifier.aspectRatio(1f).clip(RoundedCornerShape(C.Card)).background(shimmerBrush())) }
                 else {
                     item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle("我的相册", "${albums.size} 个 · 长按管理") }

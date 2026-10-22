@@ -39,7 +39,7 @@ object NasVideos {
                 out to more
             }
         }
-        return src!!
+        return src ?: error("unreachable: src set above")
     }
 }
 
@@ -58,7 +58,7 @@ fun VideosTab(dav: Boolean) {
             if (vids.isEmpty()) Column { TopSwitch(); Title("视频", if (lib.scanning) "正在扫描…" else "0 个"); Box(Modifier.weight(1f)) {
                 if (lib.scanning) SkeletonGrid(cols, 0.dp)
                 // H15: a failed load/scan shows why and offers 重试, same as the photo tab
-                else if (lib.error != null) StateMessage(LI.drive(), "连不上 WebDAV", lib.error!!, "重试") { scope.launch { lib.scan() } }
+                else if (lib.error != null) StateMessage(LI.drive(), "连不上 WebDAV", lib.error.orEmpty(), "重试") { scope.launch { lib.scan() } }
                 else StateMessage(LI.videos(), "没有视频", "")
             } }
             else PhotoGrid(entries, cols, lib.scanning, onEnd = {}, onOpen = { Nav.push(Route.Viewer(vids, it)) }, state = grid, bottom = 100.dp + miniPlayerPad,
@@ -70,7 +70,7 @@ fun VideosTab(dav: Boolean) {
             val entries by remember(src) { derivedStateOf { buildEntries(shown, true) } }
             when {
                 src.photos.isEmpty() && src.loading -> Column { TopSwitch(); Title("视频", "正在查找…"); SkeletonGrid(cols, 0.dp) }
-                src.photos.isEmpty() && src.error != null -> Column { TopSwitch(); Box(Modifier.weight(1f)) { StateMessage(LI.videos(), "加载失败", src.error!!, "重试") { scope.launch { src.refresh() } } } }
+                src.photos.isEmpty() && src.error != null -> Column { TopSwitch(); Box(Modifier.weight(1f)) { StateMessage(LI.videos(), "加载失败", src.error.orEmpty(), "重试") { scope.launch { src.refresh() } } } }
                 src.photos.isEmpty() -> Column { TopSwitch(); Title("视频", "0 个"); Box(Modifier.weight(1f)) { StateMessage(LI.videos(), "没有视频", "") } }
                 else -> PhotoGrid(entries, cols, src.loading, onEnd = { scope.launch { src.next() } }, onOpen = { Nav.push(Route.Viewer(shown, it)) }, state = grid, bottom = 100.dp + miniPlayerPad,
                     header = { Column { TopSwitch(); Title("视频", "${shown.size}${if (src.more) "+" else ""} 个") } })

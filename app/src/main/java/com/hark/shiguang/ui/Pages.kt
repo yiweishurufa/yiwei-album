@@ -161,7 +161,7 @@ fun RecycleScreen() {
     }) {
         when {
             photos.isEmpty() && loading -> Loading()
-            photos.isEmpty() && err != null -> StateMessage(Icons.Rounded.CloudOff, "加载失败", err!!, "重试") { scope.launch { load(true) } }
+            photos.isEmpty() && err != null -> StateMessage(Icons.Rounded.CloudOff, "加载失败", err.orEmpty(), "重试") { scope.launch { load(true) } }
             photos.isEmpty() -> StateMessage(Icons.Rounded.DeleteOutline, "回收站是空的", "删除的照片会在这里保留 30 天。")
             else -> PickGrid(photos, sel, onTap = { p, i ->
                 if (sel.isNotEmpty()) sel = if (p.id in sel) sel - p.id else sel + p.id
@@ -227,7 +227,7 @@ fun SmartScreen() {
             }
             Box(Modifier.weight(1f)) {
                 when {
-                    err != null && cards == null -> StateMessage(Icons.Rounded.AutoAwesome, "加载失败", err!!)
+                    err != null && cards == null -> StateMessage(Icons.Rounded.AutoAwesome, "加载失败", err.orEmpty())
                     cards == null -> Loading()
                     cards.isEmpty() -> StateMessage(Icons.Rounded.AutoAwesome, "还没有分类", "需要在飞牛相册里开启 AI 识别，识别完成后会出现在这里。")
                     else -> LazyVerticalGrid(GridCells.Adaptive(110.dp), contentPadding = PaddingValues(12.dp, 6.dp, 12.dp, 40.dp),
@@ -280,7 +280,7 @@ fun DuplicatesScreen() {
     }) {
         when {
             groups.isEmpty() && loading -> Loading()
-            groups.isEmpty() && err != null -> StateMessage(Icons.Rounded.CloudOff, "加载失败", err!!, "重试") { scope.launch { load(true) } }
+            groups.isEmpty() && err != null -> StateMessage(Icons.Rounded.CloudOff, "加载失败", err.orEmpty(), "重试") { scope.launch { load(true) } }
             groups.isEmpty() -> StateMessage(Icons.Rounded.FilterNone, "暂时没有重复照片", "重复和相似检测随 AI 页的整理在 NAS 上进行，有结果会显示在这里。", "去 AI 页") { HomeState.openAiTab() }
             else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
                 items(groups.size, key = { groups[it].id }) { gi ->
@@ -346,7 +346,7 @@ fun FoldersScreen(r: Route.Folders) {
         val f = folders
         when {
             f == null -> Loading()
-            f.isEmpty() && photos.isEmpty() && err != null -> StateMessage(Icons.Rounded.FolderOff, "加载失败", err!!)
+            f.isEmpty() && photos.isEmpty() && err != null -> StateMessage(Icons.Rounded.FolderOff, "加载失败", err.orEmpty())
             f.isEmpty() && photos.isEmpty() && !loading -> StateMessage(Icons.Rounded.Folder, "空文件夹", "")
             else -> LazyVerticalGrid(GridCells.Adaptive(92.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(2.dp, 0.dp, 2.dp, 60.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -645,7 +645,7 @@ fun CloudBrowseScreen(r: Route.CloudBrowse) {
         val d = dirs
         when {
             d == null -> Loading()
-            err != null && d.isEmpty() && photos.isEmpty() -> StateMessage(Icons.Rounded.CloudOff, "打不开这个目录", err!!, "重试") { scope.launch { load() } }
+            err != null && d.isEmpty() && photos.isEmpty() -> StateMessage(Icons.Rounded.CloudOff, "打不开这个目录", err.orEmpty(), "重试") { scope.launch { load() } }
             d.isEmpty() && photos.isEmpty() && others.isEmpty() -> StateMessage(Icons.Rounded.FolderOpen, "空文件夹", "")
             else -> LazyVerticalGrid(GridCells.Adaptive(92.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(2.dp, 0.dp, 2.dp, 120.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -686,7 +686,7 @@ fun CloudTimelineScreen(r: Route.CloudTimeline) {
     Page(acc?.title ?: "网盘", if (scanning) "正在扫描… 已找到 ${photos.size} 项" else "${photos.size} 项") {
         when {
             photos.isEmpty() && scanning -> Loading()
-            photos.isEmpty() && err != null -> StateMessage(Icons.Rounded.CloudOff, "扫描失败", err!!)
+            photos.isEmpty() && err != null -> StateMessage(Icons.Rounded.CloudOff, "扫描失败", err.orEmpty())
             photos.isEmpty() -> StateMessage(Icons.Rounded.PhotoLibrary, "没有找到照片或视频", "")
             else -> {
                 val sorted = remember(photos.size) { photos.sortedByDescending { it.time } }
