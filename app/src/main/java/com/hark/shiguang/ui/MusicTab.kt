@@ -38,7 +38,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.Player
 import com.hark.shiguang.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 /**
  * 1.0.3 #4 影音 · 音乐: 歌曲 / 专辑 / 歌手 / 文件夹, search, 全部播放 / 随机播放, the mini bar above the bottom navigation,
@@ -82,23 +84,16 @@ fun MusicTab() {
     val v = lib.version
     val q = MusicUi.query.trim()
     val all = remember(v, lib.tracks.size) { lib.tracks.toList() }
-    val shown = remember(v, lib.tracks.size, q) {
-        val base = if (q.isEmpty()) all else all.filter { t -> listOf(t.title, t.artist, t.album, t.albumArtist, t.name).any { it.contains(q, true) } }
-        base.sortedWith(compareBy(collator) { it.title.ifBlank { it.name } })
+    // H10: filtering, sorting and grouping run on Dispatchers.Default (only the open sub-page's groups); a newer
+    // version cancels the older computation, so a scan's ~1/s updates never queue up on the main thread.
+    val view by produceState<MusicView?>(null, all, q, MusicUi.sub) {
+        val sub = MusicUi.sub
+        value = withContext(Dispatchers.Default) { buildMusicView(all, q, sub) }
     }
-    val albums = remember(shown) {
-        shown.groupBy { it.albumKey }.map { (k, l) -> MusicGroup("album", k, l.first().displayAlbum, l.first().albumArtist.ifBlank { l.first().displayArtist }, l.firstNotNullOfOrNull { it.artPath }, l.size) }
-            .sortedWith(compareBy(collator) { it.title })
-    }
-    val artists = remember(shown) {
-        val m = LinkedHashMap<String, MutableList<Track>>()
-        shown.forEach { t -> t.artists.forEach { a -> m.getOrPut(a) { ArrayList() }.add(t) } }
-        m.map { (a, l) -> MusicGroup("artist", a, a, "", l.firstNotNullOfOrNull { it.artPath }, l.size) }.sortedWith(compareBy(collator) { it.title })
-    }
-    val folders = remember(shown) {
-        shown.groupBy { it.folder }.map { (f, l) -> MusicGroup("folder", f, f.trimEnd('/').substringAfterLast('/').removePrefix("fm:").ifEmpty { f }, f.removePrefix("fm:"), l.firstNotNullOfOrNull { it.artPath }, l.size) }
-            .sortedWith(compareBy(collator) { it.title })
-    }
+    val shown = view?.shown ?: emptyList()
+    val albums = view?.albums ?: emptyList()
+    val artists = view?.artists ?: emptyList()
+    val folders = view?.folders ?: emptyList()
     val list = rememberMemList("music-$key-${MusicUi.sub}")
 
     LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 170.dp)) {
@@ -142,7 +137,7 @@ fun MusicTab() {
         }
         if (shown.isEmpty()) {
             item {
-                Text(if (lib.scanning) "正在扫描…" else if (q.isNotEmpty()) "没有找到「$q」" else "这些文件夹里还没找到音乐。支持 mp3、flac、ape、wav、m4a、ogg、opus、wma、dsf、aiff、wv。",
+                Text(if (view == null && all.isNotEmpty()) "正在整理…" else if (lib.scanning) "正在扫描…" else if (q.isNotEmpty()) "没有找到「$q」" else "这些文件夹里还没找到音乐。支持 mp3、flac、ape、wav、m4a、ogg、opus、wma、dsf、aiff、wv。",
                     style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(vertical = 60.dp, horizontal = 24.dp))
             }
             return@LazyColumn
@@ -162,6 +157,24 @@ fun MusicTab() {
 }
 
 data class MusicGroup(val kind: String, val key: String, val title: String, val sub: String, val art: String?, val count: Int)
+
+/** H10: what the 音乐 page shows, computed off the main thread. Groups are built only for the open sub-page. */
+class MusicView(val shown: List<Track>, val albums: List<MusicGroup>, val artists: List<MusicGroup>, val folders: List<MusicGroup>)
+
+private fun buildMusicView(all: List<Track>, q: String, sub: Int): MusicView {
+    val col = java.text.Collator.getInstance(java.util.Locale.CHINA)   // own instance: Collator is not thread-safe
+    fun <T> sortByKey(l: List<T>, s: (T) -> String): List<T> = l.map { col.getCollationKey(s(it)) to it }.sortedBy { it.first }.map { it.second }
+    val base = if (q.isEmpty()) all else all.filter { t -> listOf(t.title, t.artist, t.album, t.albumArtist, t.name).any { it.contains(q, true) } }
+    val shown = sortByKey(base) { it.title.ifBlank { it.name } }
+    val albums = if (sub != 1) emptyList() else sortByKey(shown.groupBy { it.albumKey }.map { (k, l) -> MusicGroup("album", k, l.first().displayAlbum, l.first().albumArtist.ifBlank { l.first().displayArtist }, l.firstNotNullOfOrNull { it.artPath }, l.size) }) { it.title }
+    val artists = if (sub != 2) emptyList() else {
+        val m = LinkedHashMap<String, MutableList<Track>>()
+        shown.forEach { t -> t.artists.forEach { a -> m.getOrPut(a) { ArrayList() }.add(t) } }
+        sortByKey(m.map { (a, l) -> MusicGroup("artist", a, a, "", l.firstNotNullOfOrNull { it.artPath }, l.size) }) { it.title }
+    }
+    val folders = if (sub != 3) emptyList() else sortByKey(shown.groupBy { it.folder }.map { (f, l) -> MusicGroup("folder", f, f.trimEnd('/').substringAfterLast('/').removePrefix("fm:").ifEmpty { f }, f.removePrefix("fm:"), l.firstNotNullOfOrNull { it.artPath }, l.size) }) { it.title }
+    return MusicView(shown, albums, artists, folders)
+}
 
 @Composable
 private fun SearchBox() {
