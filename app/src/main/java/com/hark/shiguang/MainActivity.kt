@@ -47,6 +47,8 @@ sealed class Route {
     data class MovieDetail(val sourceKey: String, val itemId: String) : Route()
     data class MoviePlay(val sourceKey: String, val itemId: String, val path: String) : Route()
     data object MovieLibrarySettings : Route()
+    /** 1.1.0: 影音设置 — one entry for TMDB / 音乐刮削 / 弹幕 / 影视文件夹 / 音乐文件夹. */
+    data object MediaSettings : Route()
     // 1.0.3 #4 音乐
     data object MusicSettings : Route()
     data class MusicList(val kind: String, val key: String, val title: String) : Route()
@@ -84,6 +86,7 @@ object Nav {
             is Route.MusicSettings -> "musicSettings"
             is Route.MusicNowPlaying -> "musicNowPlaying"
             is Route.MovieLibrarySettings -> "movieLib"
+            is Route.MediaSettings -> "mediaSettings"
             else -> "home"
         }
         Store.putStr("nav.top", key)
@@ -107,6 +110,7 @@ object Nav {
             "musicSettings" -> Route.MusicSettings
             "musicNowPlaying" -> Route.MusicNowPlaying
             "movieLib" -> Route.MovieLibrarySettings
+            "mediaSettings" -> Route.MediaSettings
             else -> null
         }
         if (r == null) { reset(Route.Home); restoredFallback = savedTop != "home"; return savedTop == "home" }
@@ -207,6 +211,7 @@ class MainActivity : ComponentActivity() {
                             is Route.MovieDetail -> MovieDetailScreen(r)
                             is Route.MoviePlay -> MoviePlayerScreen(r)
                             Route.MovieLibrarySettings -> MovieLibrarySettingsScreen()
+                            Route.MediaSettings -> MediaSettingsScreen()
                             Route.MusicSettings -> MusicSettingsScreen()
                             is Route.MusicList -> MusicListScreen(r)
                             Route.MusicNowPlaying -> MusicNowPlayingScreen()

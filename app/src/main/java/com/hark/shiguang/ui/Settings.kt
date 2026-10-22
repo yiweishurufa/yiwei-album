@@ -75,8 +75,6 @@ fun SettingsScreen() {
     var importOpen by remember { mutableStateOf(false) }
     var cacheSize by remember { mutableLongStateOf(-1L) }
     var lockOn by remember { mutableStateOf(Store.lockOn) }
-    var confirmLogout by remember { mutableStateOf(false) }
-    var confirmRemoveDav by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { cacheSize = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { ctx.cacheDir.walkTopDown().filter { it.isFile }.sumOf { it.length() } } }
     val pickQr = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) scope.launch {
@@ -165,19 +163,15 @@ fun SettingsScreen() {
             }
         }
 
-        // ---- 影视
+        // ---- 影音（1.1.0：TMDB、音乐刮削、弹幕、影视/音乐文件夹合并为一个入口）
         Section("影音")
         Card {
-            val ml = Movies.lib()
-            NavRow(LI.film(), "媒体库与刮削", buildString {
-                append(ml?.dirs?.size?.let { if (it == 0) "还没选影视文件夹" else "$it 个影视文件夹" } ?: "先添加来源")
-                append(if (Tmdb.configured) " · TMDB 已配置" else " · 未填 TMDB 密钥")
-            }) { Nav.push(Route.MovieLibrarySettings) }
-            // 1.0.3 #4
-            Div()
-            val mu = Music.lib()
-            NavRow(LI.music(), "音乐", (mu?.dirs?.size?.let { if (it == 0) "还没选音乐文件夹" else "$it 个音乐文件夹 · ${mu.tracks.size} 首" } ?: "先添加来源") +
-                (if (MusicPrefs.online) " · 联网补全开" else " · 联网补全关")) { Nav.push(Route.MusicSettings) }
+            val ml = Movies.lib(); val mu = Music.lib()
+            NavRow(LI.film(), "影音设置", listOf(
+                ml?.dirs?.size?.let { if (it == 0) "未选影视文件夹" else "影视 $it 个文件夹" } ?: "先添加来源",
+                mu?.dirs?.size?.let { if (it == 0) "未选音乐文件夹" else "音乐 $it 个文件夹" } ?: "",
+                if (Tmdb.configured) "TMDB 已配置" else "TMDB 未配置",
+            ).filter { it.isNotEmpty() }.joinToString(" · ")) { Nav.push(Route.MediaSettings) }
         }
 
         // ---- 整理与 AI
@@ -262,17 +256,7 @@ fun SettingsScreen() {
             Div()
             NavRow(LI.upload(), "导出诊断日志", "脱敏后保存在本机，由你决定发给谁") { Diag.export(ctx) }
         }
-        if (!dav && nas != null) {
-            Spacer(Modifier.height(18.dp))
-            Card { NavRow(LI.close(), "退出「${nas.title}」", nas.user, danger = true) { confirmLogout = true } }
-        }
-        // 第 4 批：设置页 Dav 账号「移除」入口。账号管理页（DavAccountsScreen）里已有移除，
-        // 但设置页只有飞牛的「退出」，Dav 账号没有直达入口；这里补一个，逻辑与那边一致（只删本机，不动 WebDAV 里的文件）。
-        // 飞牛退出仍走下面的 confirmLogout（第 2 批若统一 logoutNas，本批不碰）。
-        if (dav && davAcc != null) {
-            Spacer(Modifier.height(18.dp))
-            Card { NavRow(LI.trash(), "移除「${davAcc.title}」", "只从本机移除，不影响 WebDAV 里的文件", danger = true) { confirmRemoveDav = true } }
-        }
+        // 1.1.0: 账号入口只保留顶部卡片（切换与管理 → 退出 / 移除都在账号页里）
     }
     }
     if (caOpen) UserCaDialog { caOpen = false }
@@ -281,21 +265,6 @@ fun SettingsScreen() {
         "从截图识别二维码" to { syncOpen = false; pickQr.launch("image/*") },
         "粘贴设置码导入" to { syncOpen = false; importOpen = true },
     ))
-    if (confirmLogout) ConfirmDialog("退出「${nas?.title}」？", "会从本机移除这个账号的登录信息。", "退出", onDismiss = { confirmLogout = false }) {
-        confirmLogout = false
-        Ops.logoutNas()
-    }
-    if (confirmRemoveDav) ConfirmDialog("移除「${davAcc?.title}」？", "只从本机移除，不影响 WebDAV 里的文件。", "移除", onDismiss = { confirmRemoveDav = false }) {
-        confirmRemoveDav = false
-        val id = davAcc?.id ?: return@ConfirmDialog
-        CloudAccounts.remove(id); Dav.forget(id)
-        HomeState.clear()
-        when {
-            Dav.accounts.isNotEmpty() -> { Dav.select(Dav.accounts.first().id); HomeState.useSource("dav"); Nav.reset(Route.Home) }
-            NasAccounts.list.isNotEmpty() -> { HomeState.useSource("fn"); Nav.reset(Route.Home) }
-            else -> Nav.reset(Route.Login)
-        }
-    }
     if (showQr) {
         val code = remember { SettingsCode.export() }
         val bmp = remember(code) { SettingsCode.qr(code) }

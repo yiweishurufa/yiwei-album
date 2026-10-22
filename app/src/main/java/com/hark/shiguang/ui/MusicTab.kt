@@ -104,7 +104,7 @@ fun MusicTab() {
                 if (lib.dirs.isNotEmpty()) IconButton(onClick = { lib.scan(); ScanService.ensure(App.ctx) }, enabled = !lib.scanning) {
                     Icon(LI.refresh(), "重新扫描音乐", tint = if (lib.scanning) C.Faint else C.Text, modifier = Modifier.size(21.dp))
                 }
-                IconButton(onClick = { Nav.push(Route.MusicSettings) }) { Icon(LI.settings(), "音乐库设置", tint = C.Text, modifier = Modifier.size(22.dp)) }
+                IconButton(onClick = { Nav.push(Route.MediaSettings) }) { Icon(LI.settings(), "影音设置", tint = C.Text, modifier = Modifier.size(22.dp)) }
             }
         }
         item { Row(Modifier.padding(start = 16.dp, top = 2.dp, bottom = 8.dp)) { MediaAreaSwitch() } }
@@ -529,10 +529,9 @@ fun MusicSettingsScreen() {
     val key = Movies.keyOf()
     val lib = key?.let { remember(it) { Music.lib(it) } }
     var picking by remember { mutableStateOf(false) }
-    var online by remember { mutableStateOf(MusicPrefs.online) }
     var confirmClear by remember { mutableStateOf(false) }
     val src = currentSource()
-    Page("音乐库", src?.let { "${if (it.kind == "dav") "WebDAV" else "飞牛"} · ${it.title}" } ?: "") {
+    Page("音乐文件夹", src?.let { "${if (it.kind == "dav") "WebDAV" else "飞牛"} · ${it.title}" } ?: "") {
         if (lib == null) { StateMessage(Icons.Rounded.MusicNote, "先添加一个来源", ""); return@Page }
         if (!lib.ready) { LibLoading(); return@Page }   // never save folders over a library that is still loading
         if (picking) { FolderPicker(lib.fs, lib.kind, onDismiss = { picking = false }, fmOnly = true) { path, name ->
@@ -561,12 +560,8 @@ fun MusicSettingsScreen() {
                 onScan = { lib.scan(); ScanService.ensure(ctx) }, redoLabel = "重新刮削", redoEnabled = !lib.scanning) {
                 if (lib.dirs.isEmpty()) toast(ctx, "先添加音乐文件夹") else { lib.scan(rescrape = true); ScanService.ensure(ctx); toast(ctx, "重新读取所有歌曲的标签") }
             }
-            Section("刮削")
-            Card {
-                ToggleRow(Icons.Rounded.Cloud, "联网补全", "文件里缺专辑、歌手、封面或歌词时，从网易云音乐（国内直连）和 LRCLIB 补上；不会改写文件里已有的信息", online) { online = it; MusicPrefs.online = it }
-                Text("优先读取文件内嵌标签（ID3、FLAC、APE、MP4、WMA 等），同名 .lrc 歌词和 cover.jpg / folder.jpg 封面优先于联网结果。没有标签时按「歌手 - 歌名」文件名和文件夹名推断。",
-                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 14.dp, top = 2.dp))
-            }
+            // 1.1.0: 联网补全 moved to 影音设置
+            Card { NavRow(Icons.Rounded.Cloud, "联网补全", if (MusicPrefs.online) "已开启 · 在「影音设置」里修改" else "已关闭 · 在「影音设置」里修改") { Nav.push(Route.MediaSettings) } }
             Section("格式")
             Card {
                 Text("mp3、flac、wav、m4a（AAC / ALAC）、ogg、opus 用内置播放器；ape、wma、wv、aiff、dsf / dff（DSD）用兼容模式（VLC）播放。个别文件放不了时会提示并自动跳到下一首。",

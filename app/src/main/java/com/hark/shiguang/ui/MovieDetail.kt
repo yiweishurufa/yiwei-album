@@ -1,5 +1,6 @@
 package com.hark.shiguang.ui
 
+import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.verticalScroll
@@ -310,15 +311,9 @@ fun MovieLibrarySettingsScreen() {
     val key = Movies.keyOf()
     val lib = key?.let { remember(it) { Movies.lib(it) } }
     var picking by remember { mutableStateOf(false) }
-    var tmdbKey by remember { mutableStateOf(Tmdb.key) }
-    var api by remember { mutableStateOf(Tmdb.apiBase) }
-    var img by remember { mutableStateOf(Tmdb.imgBase) }
     var confirmClear by remember { mutableStateOf(false) }
-    var dmId by remember { mutableStateOf(DanmakuPrefs.appId) }
-    var dmSecret by remember { mutableStateOf(DanmakuPrefs.appSecret) }
-    var dmCell by remember { mutableStateOf(DanmakuPrefs.hashOnCell) }
     val src = currentSource()
-    Page("影视媒体库", src?.let { "${if (it.kind == "dav") "WebDAV" else "飞牛"} · ${it.title}" } ?: "") {
+    Page("影视文件夹", src?.let { "${if (it.kind == "dav") "WebDAV" else "飞牛"} · ${it.title}" } ?: "") {
         if (lib == null) { StateMessage(LI.film(), "先添加一个来源", ""); return@Page }
         if (!lib.ready) { LibLoading(); return@Page }   // never save folders over a library that is still loading
         if (picking) { FolderPicker(lib.fs, lib.kind, onDismiss = { picking = false }) { path, name ->
@@ -347,45 +342,8 @@ fun MovieLibrarySettingsScreen() {
             }
             if (lib.kind == "fn") Text("飞牛的相册接口只返回视频本身，读不到同目录的 NFO、海报和字幕；这些会用 TMDB 补上。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 20.dp))
 
-            Section("TMDB 刮削（所有来源共用）")
-            Card {
-                Spacer(Modifier.height(8.dp))
-                InputRow("API 密钥", tmdbKey, "v3 API Key 或 v4 读取令牌") { tmdbKey = it }
-                InputRow("接口代理（可选）", api, "直连不通时优先用它，再用内置代理") { api = it }
-                InputRow("图片代理（可选）", img, "直连不通时优先用它") { img = it }
-                TestButton("保存并测试", Modifier.padding(horizontal = 16.dp, vertical = 12.dp).fillMaxWidth(), resetKey = tmdbKey + "|" + api + "|" + img, height = 44.dp) {
-                    Tmdb.key = tmdbKey; Tmdb.apiBase = api; Tmdb.imgBase = img
-                    val t0 = System.currentTimeMillis()
-                    withContext(Dispatchers.IO) { Tmdb.test() } + " · ${System.currentTimeMillis() - t0} ms"
-                }
-                // 1.0.1 #1: which way TMDB is reached right now (direct overseas, an automatically verified proxy in China)
-                Row(Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("当前网络", color = C.Sub, fontSize = 12.sp)
-                        Text(if (TmdbNet.checking) "检测中…" else TmdbNet.status.ifEmpty { TmdbNet.describe() }, color = C.Text, fontSize = 14.sp)
-                    }
-                    TextButton(onClick = { TmdbNet.recheckAsync() }, enabled = !TmdbNet.checking) { Text("重新检测", color = C.Accent) }
-                }
-                Text("在 themoviedb.org 注册后，于 设置 → API 免费申请。填好后会自动检测：能直连就直连，连不上自动换国内可用的代理（每天和换网络时重新检测）。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 14.dp))
-            }
-
-            // 1.0.1 #11
-            Section("弹幕（弹弹play，所有来源共用）")
-            Card {
-                Spacer(Modifier.height(8.dp))
-                InputRow("AppId", dmId, "在弹弹play开放平台申请") { dmId = it }
-                InputRow("AppSecret", dmSecret, "只保存在本机") { dmSecret = it }
-                TestButton("保存并测试", Modifier.padding(horizontal = 16.dp, vertical = 12.dp).fillMaxWidth(), resetKey = dmId + "|" + dmSecret, height = 44.dp) {
-                    DanmakuPrefs.appId = dmId; DanmakuPrefs.appSecret = dmSecret
-                    if (!DanmakuPrefs.configured) error("先填 AppId 和 AppSecret")
-                    withContext(Dispatchers.IO) { DanDan.test() }
-                }
-                ToggleRow(LI.videos(), "移动网络也精确匹配", "精确匹配要读取视频开头 16 MB 计算指纹；关闭时移动网络下只按文件名匹配", dmCell) { dmCell = it; DanmakuPrefs.hashOnCell = it }
-                Text(if (DanmakuPrefs.configured) "播放时自动按文件匹配弹幕（弹弹play 国内可直连），播放器顶部「弹幕」可开关、手动匹配和调整样式。兼容模式（VLC）不显示弹幕。"
-                    else DanmakuPrefs.HINT + "。不填也不影响播放。",
-                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 14.dp))
-            }
-
+            // 1.1.0: TMDB 和弹幕设置搬到「影音设置」（MediaSettingsScreen），这里只管影视文件夹
+            Card { NavRow(LI.settings(), "TMDB 刮削与弹幕", "在「影音设置」里，所有来源共用") { Nav.push(Route.MediaSettings) } }
             Section("缓存")
             Card {
                 NavRow(LI.trash(), "清空这个来源的影视库", "${lib.items.size} 部作品 · 播放进度保留", danger = true) { confirmClear = true }
@@ -436,6 +394,94 @@ internal fun FolderPicker(fs: MovieFs, kind: String, onDismiss: () -> Unit, fmOn
         val canPick = !(kind == "fn" && path.isEmpty())
         Box(Modifier.padding(16.dp)) {
             GradientButton(if (canPick) "选用「$name」" else "进入一个文件夹再选", Modifier.fillMaxWidth()) { if (canPick) onPick(path, name) }
+        }
+    }
+}
+
+
+/** 1.1.0: TMDB 刮削 card (was inside 影视媒体库), shown in 影音设置. */
+@Composable
+internal fun TmdbSettingsCard() {
+    var tmdbKey by remember { mutableStateOf(Tmdb.key) }
+    var api by remember { mutableStateOf(Tmdb.apiBase) }
+    var img by remember { mutableStateOf(Tmdb.imgBase) }
+    Column {
+            Section("TMDB 刮削（所有来源共用）")
+            Card {
+                Spacer(Modifier.height(8.dp))
+                InputRow("API 密钥", tmdbKey, "v3 API Key 或 v4 读取令牌") { tmdbKey = it }
+                InputRow("接口代理（可选）", api, "直连不通时优先用它，再用内置代理") { api = it }
+                InputRow("图片代理（可选）", img, "直连不通时优先用它") { img = it }
+                TestButton("保存并测试", Modifier.padding(horizontal = 16.dp, vertical = 12.dp).fillMaxWidth(), resetKey = tmdbKey + "|" + api + "|" + img, height = 44.dp) {
+                    Tmdb.key = tmdbKey; Tmdb.apiBase = api; Tmdb.imgBase = img
+                    val t0 = System.currentTimeMillis()
+                    withContext(Dispatchers.IO) { Tmdb.test() } + " · ${System.currentTimeMillis() - t0} ms"
+                }
+                // 1.0.1 #1: which way TMDB is reached right now (direct overseas, an automatically verified proxy in China)
+                Row(Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("当前网络", color = C.Sub, fontSize = 12.sp)
+                        Text(if (TmdbNet.checking) "检测中…" else TmdbNet.status.ifEmpty { TmdbNet.describe() }, color = C.Text, fontSize = 14.sp)
+                    }
+                    TextButton(onClick = { TmdbNet.recheckAsync() }, enabled = !TmdbNet.checking) { Text("重新检测", color = C.Accent) }
+                }
+                Text("在 themoviedb.org 注册后，于 设置 → API 免费申请。填好后会自动检测：能直连就直连，连不上自动换国内可用的代理（每天和换网络时重新检测）。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 14.dp))
+            }
+
+    }
+}
+
+/** 1.1.0: 弹幕（弹弹play）card, shown in 影音设置. */
+@Composable
+internal fun DanmakuSettingsCard() {
+    var dmId by remember { mutableStateOf(DanmakuPrefs.appId) }
+    var dmSecret by remember { mutableStateOf(DanmakuPrefs.appSecret) }
+    var dmCell by remember { mutableStateOf(DanmakuPrefs.hashOnCell) }
+    Column {
+            // 1.0.1 #11
+            Section("弹幕（弹弹play，所有来源共用）")
+            Card {
+                Spacer(Modifier.height(8.dp))
+                InputRow("AppId", dmId, "在弹弹play开放平台申请") { dmId = it }
+                InputRow("AppSecret", dmSecret, "只保存在本机") { dmSecret = it }
+                TestButton("保存并测试", Modifier.padding(horizontal = 16.dp, vertical = 12.dp).fillMaxWidth(), resetKey = dmId + "|" + dmSecret, height = 44.dp) {
+                    DanmakuPrefs.appId = dmId; DanmakuPrefs.appSecret = dmSecret
+                    if (!DanmakuPrefs.configured) error("先填 AppId 和 AppSecret")
+                    withContext(Dispatchers.IO) { DanDan.test() }
+                }
+                ToggleRow(LI.videos(), "移动网络也精确匹配", "精确匹配要读取视频开头 16 MB 计算指纹；关闭时移动网络下只按文件名匹配", dmCell) { dmCell = it; DanmakuPrefs.hashOnCell = it }
+                Text(if (DanmakuPrefs.configured) "播放时自动按文件匹配弹幕（弹弹play 国内可直连），播放器顶部「弹幕」可开关、手动匹配和调整样式。兼容模式（VLC）不显示弹幕。"
+                    else DanmakuPrefs.HINT + "。不填也不影响播放。",
+                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 14.dp))
+            }
+
+    }
+}
+
+/**
+ * 1.1.0 影音设置：影音相关的设置只有这一个入口（设置页、影视页、音乐页的齿轮都到这里）。
+ * 文件夹按来源各一份，点进各自页面；TMDB、音乐联网补全、弹幕所有来源共用，直接在这里改。
+ */
+@Composable
+fun MediaSettingsScreen() {
+    val src = currentSource()
+    var online by remember { mutableStateOf(MusicPrefs.online) }
+    Page("影音设置", src?.let { "${if (it.kind == "dav") "WebDAV" else "飞牛"} · ${it.title}" } ?: "") {
+        Column(Modifier.fillMaxSize().verticalScrollCompat().navigationBarsPadding().padding(bottom = 40.dp)) {
+            Section("文件夹（当前来源）")
+            Card {
+                val ml = Movies.lib()
+                NavRow(LI.film(), "影视文件夹", ml?.dirs?.size?.let { if (it == 0) "还没选，电影和剧集通常不和照片放一起" else "$it 个 · 自动配海报和简介" } ?: "先添加来源") { Nav.push(Route.MovieLibrarySettings) }
+                Div()
+                val mu = Music.lib()
+                NavRow(LI.music(), "音乐文件夹", mu?.dirs?.size?.let { if (it == 0) "还没选" else "$it 个 · ${mu.tracks.size} 首" } ?: "先添加来源") { Nav.push(Route.MusicSettings) }
+            }
+            Section("音乐刮削（所有来源共用）")
+            Card {
+                ToggleRow(androidx.compose.material.icons.Icons.Rounded.Cloud, "联网补全", "文件里缺专辑、歌手、封面或歌词时，从网易云音乐（国内直连）和 LRCLIB 补上；不会改写文件里已有的信息", online) { online = it; MusicPrefs.online = it }
+            }
+            TmdbSettingsCard()
+            DanmakuSettingsCard()
         }
     }
 }

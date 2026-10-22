@@ -76,7 +76,7 @@ fun MoviesTab() {
                 if (lib.dirs.isNotEmpty()) {
                     IconButton(onClick = { lib.scan(); ScanService.ensure(App.ctx) }, enabled = !lib.scanning) { Icon(LI.refresh(), "重新扫描影视", tint = if (lib.scanning) C.Faint else C.Text, modifier = Modifier.size(21.dp)) }
                 }
-                IconButton(onClick = { Nav.push(Route.MovieLibrarySettings) }) { Icon(LI.settings(), "影视媒体库设置", tint = C.Text, modifier = Modifier.size(22.dp)) }
+                IconButton(onClick = { Nav.push(Route.MediaSettings) }) { Icon(LI.settings(), "影音设置", tint = C.Text, modifier = Modifier.size(22.dp)) }
             }
         }
         item(span = { GridItemSpan(maxLineSpan) }) { Row(Modifier.padding(start = 2.dp)) { MediaAreaSwitch() } }
