@@ -69,7 +69,8 @@ class MusicPlayer(private val ctx: Context) : SimpleBasePlayer(Looper.getMainLoo
 
     // ---- engines
     private val hdr = ConcurrentHashMap<String, Map<String, String>>()
-    private val exo: ExoPlayer by lazy {
+    // H20: kept as a Lazy so release() can skip building a player (with the FFmpeg renderers) that never played
+    private val exoLazy = lazy {
         val up = OkHttpDataSource.Factory(PlayHttp.client)
         val resolving = ResolvingDataSource.Factory(DefaultDataSource.Factory(ctx, up)) { spec ->
             val h = hdr[spec.uri.toString()]; if (h.isNullOrEmpty()) spec else spec.withAdditionalHeaders(h)
@@ -79,6 +80,7 @@ class MusicPlayer(private val ctx: Context) : SimpleBasePlayer(Looper.getMainLoo
             .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
             .setHandleAudioBecomingNoisy(true).setWakeMode(C.WAKE_MODE_NETWORK).build().apply { addListener(exoListener) }
     }
+    private val exo: ExoPlayer by exoLazy
     private var vlcLib: LibVLC? = null
     private var vlc: org.videolan.libvlc.MediaPlayer? = null
     /** B3: loopback proxy URL the current VLC track reads through (revoked when the engine stops). */
@@ -193,7 +195,7 @@ class MusicPlayer(private val ctx: Context) : SimpleBasePlayer(Looper.getMainLoo
     }
 
     override fun handleRelease(): ListenableFuture<*> {
-        stopEngines(); runCatching { exo.release() }
+        stopEngines(); if (exoLazy.isInitialized()) runCatching { exo.release() }
         // B7: the VLC MediaPlayer leaked — release it (listener detached + stopped first), not just the LibVLC.
         runCatching { vlc?.setEventListener(null); vlc?.stop(); vlc?.release() }; vlc = null
         runCatching { vlcLib?.release() }; vlcLib = null; scope.cancel()
