@@ -91,6 +91,7 @@ fun SettingsScreen() {
     val davAcc = Dav.current
     var cell by remember { mutableStateOf(ScanPolicy.allowCellular) }
     var noCharge by remember { mutableStateOf(ScanPolicy.allowNoCharge) }
+    var wmOn by remember { mutableStateOf(com.hark.shiguang.Features.workManager) }
     var forever by remember { mutableStateOf(Store.getStr("nas.deleteForever") == "1") }
     var syncOpen by remember { mutableStateOf(false) }
     var caOpen by remember { mutableStateOf(false) }
@@ -194,7 +195,11 @@ fun SettingsScreen() {
             }
             Div()
             ToggleRow(LI.clock(), "不充电时也整理", ScanPolicy.NO_CHARGE_DESC, noCharge) {
-                noCharge = it; ScanPolicy.allowNoCharge = it; if (it) ScanWatch.resume(ctx)
+                noCharge = it; ScanPolicy.allowNoCharge = it; BackupScheduler.schedule(ctx); if (it) ScanWatch.resume(ctx)
+            }
+            Div()
+            ToggleRow(LI.clock(), "系统定时后台整理", "由系统在满足上面的网络和充电条件时定时扫描新照片、整理和备份，重启手机后也会继续", wmOn) {
+                wmOn = it; com.hark.shiguang.Features.workManager = it; BackupScheduler.schedule(ctx)
             }
             Div()
             NavRow(Icons.Rounded.BatteryChargingFull, "后台运行设置", "通知权限、电池优化、自启动（小米/OPPO/vivo/华为…）") { Nav.push(com.hark.shiguang.Route.X(ExtScreen.BgGuide)) }

@@ -20,8 +20,20 @@ import kotlinx.coroutines.sync.withLock
 object BackupScheduler {
     private const val JOB_ID = 7301
 
+    /**
+     * 1.1.0 (3c): with [Features.workManager] on, backup and the library run go through [BgWork] (WorkManager) and
+     * the old JobScheduler job is cancelled; off = the 1.0.x JobScheduler job. [BackupJob] stays in the manifest so
+     * a job scheduled by an older version still finds its service.
+     */
     fun schedule(c: Context) {
-        val js = c.getSystemService(JobScheduler::class.java) ?: return
+        val js = c.getSystemService(JobScheduler::class.java)
+        if (Features.workManager) {
+            js?.cancel(JOB_ID)
+            BgWork.schedule(c)
+            return
+        }
+        BgWork.schedule(c) // switch off: cancels the WorkManager jobs
+        js ?: return
         if (!Store.backupOn || Store.token.isEmpty()) { js.cancel(JOB_ID); return }
         val info = JobInfo.Builder(JOB_ID, ComponentName(c, BackupJob::class.java))
             .setRequiredNetworkType(if (ScanPolicy.allowCellular) JobInfo.NETWORK_TYPE_ANY else JobInfo.NETWORK_TYPE_UNMETERED) // 1.0.9: one network rule for scan/AI/backup
@@ -31,7 +43,10 @@ object BackupScheduler {
         runCatching { js.schedule(info) }.onFailure { Diag.e("BACKUP", it) }
     }
 
-    fun cancel(c: Context) { c.getSystemService(JobScheduler::class.java)?.cancel(JOB_ID) }
+    fun cancel(c: Context) {
+        c.getSystemService(JobScheduler::class.java)?.cancel(JOB_ID)
+        runCatching { androidx.work.WorkManager.getInstance(c.applicationContext).cancelUniqueWork(BgWork.BACKUP) }
+    }
 }
 
 object BackupRunner {

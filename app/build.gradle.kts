@@ -94,6 +94,7 @@ dependencies {
     implementation("com.google.mlkit:image-labeling:17.0.9")
     implementation("org.osmdroid:osmdroid-android:6.1.18")
     // 1.1.0 阶段三：照片索引改 Room（增量写入、可续扫）+ Paging 3（大列表按页读）
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     implementation("androidx.room:room-paging:2.6.1")
