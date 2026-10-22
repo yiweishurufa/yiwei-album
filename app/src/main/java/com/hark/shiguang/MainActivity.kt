@@ -93,7 +93,7 @@ object Nav {
     /** Rebuilds the persisted top route (or Home). Returns true when the saved route itself was restored. */
     fun restore(savedTop: String): Boolean {
         val tab = Store.getStr("nav.tab").toIntOrNull() ?: 0
-        com.hark.shiguang.ui.HomeState.tab = tab
+        com.hark.shiguang.ui.HomeState.openTab(tab)   // 1.1.0: old index 1 (视频) → 照片 + 视频筛选
         val r = when (savedTop) {
             "settings" -> Route.Settings
             "backup" -> Route.Backup
@@ -131,6 +131,8 @@ class MainActivity : ComponentActivity() {
         }
         if (uris.isNotEmpty()) { i.action = null; Nav.push(Route.Upload(uris)) }
         // 1.0.3 #4: tap on the music notification → the full screen player
+        // 1.1.0 deep link: intent extra "tab" = photos / videos / albums / discover / settings / media
+        i.getStringExtra("tab")?.let { t -> i.removeExtra("tab"); com.hark.shiguang.ui.HomeState.openTab(t); Nav.reset(Route.Home) }
         if (i.getStringExtra("open") == "music") {
             i.removeExtra("open")
             if (Nav.stack.firstOrNull() == Route.Home && Nav.stack.lastOrNull() != Route.MusicNowPlaying) Nav.push(Route.MusicNowPlaying)

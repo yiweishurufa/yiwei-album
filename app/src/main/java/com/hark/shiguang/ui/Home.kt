@@ -97,15 +97,32 @@ private fun n(v: Int) = NumberFormat.getIntegerInstance().format(v)
 
 // ============================================================ home shell
 
-/** [index] is HomeState.tab; 相册 (2) has no button of its own, it lives inside 照片 behind the 时间线 | 相册 switch. */
+/**
+ * [index] is HomeState.tab; 相册 (2) has no button of its own, it lives inside 照片 behind the 时间线 | 相册 switch.
+ * 1.1.0: 5 → 4 个 tab。「视频」并入照片页（全部 / 照片 / 视频 / 实况 筛选），「AI」改名「发现」；旧索引 1 由 HomeState.openTab 兼容。
+ */
 private data class Tab(val title: String, val index: Int, val icon: (Boolean) -> ImageVector)
 private val tabs = listOf(
-    Tab("照片", 0) { LI.photos(it) }, Tab("视频", 1) { LI.videos(it) }, Tab("影音", 5) { LI.film(it) }, Tab("AI", 3) { LI.discover(it) }, Tab("设置", 4) { LI.settings(it) },
+    Tab("照片", 0) { LI.photos(it) }, Tab("影音", 5) { LI.film(it) }, Tab("发现", 3) { LI.discover(it) }, Tab("设置", 4) { LI.settings(it) },
 )
+
+/** 1.1.0: 全部 / 照片 / 视频 / 实况 chips under the 时间线 | 相册 switch (timeline mode only). */
+@Composable
+internal fun PhotoFilterChips() {
+    if (HomeState.tab != 0) return
+    Row(Modifier.padding(start = 16.dp, top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf("全部", "照片", "视频", "实况").forEachIndexed { i, t ->
+            val on = HomeState.photoFilter == i
+            Text(t, color = if (on) C.Accent else C.Sub, fontSize = 13.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
+                modifier = Modifier.clip(RoundedCornerShape(16.dp)).background(if (on) C.Accent.copy(alpha = 0.14f) else C.Surface)
+                    .clickable { HomeState.setFilter(i) }.heightIn(min = 32.dp).padding(horizontal = 14.dp, vertical = 7.dp))
+        }
+    }
+}
 
 /** 时间线 | 相册 inside the 照片 tab. */
 @Composable
-private fun PhotoModeSwitch() {
+internal fun PhotoModeSwitch() {
     Row(Modifier.padding(start = 16.dp, top = 6.dp).clip(RoundedCornerShape(12.dp)).background(C.Surface).padding(3.dp)) {
         listOf("时间线" to 0, "相册" to 2).forEach { (t, i) ->
             val on = HomeState.tab == i
@@ -131,8 +148,8 @@ fun HomeScreen() {
     Box(Modifier.weight(1f).fillMaxHeight()) {
         if (HomeState.switching && HomeState.tab != 4) Column { TopSwitch(); SkeletonGrid(4, 20.dp) }
         else when (HomeState.tab) {
-            0 -> if (dav) DavPhotosTab() else PhotosTab()
-            1 -> VideosTab(dav)
+            0 -> if (HomeState.photoFilter == 2) VideosTab(dav, inPhotos = true) else if (dav) DavPhotosTab() else PhotosTab()
+            1 -> VideosTab(dav)   // only reachable for one frame before openTab() maps it; kept as a safe fallback
             2 -> AlbumsTab(dav)
             3 -> if (dav) DavDiscoverTab() else DiscoverTab()
             5 -> MoviesTab()
@@ -324,10 +341,13 @@ private fun PhotosTab() {
     val baseCols = if (level == Level.YEAR) 1 else if (level.ordinal >= 2) HomeState.columns.coerceIn(3, 5).let { if (level == Level.DAY5) 5 else if (level == Level.DAY3) 3 else it } else level.cols
     val cols = if (level == Level.YEAR) 1 else adaptiveCols(baseCols)
     val stills by remember { derivedStateOf { MediaIsolation.version; Hidden.visible(MediaIsolation.fnVisible(tl.photos.filter { !it.isVideo })) } }
+    // 1.1.0: what the grid shows (全部 / 照片 / 实况); memories keep using stills
+    val filter = HomeState.photoFilter
+    val shown by remember(filter) { derivedStateOf { if (filter == 1) stills else { MediaIsolation.version; Hidden.visible(MediaIsolation.fnVisible(tl.photos.filter { HomeState.accepts(it, filter) })) } } }
     var memories by remember { mutableStateOf<List<MemoryGroup>>(emptyList()) }
     LaunchedEffect(tl.days) { memories = OnThisDay.loadFn(tl, NasAccounts.currentId) }
     LaunchedEffect(memories, stills.isNotEmpty()) { if (stills.isNotEmpty()) OnThisDay.feedWidget("fn:" + NasAccounts.currentId, memories) { stills } }
-    val entries by remember(level) { derivedStateOf { buildEntriesBy(stills, level, true) } }
+    val entries by remember(level, filter) { derivedStateOf { buildEntriesBy(shown, level, true) } }
     val scrolled by remember { derivedStateOf { grid.firstVisibleItemIndex > 0 } }
     val day = visibleDay(entries, grid, 1)
     val (mt, yt) = monthTitle(day)
@@ -347,7 +367,7 @@ private fun PhotosTab() {
                     setLevel(Level.MONTH)
                     scope.launch {
                         tl.ensureLoaded("%04d".format(y))
-                        val idx = buildEntriesBy(tl.photos.filter { !it.isVideo }, Level.MONTH, true).indexOfFirst { it is Entry.Cell && it.photo.day.startsWith("$y") }
+                        val idx = buildEntriesBy(tl.photos.filter { HomeState.accepts(it, filter) }, Level.MONTH, true).indexOfFirst { it is Entry.Cell && it.photo.day.startsWith("$y") }
                         if (idx >= 0) grid.scrollToItem(idx + 1)
                     }
                 }, onPinch = ::pinch)
@@ -356,15 +376,15 @@ private fun PhotosTab() {
             else -> {
                 PhotoGrid(
                     entries, cols, tl.loading, onEnd = { scope.launch { tl.next() } },
-                    onOpen = { Nav.push(Route.Viewer(stills, it)) }, state = grid, top = 0.dp, bottom = 100.dp + miniPlayerPad,
-                    header = { Column { TopSwitch(); PhotoModeSwitch(); BigTitle(mt, sub); MemoriesRow(memories) } },
+                    onOpen = { Nav.push(Route.Viewer(shown, it)) }, state = grid, top = 0.dp, bottom = 100.dp + miniPlayerPad,
+                    header = { Column { TopSwitch(); PhotoModeSwitch(); PhotoFilterChips(); BigTitle(mt, sub); MemoriesRow(memories) } },
                     onPinch = ::pinch,
                     onHeaderClick = { h -> if (level == Level.MONTH) {
                         val first = entries.indexOf(h)
                         val d = (entries.getOrNull(first + 1) as? Entry.Cell)?.photo?.day
                         setLevel(Level.DAY4)
                         if (d != null) scope.launch {
-                            val target = buildEntriesBy(tl.photos.filter { !it.isVideo }, Level.DAY4, true).indexOfFirst { it is Entry.Cell && it.photo.day.take(7) == d.take(7) }
+                            val target = buildEntriesBy(tl.photos.filter { HomeState.accepts(it, filter) }, Level.DAY4, true).indexOfFirst { it is Entry.Cell && it.photo.day.take(7) == d.take(7) }
                             if (target >= 0) grid.scrollToItem(target + 1)
                         }
                     } },
@@ -402,21 +422,25 @@ private fun DavPhotosTab() {
     var level by remember { mutableStateOf(Level.DAY4) }
     fun pinch(zoomIn: Boolean) { val i = level.ordinal + if (zoomIn) 1 else -1; if (i in 1..4) level = Level.values()[i] }
     val stills by remember(lib) { derivedStateOf { MediaIsolation.version; Hidden.visible(MediaIsolation.davVisible(lib.accountId, lib.photos.filter { !it.isVideo })) } }
+    val filter = HomeState.photoFilter
+    val shown by remember(lib, filter) { derivedStateOf { if (filter == 1) stills else { MediaIsolation.version; Hidden.visible(MediaIsolation.davVisible(lib.accountId, lib.photos.filter { HomeState.accepts(it, filter) })) } } }
     val memories by remember(lib) { derivedStateOf { lib.metaVersion; OnThisDay.from(stills) } }
     LaunchedEffect(memories, stills.isNotEmpty()) { if (stills.isNotEmpty()) OnThisDay.feedWidget("dav:" + lib.accountId, memories) { stills } }
-    val entries by remember(lib, level) { derivedStateOf { lib.metaVersion; buildEntriesBy(stills, level, true) } }
+    val entries by remember(lib, level, filter) { derivedStateOf { lib.metaVersion; buildEntriesBy(shown, level, true) } }
     val scrolled by remember { derivedStateOf { grid.firstVisibleItemIndex > 0 } }
     val day = visibleDay(entries, grid, 1)
     val (mt, yt) = monthTitle(day)
-    val sub = listOf(yt, "${n(stills.size)} 张照片", ScanStatus.listing(lib)?.let { "正在扫描 ${it.done}/${it.total} 个文件夹" } ?: "").filter { it.isNotEmpty() }.joinToString(" · ")
+    val sub = listOf(yt, (if (filter == 1) "${n(stills.size)} 张照片" else "${n(shown.size)} 项"), ScanStatus.listing(lib)?.let { "正在扫描 ${it.done}/${it.total} 个文件夹" } ?: "").filter { it.isNotEmpty() }.joinToString(" · ")
     Box(Modifier.fillMaxSize().then(if (!lib.scanning) Modifier.nestedScroll(ptr.nestedScrollConnection) else Modifier)) {
         when {
             lib.photos.isEmpty() && lib.scanning -> Column { TopSwitch(); SkeletonGrid(4, 20.dp) }
             lib.photos.isEmpty() && lib.error != null -> Column { TopSwitch(); Box(Modifier.weight(1f)) { StateMessage(LI.drive(), "连不上 WebDAV", lib.error.orEmpty(), "重试") { scope.launch { lib.scan() } } } }
-            stills.isEmpty() -> Column { TopSwitch(); PhotoModeSwitch(); Box(Modifier.weight(1f)) { StateMessage(LI.photos(), "没有找到照片", "把照片放进这个 WebDAV 后下拉刷新。", "重新扫描") { scope.launch { lib.scan(full = true) } } } }
+            shown.isEmpty() -> Column { TopSwitch(); PhotoModeSwitch(); PhotoFilterChips(); Box(Modifier.weight(1f)) {
+                if (filter == 3 && stills.isNotEmpty()) StateMessage(LI.photos(), "没有实况照片", "iPhone 实况（照片 + 同名 MOV）和安卓动态照片分析完后会出现在这里。")
+                else StateMessage(LI.photos(), "没有找到照片", "把照片放进这个 WebDAV 后下拉刷新。", "重新扫描") { scope.launch { lib.scan(full = true) } } } }
             else -> {
-                PhotoGrid(entries, adaptiveCols(level.cols.coerceAtMost(7)), lib.scanning, onEnd = {}, onOpen = { Nav.push(Route.Viewer(stills, it)) }, state = grid, top = 0.dp, bottom = 100.dp + miniPlayerPad,
-                    header = { Column { TopSwitch(); PhotoModeSwitch(); BigTitle(mt, sub); MemoriesRow(memories) } }, onPinch = ::pinch)
+                PhotoGrid(entries, adaptiveCols(level.cols.coerceAtMost(7)), lib.scanning, onEnd = {}, onOpen = { Nav.push(Route.Viewer(shown, it)) }, state = grid, top = 0.dp, bottom = 100.dp + miniPlayerPad,
+                    header = { Column { TopSwitch(); PhotoModeSwitch(); PhotoFilterChips(); BigTitle(mt, sub); MemoriesRow(memories) } }, onPinch = ::pinch)
                 AnimatedVisibility(scrolled, enter = fadeIn(), exit = fadeOut()) { CompactBar("$mt · $yt".trim(' ', '·')) }
             }
         }
@@ -592,9 +616,11 @@ private fun DiscoverTab() {
     LaunchedEffect(HomeState.timeline.photos.size, AiConfig.nasToo) { if (AiConfig.nasToo && AiRunner.on && !ScanPolicy.paused) AiRunner.startNas(ctx, HomeState.timeline.photos.toList()) }
     val list = rememberMemList("fn-discover")
     val places = HomeState.places
+    var fnMemories by remember { mutableStateOf<List<MemoryGroup>>(emptyList()) }
+    LaunchedEffect(HomeState.timeline.days) { fnMemories = runCatching { OnThisDay.loadFn(HomeState.timeline, NasAccounts.currentId) }.getOrDefault(emptyList()) }
     LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 120.dp + miniPlayerPad)) {
         item { TopSwitch() }
-        item { BigTitle("AI", "") }
+        item { BigTitle("发现", "") }
         item { SearchBar() }
         val hiddenIds = FnPersonHide.version.let { FnPersonHide.ids() }
         val ps = HomeState.persons.orEmpty().filter { it.id !in hiddenIds }
@@ -634,7 +660,10 @@ private fun DiscoverTab() {
                 }
             }
         }
-        item { Box(Modifier.padding(horizontal = 18.dp, vertical = 6.dp).padding(top = 10.dp)) { SectionTitle("整理") } }
+        // 1.1.0 发现 → 回忆
+        item { RowHeader("回忆") }
+        item { MemoriesSection(fnMemories, recent = { HomeState.timeline.photos.filter { !it.isVideo } }) }
+        item { Box(Modifier.padding(horizontal = 18.dp, vertical = 6.dp).padding(top = 10.dp)) { SectionTitle("整理 · 清理空间") } }
         item {
             Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -711,7 +740,7 @@ private fun DavDiscoverTab() {
     val list = rememberMemList("dav-discover-" + lib.accountId)
     LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 120.dp + miniPlayerPad)) {
         item { TopSwitch() }
-        item { BigTitle("AI", "${n(imgs)} 张照片 · ${fl.persons.size} 位人物 · ${places.size} 个地点") }
+        item { BigTitle("发现", "${n(imgs)} 张照片 · ${fl.persons.size} 位人物 · ${places.size} 个地点") }
         item { SearchBar() }
 
         // ---------------- 整理进度：一张卡说清楚三件事
@@ -770,6 +799,13 @@ private fun DavDiscoverTab() {
             }
         }
 
+        // ---------------- 回忆（1.1.0：那年今天、回忆短片）
+        item { RowHeader("回忆") }
+        item {
+            val memories = remember(v, lib.photos.size) { OnThisDay.from(Hidden.visible(lib.photos.filter { !it.isVideo })) }
+            MemoriesSection(memories, recent = { lib.photos.filter { !it.isVideo } })
+        }
+
         // ---------------- AI 分类
         item { RowHeader("AI 分类", if (cats.isNotEmpty()) "${cats.size} 类" else "", if (AiConfig.configured) "AI 设置" else null) { Nav.push(Route.AiSettings) } }
         item {
@@ -795,6 +831,10 @@ private fun DavDiscoverTab() {
                 ToolRow(LI.copy(), "重复照片", (if (dupN > 0) "$dupN 组" else "完全相同的文件，保留一张") + pend) { Nav.push(Route.DavGroups("重复照片", lib.accountId, "dup")) }
                 HorizontalDivider(color = C.Line, modifier = Modifier.padding(start = 58.dp))
                 ToolRow(LI.layers(), "相似照片", (if (simN > 0) "$simN 组" else "连拍、相近的几张，挑最好的留下") + pend) { Nav.push(Route.DavGroups("相似照片", lib.accountId, "sim")) }
+                HorizontalDivider(color = C.Line, modifier = Modifier.padding(start = 58.dp))
+                ToolRow(LI.photos(), "截图", "手机截屏，看完可以批量删掉") {
+                    openGroup("截图", "清理空间", Hidden.visible(lib.photos.filter { !it.isVideo && AdvFilter.isScreenshot(it) }))
+                }
             }
         }
     }
@@ -1069,6 +1109,24 @@ fun LockOverlay(onUnlock: () -> Unit) {
             Icon(LI.lock(), null, tint = C.Accent, modifier = Modifier.size(48.dp))
             Text("一维相册已锁定", color = C.Text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 16.dp))
             GradientButton("解锁", Modifier.padding(top = 24.dp).width(180.dp), onClick = onUnlock)
+        }
+    }
+}
+
+
+/**
+ * 1.1.0 发现 → 回忆：那年今天（有则显示）+ 用最近 30 天的照片生成回忆短片。
+ * [recent] 只在点击时计算，避免每次重组都过滤整库。
+ */
+@Composable
+private fun MemoriesSection(memories: List<MemoryGroup>, recent: () -> List<Photo>) {
+    MemoriesRow(memories)
+    if (memories.isEmpty()) Text("那年今天有照片时会出现在这里。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp))
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp).clip(RoundedCornerShape(C.Card)).background(C.Surface)) {
+        ToolRow(LI.film(), "回忆短片", "用最近 30 天的照片生成一段带音乐的短片") {
+            val cut = java.time.LocalDate.now().minusDays(30).let { "%04d:%02d:%02d".format(it.year, it.monthValue, it.dayOfMonth) }
+            val ps = Hidden.visible(recent().filter { it.day >= cut }.sortedBy { it.time })
+            openMemoryClip("最近的回忆", "近 30 天 · ${ps.size} 张", ps)
         }
     }
 }

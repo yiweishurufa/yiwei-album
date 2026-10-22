@@ -44,7 +44,9 @@ object NasVideos {
 }
 
 @Composable
-fun VideosTab(dav: Boolean) {
+fun VideosTab(dav: Boolean, inPhotos: Boolean = false) {
+    /** 1.1.0: inside the 照片 tab the header carries 时间线 | 相册 and the 全部/照片/视频/实况 chips. */
+    @Composable fun Head() { TopSwitch(); if (inPhotos) { PhotoModeSwitch(); PhotoFilterChips() } }
     val scope = rememberCoroutineScope()
     val grid = rememberMemGrid(if (dav) "dav-videos-${Dav.lib()?.accountId}" else "fn-videos-${NasAccounts.currentId}")
     val cols = HomeState.columns.coerceAtMost(4)
@@ -55,25 +57,25 @@ fun VideosTab(dav: Boolean) {
             LaunchedEffect(lib) { lib.ensure() }
             val vids by remember(lib) { derivedStateOf { lib.metaVersion; MediaIsolation.version; Hidden.visible(MediaIsolation.davVisible(lib.accountId, lib.photos.filter { it.isVideo })) } }
             val entries = remember(vids) { buildEntries(vids, true) }
-            if (vids.isEmpty()) Column { TopSwitch(); Title("视频", if (lib.scanning) "正在扫描…" else "0 个"); Box(Modifier.weight(1f)) {
+            if (vids.isEmpty()) Column { Head(); Title("视频", if (lib.scanning) "正在扫描…" else "0 个"); Box(Modifier.weight(1f)) {
                 if (lib.scanning) SkeletonGrid(cols, 0.dp)
                 // H15: a failed load/scan shows why and offers 重试, same as the photo tab
                 else if (lib.error != null) StateMessage(LI.drive(), "连不上 WebDAV", lib.error.orEmpty(), "重试") { scope.launch { lib.scan() } }
                 else StateMessage(LI.videos(), "没有视频", "")
             } }
             else PhotoGrid(entries, cols, lib.scanning, onEnd = {}, onOpen = { Nav.push(Route.Viewer(vids, it)) }, state = grid, bottom = 100.dp + miniPlayerPad,
-                header = { Column { TopSwitch(); Title("视频", "${vids.size} 个" + if (lib.scanning) " · 正在扫描…" else "") } })
+                header = { Column { Head(); Title("视频", "${vids.size} 个" + if (lib.scanning) " · 正在扫描…" else "") } })
         } else {
             val src = remember(NasAccounts.currentId) { NasVideos.get() }
             LaunchedEffect(src) { if (!src.started) { src.started = true; src.next() } }
             val shown by remember(src) { derivedStateOf { MediaIsolation.version; Hidden.visible(MediaIsolation.fnVisible(src.photos.toList())) } }
             val entries by remember(src) { derivedStateOf { buildEntries(shown, true) } }
             when {
-                src.photos.isEmpty() && src.loading -> Column { TopSwitch(); Title("视频", "正在查找…"); SkeletonGrid(cols, 0.dp) }
-                src.photos.isEmpty() && src.error != null -> Column { TopSwitch(); Box(Modifier.weight(1f)) { StateMessage(LI.videos(), "加载失败", src.error.orEmpty(), "重试") { scope.launch { src.refresh() } } } }
-                src.photos.isEmpty() -> Column { TopSwitch(); Title("视频", "0 个"); Box(Modifier.weight(1f)) { StateMessage(LI.videos(), "没有视频", "") } }
+                src.photos.isEmpty() && src.loading -> Column { Head(); Title("视频", "正在查找…"); SkeletonGrid(cols, 0.dp) }
+                src.photos.isEmpty() && src.error != null -> Column { Head(); Box(Modifier.weight(1f)) { StateMessage(LI.videos(), "加载失败", src.error.orEmpty(), "重试") { scope.launch { src.refresh() } } } }
+                src.photos.isEmpty() -> Column { Head(); Title("视频", "0 个"); Box(Modifier.weight(1f)) { StateMessage(LI.videos(), "没有视频", "") } }
                 else -> PhotoGrid(entries, cols, src.loading, onEnd = { scope.launch { src.next() } }, onOpen = { Nav.push(Route.Viewer(shown, it)) }, state = grid, bottom = 100.dp + miniPlayerPad,
-                    header = { Column { TopSwitch(); Title("视频", "${shown.size}${if (src.more) "+" else ""} 个") } })
+                    header = { Column { Head(); Title("视频", "${shown.size}${if (src.more) "+" else ""} 个") } })
             }
         }
         SelectionBar(Modifier.align(Alignment.BottomCenter), onChanged = {})

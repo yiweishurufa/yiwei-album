@@ -103,7 +103,7 @@ fun AiSettingsScreen() {
             Card {
                 ToggleRow(LI.nas(), "飞牛照片也用 AI 搜索", "飞牛自带的智能分类之外，再用你的模型整理", AiConfig.nasToo) { AiConfig.nasToo = it }
             }
-            Text("只发送 512px 缩略图，不传原图和位置。什么时候运行跟随 ${ScanPolicy.SETTINGS_REF}（移动网络 / 不充电时是否继续），暂停后到 AI 页点「立即继续」。",
+            Text("只发送 512px 缩略图，不传原图和位置。什么时候运行跟随 ${ScanPolicy.SETTINGS_REF}（移动网络 / 不充电时是否继续），暂停后到「发现」页点「立即继续」。",
                 style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp))
             InputRow("每月预算上限（元，到达后自动暂停）", AiConfig.budget, "10") { AiConfig.budget = it.filter { c -> c.isDigit() || c == '.' } }
             Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {

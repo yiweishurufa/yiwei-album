@@ -170,8 +170,25 @@ object HomeState {
     var persons by mutableStateOf<List<Person>?>(null)
     var places by mutableStateOf<List<Place>?>(null)
     var tab by mutableIntStateOf(0)
-    /** 1.0.2: jump back to the AI tab (重复/相似 pages point there for progress). */
+    /** 1.0.2: jump back to the 发现 tab (重复/相似 pages point there for progress). */
     fun openAiTab() { tab = 3; Nav.reset(Route.Home) }
+
+    /**
+     * 1.1.0: 照片页筛选 —— 0 全部 / 1 照片 / 2 视频 / 3 实况（「视频」tab 并入照片页）。
+     * 照片 = 不是视频（含实况，与旧照片页一致）。记在 Store "photo.filter"。
+     */
+    var photoFilter by mutableIntStateOf(Store.getStr("photo.filter").toIntOrNull()?.coerceIn(0, 3) ?: 0)
+        private set
+    fun setFilter(f: Int) { photoFilter = f.coerceIn(0, 3); Store.putStr("photo.filter", photoFilter.toString()) }
+    fun accepts(p: com.hark.shiguang.data.Photo, f: Int = photoFilter): Boolean = when (f) { 1 -> !p.isVideo; 2 -> p.isVideo; 3 -> p.isLive && !p.isVideo; else -> true }
+
+    /**
+     * 1.1.0: 旧 tab 索引兼容（保存的 nav.tab、通知/深链）：
+     * 0 照片 · 1 视频（旧）→ 照片页 + 视频筛选 · 2 相册（照片页里的「相册」）· 3 发现（原 AI）· 4 设置 · 5 影音。
+     */
+    fun openTab(i: Int) { if (i == 1) { setFilter(2); tab = 0 } else tab = if (i in 0..5) i else 0 }
+    /** Deep link names (intent extra "tab"): photos / videos / albums / discover (ai) / settings / media (movies, music). */
+    fun openTab(name: String) = openTab(when (name.lowercase()) { "videos", "video" -> 1; "albums", "album" -> 2; "discover", "ai" -> 3; "settings" -> 4; "media", "movies", "music" -> 5; else -> 0 })
     var columns by mutableIntStateOf(Store.columns)
     var dirty by mutableStateOf(false)
     var showDate by mutableStateOf(false)

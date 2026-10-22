@@ -281,7 +281,7 @@ fun DuplicatesScreen() {
         when {
             groups.isEmpty() && loading -> Loading()
             groups.isEmpty() && err != null -> StateMessage(Icons.Rounded.CloudOff, "加载失败", err.orEmpty(), "重试") { scope.launch { load(true) } }
-            groups.isEmpty() -> StateMessage(Icons.Rounded.FilterNone, "暂时没有重复照片", "重复和相似检测随 AI 页的整理在 NAS 上进行，有结果会显示在这里。", "去 AI 页") { HomeState.openAiTab() }
+            groups.isEmpty() -> StateMessage(Icons.Rounded.FilterNone, "暂时没有重复照片", "重复和相似检测随「发现」页的整理在 NAS 上进行，有结果会显示在这里。", "去发现页") { HomeState.openAiTab() }
             else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
                 items(groups.size, key = { groups[it].id }) { gi ->
                     val g = groups[gi]

@@ -115,15 +115,15 @@ fun DavGroupsScreen(r: Route.DavGroups) {
             if (pending) Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(C.Accent.copy(alpha = 0.10f))
                 .clickable { HomeState.openAiTab() }.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(if (lib.analyzing) "AI 页正在分析 ${n(analyzedN)}/${n(imgs)} 张" else "已分析 ${n(analyzedN)}/${n(imgs)} 张", color = C.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    Text(if (lib.analyzing) "结果会自动出现在这里" else "其余照片在 AI 页的「整理」里继续分析", color = C.Sub, fontSize = 12.sp)
+                    Text(if (lib.analyzing) "发现页正在分析 ${n(analyzedN)}/${n(imgs)} 张" else "已分析 ${n(analyzedN)}/${n(imgs)} 张", color = C.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text(if (lib.analyzing) "结果会自动出现在这里" else "其余照片在「发现」页的整理里继续分析", color = C.Sub, fontSize = 12.sp)
                 }
-                Text("去 AI 页", color = C.Accent, fontSize = 13.sp)
+                Text("去发现页", color = C.Accent, fontSize = 13.sp)
             }
             if (dup) Text("重复判定仅比对文件头部（前 128KB）+ 大小；删除前会做全文哈希二次校验，全文不同者自动排除。", color = C.Sub, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
             if (groups.isEmpty()) Box(Modifier.weight(1f)) {
                 StateMessage(if (dup) LI.copy() else LI.layers(), if (pending) "还没分析完" else "没有${if (dup) "重复" else "相似"}照片",
-                    if (pending) "检测随 AI 页的整理一起进行，完成后结果会显示在这里" else "有新照片时会在 AI 整理里自动检测")
+                    if (pending) "检测随「发现」页的整理一起进行，完成后结果会显示在这里" else "有新照片时会在 AI 整理里自动检测")
             }
             else LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 16.dp)) {
                 itemsIndexed(groups, key = { _, g -> g.first().key }) { gi, g ->
