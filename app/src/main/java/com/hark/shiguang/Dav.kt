@@ -719,9 +719,8 @@ object Analyzer {
         return if (model.startsWith(make, true)) model else "$make $model".trim()
     }
 
-    /** S5: bounded pool (2) — a retriever stuck on a dead host keeps its own thread, but a long queue of
-     * stuck retrievers can no longer grow the pool without bound. */
-    private val durPool = java.util.concurrent.Executors.newFixedThreadPool(2) { r -> Thread(r, "yw-dur").apply { isDaemon = true } }
+    /** H8: retrievers that hit the timeout and are still stuck in native code (they only hold their own thread). */
+    private val stuckDur = java.util.concurrent.atomic.AtomicInteger(0)
 
     /** 1.0.10: duration of WebDAV videos for the advanced-search duration filter. 2 at a time, 25 s cap per file, failures marked -1 and skipped. */
     private suspend fun videoDurations(lib: DavLib, ok: () -> Boolean) = coroutineScope {
@@ -743,21 +742,34 @@ object Analyzer {
 
     /** Seconds, or 0 on failure / timeout. setDataSource can block on a slow host, so it runs on its own thread with a hard timeout. */
     fun durationOf(url: String): Int {
-        val f = durPool.submit<Int> {
-            val mmr = android.media.MediaMetadataRetriever()
+        // H8: the old fixed pool of 2 got filled by retrievers stuck in setDataSource (Future.cancel cannot interrupt
+        // native code), after which every video timed out. Now each lookup has its own daemon thread, and on timeout
+        // the retriever is released (from yet another thread) to abort the blocked read; the caller never waits past 25 s.
+        if (stuckDur.get() >= 6) { Diag.log("DAV", "video duration: ${stuckDur.get()} retrievers still stuck, skipping"); return 0 }
+        val mmr = android.media.MediaMetadataRetriever()
+        val result = java.util.concurrent.atomic.AtomicInteger(0)
+        val released = java.util.concurrent.atomic.AtomicBoolean(false)
+        val t = Thread({
             try {
                 val real = DavThumb.finalUrl(url)
                 val h = if (real == url) (ImageAuth.headersFor(url) ?: emptyMap()) else emptyMap()
                 mmr.setDataSource(real, h)
-                ((mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L) / 1000L).toInt()
-            } finally { runCatching { mmr.release() } }
-        }
-        return try { f.get(25, java.util.concurrent.TimeUnit.SECONDS) } catch (e: Throwable) {
-            f.cancel(true)
+                result.set(((mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L) / 1000L).toInt())
+            } catch (_: Throwable) {
+            } finally { if (released.compareAndSet(false, true)) runCatching { mmr.release() } }
+        }, "yw-dur").apply { isDaemon = true }
+        t.start()
+        t.join(25_000)
+        if (t.isAlive) {
             // S5: a timeout is logged and the caller moves on to the next file — it never blocks the queue.
-            if (e is java.util.concurrent.TimeoutException) Diag.log("DAV", "video duration timeout: ${url.take(120)}")
-            0
+            Diag.log("DAV", "video duration timeout: ${url.take(120)}")
+            // release() may wait on the retriever's native lock, so it is called from its own thread, never this one
+            if (released.compareAndSet(false, true)) Thread({ runCatching { mmr.release() } }, "yw-dur-release").apply { isDaemon = true }.start()
+            stuckDur.incrementAndGet()
+            Thread({ t.join(120_000); stuckDur.decrementAndGet() }, "yw-dur-watch").apply { isDaemon = true }.start()
+            return 0
         }
+        return result.get()
     }
 
     fun stop() { jobs.values.forEach { it.cancel() }; jobs.clear() }
