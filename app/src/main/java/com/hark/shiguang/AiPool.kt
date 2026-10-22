@@ -83,8 +83,31 @@ object AiPool {
     }
     fun saveOrFreeVision(ids: List<String>) = Store.putStr("ai.or.free", JSONArray(ids).toString())
 
-    /** The ordered pool. First = the configured model (when AI is enabled). */
+    /**
+     * 1.1.0: 用户在模型列表里排的顺序（endpoint id 列表，"ai.order"）。列表顺序 = 切换优先级；
+     * 不在列表里的模型（新填了 Key 的平台）按默认顺序排在后面。没排过序时就是旧顺序（已配置的模型第一）。
+     */
+    private fun userOrder(): List<String> = runCatching { JSONArray(Store.getStr("ai.order", "[]")).let { a -> (0 until a.length()).map { a.optString(it) } } }.getOrDefault(emptyList())
+    fun move(id: String, delta: Int) {
+        val cur = candidates().map { it.id }.toMutableList()
+        val i = cur.indexOf(id); val j = i + delta
+        if (i < 0 || j !in cur.indices) return
+        cur.removeAt(i); cur.add(j, id)
+        Store.putStr("ai.order", JSONArray(cur).toString()); version++
+    }
+    fun resetOrder() { Store.removeKey("ai.order"); version++ }
+    val customOrder: Boolean get() = userOrder().isNotEmpty()
+
+    /** The ordered pool: the user's order from the model list, else the configured model first. */
     fun candidates(): List<AiEndpoint> {
+        val base = defaultCandidates()
+        val order = userOrder()
+        if (order.isEmpty()) return base
+        val rank = order.withIndex().associate { it.value to it.index }
+        return base.withIndex().sortedWith(compareBy({ rank[it.value.id] ?: (order.size + it.index) }, { it.index })).map { it.value }
+    }
+
+    private fun defaultCandidates(): List<AiEndpoint> {
         val out = LinkedHashMap<String, AiEndpoint>()
         if (AiConfig.configured && !AiConfig.overBudget) AiEndpoint.current().let { out[it.id] = it }
         if (!autoSwitch || !AiConfig.enabled) return out.values.toList()

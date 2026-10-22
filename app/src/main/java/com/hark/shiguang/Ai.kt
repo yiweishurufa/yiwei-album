@@ -84,8 +84,7 @@ object AiConfig {
     var key by mutableStateOf(Store.getStr("ai.key").ifEmpty { AiKeys.get(Store.getStr("ai.provider", "zhipu")) })
     var model by mutableStateOf(Store.getStr("ai.model", AiProviders.of(Store.getStr("ai.provider", "zhipu")).models.firstOrNull() ?: ""))
     var budget by mutableStateOf(Store.getStr("ai.budget", "10"))
-    var priceIn by mutableStateOf(Store.getStr("ai.pin", "2"))   // ¥ per 1M input tokens
-    var priceOut by mutableStateOf(Store.getStr("ai.pout", "8"))
+    // 1.1.0: 输入/输出单价输入框已删除，改用 AiPrices 内置价目表；ai.pin / ai.pout 只读不写（见 legacyPrice）
     var nasToo by mutableStateOf(Store.getStr("ai.nas", "0") == "1")
     var enabled by mutableStateOf(Store.getStr("ai.on", "0") == "1")
 
@@ -104,14 +103,24 @@ object AiConfig {
     fun save() {
         Store.putStr("ai.provider", provider); Store.putStr("ai.base", baseUrl.trim().trimEnd('/')); Store.putStr("ai.key", key.trim()); Store.putStr("ai.model", model.trim())
         if (key.isNotBlank()) AiKeys.set(provider, key)
-        Store.putStr("ai.budget", budget); Store.putStr("ai.pin", priceIn); Store.putStr("ai.pout", priceOut)
+        Store.putStr("ai.budget", budget)
         Store.putStr("ai.nas", if (nasToo) "1" else "0"); Store.putStr("ai.on", if (enabled) "1" else "0")
     }
 
     private fun month() = java.text.SimpleDateFormat("yyyyMM", java.util.Locale.US).format(java.util.Date())
     val spent: Double get() = if (Store.getStr("ai.month") == month()) Store.getStr("ai.spent", "0").toDoubleOrNull() ?: 0.0 else 0.0
-    fun addSpend(inTok: Int, outTok: Int) {
-        val c = (inTok * (priceIn.toDoubleOrNull() ?: 0.0) + outTok * (priceOut.toDoubleOrNull() ?: 0.0)) / 1_000_000.0
+    /**
+     * 1.1.0 迁移：旧版手填的单价（ai.pin / ai.pout）只在模型不在内置价目表里、且用户改过旧默认值（2 / 8）时继续使用，
+     * 这样老用户自定义模型的估算不会突然变成 0。
+     */
+    private val legacyPrice: AiPrices.Price? get() {
+        val i = Store.getStr("ai.pin"); val o = Store.getStr("ai.pout")
+        if ((i.isEmpty() || i == "2") && (o.isEmpty() || o == "8")) return null
+        return AiPrices.Price(i.toDoubleOrNull() ?: 0.0, o.toDoubleOrNull() ?: 0.0)
+    }
+    fun priceOf(model: String, free: Boolean = false): AiPrices.Price? = AiPrices.of(model, free) ?: legacyPrice
+    fun addSpend(model: String, inTok: Int, outTok: Int) {
+        val c = AiPrices.cost(priceOf(model), inTok, outTok)
         val now = spent + c
         Store.putStr("ai.month", month()); Store.putStr("ai.spent", "%.5f".format(java.util.Locale.US, now))
     }
@@ -229,12 +238,12 @@ object AiClient {
             }
             if (ep.protocol == "anthropic") {
                 val u = j.optJSONObject("usage")
-                if (!ep.free) u?.let { AiConfig.addSpend(it.optInt("input_tokens"), it.optInt("output_tokens")) }
+                if (!ep.free) u?.let { AiConfig.addSpend(ep.model, it.optInt("input_tokens"), it.optInt("output_tokens")) }
                 Reply(j.optJSONArray("content")?.optJSONObject(0)?.optString("text").orEmpty(), u?.optInt("input_tokens") ?: 0, u?.optInt("output_tokens") ?: 0)
             } else {
                 val u = j.optJSONObject("usage")
                 // free models cost nothing: keep them out of the monthly budget
-                if (!ep.free) u?.let { AiConfig.addSpend(it.optInt("prompt_tokens"), it.optInt("completion_tokens")) }
+                if (!ep.free) u?.let { AiConfig.addSpend(ep.model, it.optInt("prompt_tokens"), it.optInt("completion_tokens")) }
                 val ch = j.optJSONArray("choices")?.optJSONObject(0)
                 val msg = ch?.optJSONObject("message")
                 val out = msg?.opt("content").let { if (it is String) it else if (it is JSONArray) (0 until it.length()).joinToString("") { i -> it.optJSONObject(i)?.optString("text").orEmpty() } else "" }

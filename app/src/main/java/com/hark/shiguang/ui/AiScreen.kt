@@ -90,27 +90,35 @@ fun AiSettingsScreen() {
                     "延迟 " + AiClient.speed().toString() + "（一次约 30 字的请求，含网络时间）"
                 }
             }
-            Section("免费模型自动切换")
+            // 1.1.0: 「免费模型自动切换」并入模型列表：列表顺序就是切换优先级
+            Section("模型列表")
             Card {
-                ToggleRow(LI.swap(), "免费模型自动切换", "当前模型额度用完、限流、超时或下线时，同一张照片自动换下一个免费看图模型继续；你填过 Key 的免费平台都会用上（国内优先，OpenRouter 最后）", AiPool.autoSwitch) { AiPool.setAuto(it) }
+                ToggleRow(LI.swap(), "出错时按顺序自动换下一个", "额度用完、限流、超时或下线时，同一张照片换列表里的下一个模型继续；填过 Key 的免费平台会自动加入列表", AiPool.autoSwitch) { AiPool.setAuto(it) }
             }
             PoolList()
             Section("本地识别（离线）")
             Card {
                 ToggleRow(LI.sparkle(), "本地识别兜底", "没配大模型、或所有模型额度用完时，用手机上的识别模型继续分类：不联网、不耗额度，结果标「本地识别」，大模型恢复后自动细分", LocalAi.enabled) { LocalAi.set(it) }
             }
-            Section("隐私与耗电")
-            Card {
-                ToggleRow(LI.nas(), "飞牛照片也用 AI 搜索", "飞牛自带的智能分类之外，再用你的模型整理", AiConfig.nasToo) { AiConfig.nasToo = it }
-            }
+            Section("隐私与费用")
             Text("只发送 512px 缩略图，不传原图和位置。什么时候运行跟随 ${ScanPolicy.SETTINGS_REF}（移动网络 / 不充电时是否继续），暂停后到「发现」页点「立即继续」。",
                 style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp))
             InputRow("每月预算上限（元，到达后自动暂停）", AiConfig.budget, "10") { AiConfig.budget = it.filter { c -> c.isDigit() || c == '.' } }
-            Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Box(Modifier.weight(1f)) { InputRowBare("输入单价 ¥/百万 token", AiConfig.priceIn) { AiConfig.priceIn = it } }
-                Box(Modifier.weight(1f)) { InputRowBare("输出单价 ¥/百万 token", AiConfig.priceOut) { AiConfig.priceOut = it } }
+            // 1.1.0: 单价不再手填，按内置价目表估算；不认识的模型按 0 计并标注「无法估算」
+            val curEp = AiEndpoint.current()
+            val known = AiConfig.priceOf(curEp.model, curEp.free) != null
+            Text(AiPrices.describe(curEp.model, curEp.free).let { if (!known || AiPrices.of(curEp.model, curEp.free) != null) it else "使用你以前填写的单价估算" },
+                color = if (known) C.Sub else C.Gold, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(horizontal = 18.dp, vertical = 2.dp))
+            Text("本月已用约 ¥${"%.2f".format(AiConfig.spent)}" + (if (!known) "（当前模型无法估算）" else "") + (AiRunner.note.ifEmpty { AiRunner.status }).let { if (it.isNotEmpty()) " · $it" else "" }, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp))
+            // 1.1.0: 低频选项收进「高级」
+            var adv by remember { mutableStateOf(false) }
+            Row(Modifier.fillMaxWidth().clickable { adv = !adv }.padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("高级", color = C.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Text(if (adv) "收起" else "展开", color = C.Accent, fontSize = 13.sp)
             }
-            Text("本月已用约 ¥${"%.2f".format(AiConfig.spent)}" + (AiRunner.note.ifEmpty { AiRunner.status }).let { if (it.isNotEmpty()) " · $it" else "" }, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp))
+            if (adv) Card {
+                ToggleRow(LI.nas(), "飞牛照片也用 AI 搜索", "默认关闭。飞牛自带智能分类，打开后再用你的模型整理一遍（会消耗额度）", AiConfig.nasToo) { AiConfig.nasToo = it }
+            }
             Spacer(Modifier.height(20.dp))
         }
         Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
@@ -185,18 +193,23 @@ private fun PoolList() {
         if (cands.isEmpty()) Text("还没有可用的模型：填好 Key 并点「测试连接」或「保存并开始」。", style = MaterialTheme.typography.bodySmall)
         else if (!AiPool.autoSwitch) Text("已关闭：只用上面选的模型，出错时等待后重试。", style = MaterialTheme.typography.bodySmall)
         else {
-            Text("切换顺序（在各平台填过 Key 就会加入；切换到某个提供商填 Key 即可）：", style = MaterialTheme.typography.bodySmall)
+            Text("按顺序使用，上面的优先；用 ↑ ↓ 调整（在某个平台填过 Key 就会加入列表）：", style = MaterialTheme.typography.bodySmall)
             cands.forEachIndexed { i, ep ->
                 val cool = AiPool.coolUntil(ep).takeIf { it > System.currentTimeMillis() }
                 val act = AiPool.active?.id == ep.id
-                Row(Modifier.fillMaxWidth().padding(top = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("${i + 1}. ${ep.label}", color = if (act) C.Accent else C.Text, fontSize = 13.sp, maxLines = 1, modifier = Modifier.weight(1f))
-                    Text(ep.providerName + if (ep.free) " · 免费" else "", style = MaterialTheme.typography.bodySmall)
-                    Text(if (cool != null) "  冷却到 ${AiPool.hhmm(cool)}" else if (act) "  当前" else "  可用", fontSize = 12.sp,
-                        color = if (cool != null) C.Danger else if (act) C.Accent else C.Sub)
+                Row(Modifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("${i + 1}. ${ep.label}", color = if (act) C.Accent else C.Text, fontSize = 13.sp, maxLines = 1)
+                        Text(ep.providerName + (if (ep.free) " · 免费" else AiConfig.priceOf(ep.model).let { if (it == null) " · 无法估算费用" else "" }) +
+                            (if (cool != null) " · 冷却到 ${AiPool.hhmm(cool)}" else if (act) " · 当前" else ""),
+                            fontSize = 12.sp, color = if (cool != null) C.Danger else if (act) C.Accent else C.Sub)
+                    }
+                    IconButton(onClick = { AiPool.move(ep.id, -1) }, enabled = i > 0) { Text("↑", color = if (i > 0) C.Text else C.Faint, fontSize = 16.sp) }
+                    IconButton(onClick = { AiPool.move(ep.id, 1) }, enabled = i < cands.lastIndex) { Text("↓", color = if (i < cands.lastIndex) C.Text else C.Faint, fontSize = 16.sp) }
                 }
                 if (cool != null) AiPool.reason(ep).takeIf { it.isNotEmpty() }?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 16.dp)) }
             }
+            if (AiPool.customOrder) Text("恢复默认顺序", color = C.Accent, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp).clickable { AiPool.resetOrder() })
             if (cands.any { AiPool.cooled(it) }) Text("清除冷却，立即重试", color = C.Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(top = 8.dp).clickable { AiPool.clear() })
         }
@@ -218,13 +231,3 @@ fun KeyLink(url: String, modifier: Modifier = Modifier.padding(horizontal = 18.d
 
 private fun Modifier.horizontalScrollCompat(): Modifier = composed { this.then(Modifier.horizontalScroll(rememberScrollState())) }
 
-@Composable
-private fun InputRowBare(label: String, value: String, onChange: (String) -> Unit) {
-    Column(Modifier.padding(vertical = 5.dp)) {
-        Text(label, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = 2.dp, bottom = 6.dp))
-        Box(Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(14.dp)).background(C.Surface2).padding(horizontal = 14.dp), contentAlignment = Alignment.CenterStart) {
-            androidx.compose.foundation.text.BasicTextField(value, { v -> onChange(v.filter { it.isDigit() || it == '.' }) }, singleLine = true,
-                textStyle = MaterialTheme.typography.bodyMedium.copy(color = C.Text, fontSize = 15.sp), cursorBrush = androidx.compose.ui.graphics.SolidColor(C.Accent), modifier = Modifier.fillMaxWidth())
-        }
-    }
-}
