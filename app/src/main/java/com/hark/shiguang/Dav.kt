@@ -240,6 +240,8 @@ class DavLib(val accountId: String) {
         val selected = getSelectedDirs()
         val roots = if (selected.isEmpty()) listOf("/") else topSelectedDirs(selected)
         val shownCount = photos.size   // read once on the calling thread; onBatch runs on IO
+        // H7: continue an interrupted pass from where it stopped (folders listed last time are not requested again)
+        val resume = withContext(Dispatchers.IO) { com.hark.shiguang.index.ScanResume.open(accountId, roots, explicitFull = full) }
         val onBatch: (List<CloudEntry>) -> Unit = { b ->
             val snap: List<CloudEntry>? = synchronized(all) {
                 all.addAll(b)
@@ -256,7 +258,7 @@ class DavLib(val accountId: String) {
                 var allComplete = true
                 for (root in roots) {
                     runCatching {
-                        val res = s.scanIncremental(root, MAX_ITEMS, previous, old, doFull, prog, onBatch)
+                        val res = s.scanIncremental(root, MAX_ITEMS, previous, old, doFull, prog, resume, onBatch)
                         merged.dirs.putAll(res.cache.dirs)
                         if (!res.complete) allComplete = false
                     }.onFailure { e ->
@@ -274,7 +276,7 @@ class DavLib(val accountId: String) {
         }.onFailure { if (it is CancellationException) { ticker.cancel(); throw it }; error = it.message }
         ticker.cancel()
         scanListed = prog.listed.get(); scanKnown = prog.known.get(); scanFound = prog.found.get()
-        Diag.log("DAV", "scan ${if (doFull) "full" else "incremental"} roots=$roots: ${prog.listed.get()} folders (${prog.skipped.get()} unchanged, skipped), ${all.size} media, complete=$complete, ${System.currentTimeMillis() - t0} ms")
+        Diag.log("DAV", "scan ${if (doFull) "full" else "incremental"} roots=${roots.size} resumed=${resume?.size ?: 0}: ${prog.listed.get()} folders (${prog.skipped.get()} unchanged/resumed, skipped), ${all.size} media, complete=$complete, ${System.currentTimeMillis() - t0} ms")
         // B13: branches whose listing failed keep their old media + old folder tags — the new index/cache
         // never silently drops them.
         val unknown = cache?.unknown.orEmpty()
@@ -295,6 +297,7 @@ class DavLib(val accountId: String) {
                 ok
             }
             if (written) {
+                withContext(Dispatchers.IO) { com.hark.shiguang.index.ScanResume.finish(accountId) }
                 Store.putStr("dav.lastScan.$accountId", System.currentTimeMillis().toString())
                 if (doFull) Store.putStr("dav.lastFull.$accountId", System.currentTimeMillis().toString())
                 setPhotos(CloudPhotos.toPhotos(accountId, all))
@@ -304,6 +307,7 @@ class DavLib(val accountId: String) {
             }
         } else if (!complete && error == null) {
             error = "扫描未完成（超出上限被截断），索引未覆盖，下次扫描会继续"
+            withContext(Dispatchers.IO) { com.hark.shiguang.index.ScanResume.finish(accountId) }   // resuming would only hit the cap again
             Diag.log("DAV", "scan truncated: index NOT overwritten, timestamps NOT updated")
         }
         scanning = false

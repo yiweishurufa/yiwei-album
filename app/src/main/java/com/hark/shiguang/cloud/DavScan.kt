@@ -78,6 +78,8 @@ suspend fun WebDavSource.scanIncremental(
     old: DavFolderCache,
     full: Boolean,
     progress: DavScanProgress = DavScanProgress(),
+    /** H7: folders already listed in an unfinished earlier pass (reused without a request) + progress sink. */
+    resume: com.hark.shiguang.index.ScanResume? = null,
     onBatch: (List<CloudEntry>) -> Unit,
 ): DavScanResult {
     val byDir: Map<String, List<CloudEntry>> = previous.groupBy { CloudPath.parent(it.path) }
@@ -105,10 +107,19 @@ suspend fun WebDavSource.scanIncremental(
 
     // root: always listed (a failure here is thrown)
     val rootNorm = CloudPath.norm(root)
-    val rootItems = listBlocking(rootNorm)
+    var level: List<Pair<String, String?>>
+    val rootResumed = resume?.dirs?.get(rootNorm)
+    if (rootResumed != null) {
+        emit(resume.media[rootNorm].orEmpty())
+        level = rootResumed.second
+    } else {
+        val rootItems = listBlocking(rootNorm)
+        val media = rootItems.filter { !it.isDir && (it.isImage || it.isVideo) }
+        emit(media)
+        level = childDirs(rootItems, 0)
+        resume?.onListed(rootNorm, null, level, media)
+    }
     progress.listed.incrementAndGet()
-    emit(rootItems.filter { !it.isDir && (it.isImage || it.isVideo) })
-    var level = childDirs(rootItems, 0)
     out.dirs[rootNorm] = DavFolderCache.Entry(null, level.map { it.first })
     progress.known.addAndGet(level.size)
     var depth = 1
@@ -122,6 +133,15 @@ suspend fun WebDavSource.scanIncremental(
         coroutineScope {
             dirs.forEach { (dir, tag) ->
                 val prev = old.dirs[dir]
+                // H7: listed in the unfinished earlier pass → reuse it (its media, tag and sub folders), no request
+                val resumed = resume?.dirs?.get(dir)
+                if (resumed != null) {
+                    out.dirs[dir] = DavFolderCache.Entry(resumed.first, resumed.second.map { it.first })
+                    emit(resume.media[dir].orEmpty())
+                    next.addAll(resumed.second); progress.known.addAndGet(resumed.second.size)
+                    progress.skipped.incrementAndGet(); progress.listed.incrementAndGet()
+                    return@forEach
+                }
                 // S1: periodic full spot-check — ~1 in 20 unchanged leaves is listed anyway, so a server
                 // that silently changes files without changing the folder tag is caught. The subdir-count
                 // check stays: a leaf that gained sub folders is never skipped.
@@ -149,9 +169,11 @@ suspend fun WebDavSource.scanIncremental(
                             out.unknown.add(dir)
                             prev?.let { p -> out.dirs[dir] = DavFolderCache.Entry(null, p.subdirs); next.addAll(p.subdirs.map { it to null }); progress.known.addAndGet(p.subdirs.size) }
                         } else {
-                            emit(items.filter { !it.isDir && (it.isImage || it.isVideo) })
+                            val media = items.filter { !it.isDir && (it.isImage || it.isVideo) }
+                            emit(media)
                             val kids = childDirs(items, d)
                             out.dirs[dir] = DavFolderCache.Entry(tag, kids.map { it.first })
+                            resume?.onListed(dir, tag, kids, media)
                             next.addAll(kids); progress.known.addAndGet(kids.size)
                         }
                         progress.listed.incrementAndGet()
