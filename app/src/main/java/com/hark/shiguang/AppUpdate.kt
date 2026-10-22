@@ -83,7 +83,7 @@ object AppUpdate {
         throw Exception(errs.joinToString("；").ifEmpty { "没有可用的下载源" })
     }
 
-    private fun trusted(u: String) = u.startsWith(TRUSTED) && !u.contains("..") && !u.contains('@')
+    private fun trusted(u: String) = UpdateRules.trusted(u)
 
     /** version.json written by CI. */
     private fun fromVersionJson(): Release {
@@ -108,15 +108,10 @@ object AppUpdate {
     }
 
     /** "1.0.10" > "1.0.9"; non-digits ignored. */
-    fun cmp(a: String, b: String): Int {
-        val x = a.split('.', '-', '_').map { it.filter(Char::isDigit).toIntOrNull() ?: 0 }
-        val y = b.split('.', '-', '_').map { it.filter(Char::isDigit).toIntOrNull() ?: 0 }
-        for (i in 0 until maxOf(x.size, y.size)) { val d = (x.getOrElse(i) { 0 }).compareTo(y.getOrElse(i) { 0 }); if (d != 0) return d }
-        return 0
-    }
+    fun cmp(a: String, b: String): Int = UpdateRules.cmp(a, b)
 
     /** Newer = higher versionCode, or the same versionCode from a later CI run (nightlies share a versionCode). */
-    fun isNewer(r: Release): Boolean = r.code > BuildInfo.code || (r.code == BuildInfo.code && r.build > BuildInfo.build)
+    fun isNewer(r: Release): Boolean = UpdateRules.isNewer(r.code, r.build, BuildInfo.code, BuildInfo.build)
 
     /** Latest release newer than the installed one, or null. Throws 「第 1 步 获取版本信息失败：…」. */
     suspend fun latest(): Release? = withContext(Dispatchers.IO) {
@@ -167,7 +162,7 @@ object AppUpdate {
         val out = File(dir, "YiWei-${r.version}-${r.code}-${r.build}.apk")
         try {
             if (!trusted(r.apkUrl)) throw Exception("下载地址不在 github.com/yiweishurufa/ 下，已拒绝")
-            if (!r.sha256.matches(Regex("[0-9a-f]{64}"))) throw Exception("第 2 步 下载前检查失败：GitHub 版本信息里没有 SHA-256，无法校验，已取消")
+            if (!UpdateRules.isSha256Hex(r.sha256)) throw Exception("第 2 步 下载前检查失败：GitHub 版本信息里没有 SHA-256，无法校验，已取消")
             // B37 + B5: a reused download is re-verified before the installer sees it
             if (!(out.exists() && verifyApk(c, out, r) == null)) {
                 dir.listFiles()?.forEach { it.delete() }
@@ -266,16 +261,7 @@ object AppUpdate {
      * package name, and a versionCode not older than the installed one. Returns null when OK.
      */
     fun verifyApk(c: Context, f: File, r: Release): String? {
-        if (!f.exists() || f.length() == 0L) return "安装包不存在"
-        val head = f.inputStream().use { val b = ByteArray(4); it.read(b); b }
-        if (!(head[0] == 'P'.code.toByte() && head[1] == 'K'.code.toByte())) return "下载的不是安装包"
-        if (r.size > 0 && f.length() != r.size) return "文件不完整（${f.length()} / ${r.size}）"
-        val sha = runCatching {
-            val md = java.security.MessageDigest.getInstance("SHA-256")
-            f.inputStream().use { ins -> val buf = ByteArray(64 * 1024); while (true) { val n = ins.read(buf); if (n < 0) break; md.update(buf, 0, n) } }
-            md.digest().joinToString("") { "%02x".format(it) }
-        }.getOrNull()
-        if (sha == null || sha != r.sha256) return "SHA-256 不一致（文件可能被代理改动或下载损坏）"
+        UpdateRules.checkFile(f, r.size, r.sha256)?.let { return it }
         @Suppress("DEPRECATION") val info = runCatching { c.packageManager.getPackageArchiveInfo(f.path, 0) }.getOrNull() ?: return "读不出安装包信息"
         if (info.packageName != c.packageName) return "包名不对（${info.packageName}）"
         @Suppress("DEPRECATION") val vc = info.versionCode

@@ -58,6 +58,23 @@ jobs:
           fi
           echo "$SIGN"
 
+      - name: 单元测试（失败则不出包）
+        run: gradle --no-daemon --console=plain :app:testDebugUnitTest
+
+      - name: Lint（只出报告，不阻断）
+        continue-on-error: true
+        run: gradle --no-daemon --console=plain :app:lintDebug
+
+      - name: 上传测试和 lint 报告
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: reports
+          path: |
+            app/build/reports/tests/
+            app/build/reports/lint-results-debug.html
+          if-no-files-found: ignore
+
       - name: 编译 APK
         run: |
           gradle --no-daemon --console=plain :app:assembleRelease -PciRun=${VERSION_RUN}

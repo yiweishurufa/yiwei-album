@@ -42,6 +42,10 @@ android {
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true; buildConfig = true }
     androidResources { noCompress += "tflite" }
+    // 纯逻辑单元测试（app/src/test）：android.jar 里的桩方法返回默认值，不抛 "Stub!"
+    testOptions { unitTests.isReturnDefaultValues = true }
+    // lint 先只出报告不阻断（CI 里上传 lint 报告），等存量问题清完再改成阻断
+    lint { abortOnError = false; checkReleaseBuilds = false }
     composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
@@ -85,4 +89,7 @@ dependencies {
     // 1.0.1 #8: on-device photo labels, BUNDLED model (works offline, no Google Play services). Not play-services-mlkit-image-labeling.
     implementation("com.google.mlkit:image-labeling:17.0.9")
     implementation("org.osmdroid:osmdroid-android:6.1.18")
+    testImplementation("junit:junit:4.13.2")
+    // JVM 单元测试里 android.jar 的 XmlPullParser 只是桩，用 kxml2 提供真实实现（WebDAV PROPFIND 解析测试）
+    testImplementation("net.sf.kxml:kxml2:2.3.0")
 }
