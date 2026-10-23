@@ -425,11 +425,6 @@ fun CollectionScreen(r: Route.Collection) {
                     val s = listOf(r.subtitle, if (src.photos.isNotEmpty()) "${num(src.photos.size)}${if (src.more) "+" else ""} 项" else "").filter { it.isNotEmpty() }.joinToString(" · ")
                     if (s.isNotEmpty()) Text(s, style = MaterialTheme.typography.bodySmall)
                 }
-                if (shown.any { !it.isVideo }) {
-                    // 1.0.1 #13: 人物 / 地点 / 相册 → 回忆短片 (uses what is loaded so far)
-                    RoundIcon(LI.film(), size = 40.dp) { openMemoryClip(title, r.subtitle, shown) }
-                    Spacer(Modifier.width(8.dp))
-                }
                 if (r.album != null) Box {
                     RoundIcon(Icons.Rounded.MoreHoriz, size = 40.dp) { menu = true }
                     DropdownMenu(menu, { menu = false }, Modifier.background(C.Surface2)) {

@@ -87,7 +87,6 @@ dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
-    implementation("com.google.zxing:core:3.5.3")
     implementation("org.tensorflow:tensorflow-lite:2.14.0")
     implementation("com.google.mlkit:face-detection:16.1.7")
     // 1.0.1 #8: on-device photo labels, BUNDLED model (works offline, no Google Play services). Not play-services-mlkit-image-labeling.

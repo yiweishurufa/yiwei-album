@@ -128,25 +128,6 @@ object Store {
     fun getStr(k: String, d: String = ""): String = str(k, d)
     fun putStr(k: String, v: String) = setStr(k, v)
     fun removeKey(k: String) = sp.edit().remove(k).apply()
-    /** All non-secret settings, for QR / WebDAV sync. */
-    /** All non-secret settings, for QR sync. */
-    fun exportSettings(): org.json.JSONObject = org.json.JSONObject().apply {
-        put("themeMode", themeMode); put("accent", accent); put("cols", columns); put("lan", lanUrl); put("wan", wanUrl); put("url", url); put("user", user)
-        put("autoSwitch", autoSwitch); put("scanCell", getStr("scan.cell")); put("scanNoCharge", getStr("scan.nocharge")); put("tlLevel", timelineLevel)
-    }
-    fun importSettings(j: org.json.JSONObject) {
-        j.optString("themeMode").takeIf { it.isNotEmpty() }?.let { themeMode = it }
-        if (j.has("accent")) accent = j.optInt("accent", 0)
-        if (j.has("cols")) columns = j.optInt("cols", 4)
-        j.optString("lan").takeIf { it.isNotEmpty() }?.let { lanUrl = it }
-        j.optString("wan").takeIf { it.isNotEmpty() }?.let { wanUrl = it }
-        if (url.isEmpty()) j.optString("url").takeIf { it.isNotEmpty() }?.let { url = it }
-        if (user.isEmpty()) j.optString("user").takeIf { it.isNotEmpty() }?.let { user = it }
-        if (j.has("autoSwitch")) autoSwitch = j.optBoolean("autoSwitch")
-        if (j.has("scanCell")) putStr("scan.cell", j.optString("scanCell"))
-        if (j.has("scanNoCharge")) putStr("scan.nocharge", j.optString("scanNoCharge"))
-        if (j.has("tlLevel")) timelineLevel = j.optInt("tlLevel", 2)
-    }
     /**
      * B11: this clears ONLY the login credentials (pass/token) — NOT all settings, and NOT the
      * per-account signing secrets (`sign.<user>@<url>`). Those are removed by [NasAccounts.remove]
@@ -170,6 +151,8 @@ object CacheTrim {
         trimLru(java.io.File(c.cacheDir, "davthumb"), THUMBS_MAX)
         olderThan(java.io.File(c.cacheDir, "subs"), 30)
         olderThan(java.io.File(c.cacheDir, "share"), 1)
+        // 用户 2026-10-23：回忆短片已删除，旧版本生成的 mp4 一并清掉
+        java.io.File(c.cacheDir, "memory").takeIf { it.exists() }?.deleteRecursively()
         java.io.File(c.cacheDir, "davthumb").listFiles()?.filter { it.name.endsWith(".tmp") }?.forEach { it.delete() }
     }
     fun trimLru(dir: java.io.File, max: Long) {

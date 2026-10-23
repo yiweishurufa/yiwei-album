@@ -77,11 +77,6 @@ fun MemoriesRow(groups: List<MemoryGroup>) {
             Row(Modifier.padding(start = 18.dp, end = 18.dp, bottom = 8.dp), verticalAlignment = Alignment.Bottom) {
                 Text("那年今天", color = C.Text, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                 Text(LocalDate.now().let { "${it.monthValue}月${it.dayOfMonth}日" }, color = C.Sub, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp, bottom = 1.dp))
-                Spacer(Modifier.weight(1f))
-                Text("生成短片", color = C.Accent, fontSize = 13.sp, modifier = Modifier.clickableNoRipple {
-                    val d = LocalDate.now()
-                    openMemoryClip("那年今天", "${d.monthValue}月${d.dayOfMonth}日 · ${visible.joinToString("、") { it.year.toString() }}", visible.flatMap { it.photos })
-                })
             }
             LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(visible, key = { it.year }) { g ->

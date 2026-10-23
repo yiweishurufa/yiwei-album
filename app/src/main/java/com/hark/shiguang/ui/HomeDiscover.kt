@@ -132,7 +132,7 @@ internal fun DiscoverTab() {
         }
         // 1.1.0 发现 → 回忆
         item { RowHeader("回忆") }
-        item { MemoriesSection(fnMemories, recent = { HomeState.timeline.photos.filter { !it.isVideo } }) }
+        item { MemoriesRow(fnMemories) }
         item { Box(Modifier.padding(horizontal = 18.dp, vertical = 6.dp).padding(top = 10.dp)) { SectionTitle("整理 · 清理空间") } }
         item {
             Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -273,7 +273,7 @@ internal fun DavDiscoverTab() {
         item { RowHeader("回忆") }
         item {
             val memories = remember(v, lib.photos.size) { OnThisDay.from(Hidden.visible(lib.photos.filter { !it.isVideo })) }
-            MemoriesSection(memories, recent = { lib.photos.filter { !it.isVideo } })
+            MemoriesRow(memories)
         }
         // 1.1.0 回忆 → 旅行（自动旅行相册，设置里可关）
         item { TravelAlbumsRow(lib, v) }
@@ -492,19 +492,4 @@ fun FaceSettingsDialog(onDismiss: () -> Unit) {
 
 
 
-/**
- * 1.1.0 发现 → 回忆：那年今天（有则显示）+ 用最近 30 天的照片生成回忆短片。
- * [recent] 只在点击时计算，避免每次重组都过滤整库。
- */
-@Composable
-private fun MemoriesSection(memories: List<MemoryGroup>, recent: () -> List<Photo>) {
-    MemoriesRow(memories)
-    if (memories.isEmpty()) Text("那年今天有照片时会出现在这里。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp))
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp).clip(RoundedCornerShape(C.Card)).background(C.Surface)) {
-        ToolRow(LI.film(), "回忆短片", "用最近 30 天的照片生成一段带音乐的短片") {
-            val cut = java.time.LocalDate.now().minusDays(30).let { "%04d:%02d:%02d".format(it.year, it.monthValue, it.dayOfMonth) }
-            val ps = Hidden.visible(recent().filter { it.day >= cut }.sortedBy { it.time })
-            openMemoryClip("最近的回忆", "近 30 天 · ${ps.size} 张", ps)
-        }
-    }
-}
+// 用户 2026-10-23：回忆短片（生成短片）整个功能删除；那年今天没有内容时不显示，也不再放空状态说明。

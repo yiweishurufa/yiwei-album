@@ -35,8 +35,6 @@ sealed class ExtScreen(val dark: Boolean = false) {
     data class Onboarding(val step: Int = 0) : ExtScreen()
     /** 1.0.1 */
     data object BgGuide : ExtScreen()
-    /** 1.0.1 #13 回忆短片 (ui/MemoryClip.kt). */
-    data class MemoryClip(val title: String, val subtitle: String, val photos: List<Photo>) : ExtScreen()
 }
 
 @Composable
@@ -50,7 +48,6 @@ fun ExtHost(s: ExtScreen) {
         is ExtScreen.Edit -> EditScreen(s.photo)
         is ExtScreen.Onboarding -> OnboardingScreen(s.step)
         ExtScreen.BgGuide -> BgGuideScreen()
-        is ExtScreen.MemoryClip -> MemoryClipScreen(s)
     }
 }
 
@@ -154,10 +151,6 @@ private fun PersonScreen(s: ExtScreen.Person) {
                 })
         }
         ExtTop(p?.name?.ifEmpty { "未命名" } ?: "人物") {
-            if (p != null) {
-                RoundIcon(LI.film(), size = 40.dp) { openMemoryClip(p.name.ifEmpty { "TA 的回忆" }, "人物", Hidden.visible(p.photos)) }
-                Spacer(Modifier.width(8.dp))
-            }
             if (p != null) Box {
                 RoundIcon(Icons.Rounded.MoreHoriz, size = 40.dp) { menu = true }
                 DropdownMenu(menu, { menu = false }, Modifier.background(C.Surface2)) {

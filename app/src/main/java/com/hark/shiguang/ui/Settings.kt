@@ -34,12 +34,6 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.BinaryBitmap
-import com.google.zxing.MultiFormatReader
-import com.google.zxing.RGBLuminanceSource
-import com.google.zxing.common.HybridBinarizer
-import com.google.zxing.qrcode.QRCodeWriter
 import com.hark.shiguang.*
 import com.hark.shiguang.data.Endpoint
 import com.hark.shiguang.data.FnClient
@@ -47,51 +41,16 @@ import com.hark.shiguang.cloud.*
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
-object SettingsCode {
-    fun export(): String = "SG1:" + Base64.encodeToString(Store.exportSettings().toString().toByteArray(), Base64.NO_WRAP or Base64.URL_SAFE)
-    fun import(code: String): Boolean = runCatching {
-        val c = code.trim().removePrefix("SG1:")
-        Store.importSettings(JSONObject(String(Base64.decode(c, Base64.NO_WRAP or Base64.URL_SAFE))))
-        ThemeState.reload()
-        HomeState.columns = Store.columns
-        true
-    }.getOrDefault(false)
-
-    fun qr(text: String, size: Int = 640): Bitmap {
-        val m = QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, size, size)
-        val px = IntArray(size * size) { i -> if (m[i % size, i / size]) 0xFF000000.toInt() else 0xFFFFFFFF.toInt() }
-        return Bitmap.createBitmap(px, size, size, Bitmap.Config.ARGB_8888)
-    }
-
-    fun decode(b: Bitmap): String? = runCatching {
-        val w = b.width; val h = b.height; val px = IntArray(w * h); b.getPixels(px, 0, w, 0, 0, w, h)
-        MultiFormatReader().decode(BinaryBitmap(HybridBinarizer(RGBLuminanceSource(w, h, px)))).text
-    }.getOrNull()
-}
-
 @Composable
 fun SettingsScreen() {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    var showQr by remember { mutableStateOf(false) }
-    var importOpen by remember { mutableStateOf(false) }
     var cacheSize by remember { mutableLongStateOf(-1L) }
     var lockOn by remember { mutableStateOf(Store.lockOn) }
     LaunchedEffect(Unit) { cacheSize = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { ctx.cacheDir.walkTopDown().filter { it.isFile }.sumOf { it.length() } } }
-    val pickQr = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) scope.launch {
-            val bmp = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                runCatching { ctx.contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it) } }.getOrNull()
-            }
-            val text = bmp?.let { SettingsCode.decode(it) }
-            val ok = text != null && SettingsCode.import(text)
-            Toast.makeText(ctx, if (ok) "设置已导入" else "没认出二维码", Toast.LENGTH_SHORT).show()
-        }
-    }
     val nas = NasAccounts.current
     val dav = HomeState.source == "dav"
     val davAcc = Dav.current
-    var syncOpen by remember { mutableStateOf(false) }
     var bgOpen by remember { mutableStateOf(false) }
     var helpOpen by remember { mutableStateOf(false) }
     var davFolderSel by remember { mutableStateOf(Dav.lib()?.getSelectedDirs() ?: emptyList()) }
@@ -195,15 +154,11 @@ fun SettingsScreen() {
                     Toast.makeText(ctx, "缓存已清理", Toast.LENGTH_SHORT).show()
                 }
             }
-            Div()
-            NavRow(LI.copy(), "同步设置到其他手机") { syncOpen = true }
         }
 
         // ---- 通用
         Section("通用")
         Card {
-            NavRow(LI.info(), "一维相册 ${BuildInfo.version} 公测版") {}
-            Div()
             NavRow(LI.refresh(), "检查更新", value = if (AppUpdate.checking) "检查中…" else AppUpdate.offer?.let { "有新版本 ${it.version}" }) {
                 if (!AppUpdate.checking) scope.launch { AppUpdate.manualCheck()?.let { Toast.makeText(ctx, it, Toast.LENGTH_SHORT).show() } }
             }
@@ -223,41 +178,6 @@ fun SettingsScreen() {
         "加入 QQ 群（${Feedback.QQ_GROUP}）" to { helpOpen = false; Feedback.joinQq(ctx) },
         "导出诊断日志" to { helpOpen = false; Diag.export(ctx) },
     ))
-    if (syncOpen) ActionListDialog("同步设置", onDismiss = { syncOpen = false }, actions = listOf(
-        "显示设置二维码" to { syncOpen = false; showQr = true },
-        "从截图识别二维码" to { syncOpen = false; pickQr.launch("image/*") },
-        "粘贴设置码导入" to { syncOpen = false; importOpen = true },
-    ))
-    if (showQr) {
-        val code = remember { SettingsCode.export() }
-        val bmp = remember(code) { SettingsCode.qr(code) }
-        val clip = LocalClipboardManager.current
-        AlertDialog(onDismissRequest = { showQr = false }, containerColor = C.Surface,
-            title = { Text("设置二维码") },
-            text = {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Image(bmp.asImageBitmap(), null, Modifier.size(240.dp).clip(RoundedCornerShape(12.dp)))
-                    Text("不含密码。也可以复制设置码发给自己。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 10.dp))
-                }
-            },
-            confirmButton = { TextButton({ clip.setText(AnnotatedString(code)); Toast.makeText(ctx, "已复制", Toast.LENGTH_SHORT).show() }) { Text("复制设置码", color = C.Accent) } },
-            dismissButton = { TextButton({ showQr = false }) { Text("关闭", color = C.Sub) } })
-    }
-    if (importOpen) {
-        var text by remember { mutableStateOf("") }
-        AlertDialog(onDismissRequest = { importOpen = false }, containerColor = C.Surface,
-            title = { Text("粘贴设置码") },
-            text = {
-                Box(Modifier.fillMaxWidth().height(110.dp).clip(RoundedCornerShape(12.dp)).background(C.Surface2).padding(12.dp)) {
-                    BasicTextField(text, { text = it }, textStyle = MaterialTheme.typography.bodyMedium.copy(color = C.Text), cursorBrush = SolidColor(C.Accent), modifier = Modifier.fillMaxSize())
-                }
-            },
-            confirmButton = { TextButton({
-                val ok = SettingsCode.import(text); importOpen = false
-                Toast.makeText(ctx, if (ok) "设置已导入" else "设置码不对", Toast.LENGTH_SHORT).show()
-            }) { Text("导入", color = C.Accent) } },
-            dismissButton = { TextButton({ importOpen = false }) { Text("取消", color = C.Sub) } })
-    }
     if (showDavFolders) {
         DavFolderSelectDialog(
             initial = davFolderSel,
