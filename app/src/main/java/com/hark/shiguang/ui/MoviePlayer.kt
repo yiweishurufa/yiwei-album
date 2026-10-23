@@ -15,6 +15,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Cast
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -163,10 +165,17 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     var dvFixedFor by remember { mutableStateOf("") }
     var casting by remember { mutableStateOf(false) }
     var playerView by remember { mutableStateOf<PlayerView?>(null) }
-    // 用户 2026-10-23 反馈：右侧面板（音轨 / 字幕 / 清晰度 / 详细信息）
+    var gestureLayer by remember { mutableStateOf<PlayerGestureLayer?>(null) }
+    // 用户 2026-10-23 反馈：右侧面板（音轨 / 字幕 / 清晰度 / 详细信息）和手势浮层
     var panel by remember { mutableStateOf<PlayerPanel?>(null) }
     var moreMenu by remember { mutableStateOf(false) }
     var tracksVer by remember { mutableIntStateOf(0) }
+    var seekPreview by remember { mutableStateOf<String?>(null) }
+    var seekFrac by remember { mutableFloatStateOf(0f) }
+    var levelHud by remember { mutableStateOf<Pair<String, Float>?>(null) }
+    var fast by remember { mutableStateOf(false) }
+    /** Double tap feedback: true = now playing, false = now paused. */
+    var flash by remember { mutableStateOf<Boolean?>(null) }
     val skipped = remember { HashSet<String>() }
     // 1.1.0: libVLC removed. rmvb/rm/wmv/asf (no media3 extractor) and files media3 reports as unsupported → 「用其他播放器打开」
     fun needsExternal(q: QItem) = NameParser.ext(q.file.name) in ExternalPlayer.VIDEO_EXT
@@ -369,6 +378,80 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     BackHandler { if (extIdx < 0) save(); Nav.pop() }
     BackHandler(enabled = panel != null || moreMenu) { panel = null; moreMenu = false }   // a panel closes before the player does
 
+    // 用户 2026-10-23 反馈：手势（对标腾讯视频 / 爱奇艺），识别在 PlayerGestureLayer，动作在这里
+    val audio = remember { ctx.getSystemService(android.media.AudioManager::class.java) }
+    DisposableEffect(Unit) {
+        // brightness is only overridden for this window, and handed back to the system when the player closes
+        onDispose { act?.window?.let { w -> w.attributes = w.attributes.apply { screenBrightness = android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE } } }
+    }
+    LaunchedEffect(flash) { if (flash != null) { delay(700); flash = null } }
+    val gestures = remember(player) {
+        object : PlayerGestureLayer.Callbacks {
+            var seekFrom = 0L; var seekTo = 0L; var dur = 0L
+            var levelFrom = 0f; var brightness = false; var maxVol = 1
+            var speedBefore = 1f
+            override fun onTap() {
+                val pv = playerView ?: return
+                if (pv.isControllerFullyVisible) pv.hideController() else pv.showController()
+            }
+            override fun onDoubleTap() {
+                if (player.isPlaying) { player.pause(); flash = false } else {
+                    if (player.playbackState == Player.STATE_ENDED) player.seekTo(0L)
+                    if (player.playbackState == Player.STATE_IDLE) player.prepare()
+                    player.play(); flash = true
+                }
+            }
+            override fun onLongPressStart(): Boolean {
+                if (!player.isPlaying) return false
+                speedBefore = player.playbackParameters.speed
+                player.setPlaybackSpeed(LONG_PRESS_SPEED); fast = true
+                return true
+            }
+            override fun onLongPressEnd() { player.setPlaybackSpeed(speedBefore); fast = false }
+            override fun onSeekStart(): Boolean {
+                dur = player.duration
+                if (dur <= 0 || dur == MC.TIME_UNSET || !player.isCurrentMediaItemSeekable) return false
+                seekFrom = player.currentPosition; seekTo = seekFrom
+                onSeekMove(0f, 1)
+                return true
+            }
+            override fun onSeekMove(dxPx: Float, widthPx: Int) {
+                seekTo = PlayerGestureMath.seekTarget(seekFrom, dxPx, widthPx, dur)
+                seekPreview = PlayerGestureMath.seekLabel(seekTo - seekFrom, seekTo)
+                seekFrac = (seekTo.toFloat() / dur).coerceIn(0f, 1f)
+            }
+            override fun onSeekEnd(commit: Boolean) {
+                if (commit && seekTo != seekFrom) player.seekTo(seekTo)   // only on release, like 腾讯视频
+                seekPreview = null
+            }
+            override fun onVerticalStart(brightness: Boolean) {
+                this.brightness = brightness
+                levelFrom = if (brightness) {
+                    val cur = act?.window?.attributes?.screenBrightness ?: -1f
+                    if (cur >= 0f) cur else runCatching {
+                        android.provider.Settings.System.getInt(ctx.contentResolver, android.provider.Settings.System.SCREEN_BRIGHTNESS) / 255f
+                    }.getOrDefault(0.5f).coerceIn(0f, 1f)
+                } else {
+                    maxVol = (audio?.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC) ?: 1).coerceAtLeast(1)
+                    (audio?.getStreamVolume(android.media.AudioManager.STREAM_MUSIC) ?: 0).toFloat() / maxVol
+                }
+                levelHud = (if (brightness) "亮度" else "音量") to levelFrom
+            }
+            override fun onVerticalMove(upPx: Float, heightPx: Int) {
+                val v = PlayerGestureMath.level(levelFrom, upPx, heightPx)
+                if (brightness) {
+                    act?.window?.let { w -> w.attributes = w.attributes.apply { screenBrightness = v.coerceAtLeast(0.01f) } }
+                } else {
+                    val idx = Math.round(v * maxVol)
+                    if (audio != null && idx != audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC))
+                        runCatching { audio.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, idx, 0) }   // system volume, no system slider
+                }
+                levelHud = (if (brightness) "亮度" else "音量") to v
+            }
+            override fun onVerticalEnd() { levelHud = null }
+        }
+    }
+
     // 1.1.0 画中画：把播放状态、视频宽高比和视频在屏幕上的位置告诉系统（离开 App 时进入小窗，见 VideoPip）
     val inPip = VideoPip.inPip
     fun pushPip() {
@@ -424,9 +507,10 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         lifecycleOwner.lifecycle.addObserver(obs)
         onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
     }
-    // PiP shows only the video: no controller (and the Compose overlays below are hidden too)
-    LaunchedEffect(inPip, playerView) {
+    // PiP shows only the video: no controller, no gestures (and the Compose overlays below are hidden too)
+    LaunchedEffect(inPip, playerView, gestureLayer) {
         playerView?.let { pv -> pv.useController = !inPip; if (inPip) pv.hideController() }
+        gestureLayer?.gesturesOn = !inPip
         if (inPip) panel = null
     }
 
@@ -461,8 +545,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(factory = {
-            PlayerView(it).apply {
-                layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            val pv = PlayerView(it).apply {
                 this.player = player
                 useController = true
                 // 用户 2026-10-23 反馈：音轨 / 字幕在顶栏自己的面板里选（去重、显示 mkv 标题），不用 media3 自带的 CC 和齿轮
@@ -475,6 +558,11 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                 keepScreenOn = true
                 playerView = this
                 subtitleView?.let { sv -> sv.setApplyEmbeddedFontSizes(false); sv.setFractionalTextSize(PlayPrefs.subSize); sv.setBottomPaddingFraction(PlayPrefs.subBottom) }
+            }
+            PlayerGestureLayer(it, pv).apply {
+                layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                callbacks = gestures
+                gestureLayer = this
             }
         }, modifier = Modifier.fillMaxSize())
         AnimatedVisibility(controls && !inPip, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopStart)) {
@@ -509,6 +597,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                 TextButton(onClick = { playNextNow() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("立即播放", color = C.Accent) }
             }
         }
+        if (!inPip) GestureHud(seekPreview, seekFrac, levelHud, fast, flash)
         error?.takeIf { !inPip }?.let { e ->
             Column(Modifier.align(Alignment.Center).background(Color(0xCC000000), androidx.compose.foundation.shape.RoundedCornerShape(14.dp)).padding(20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally) {
@@ -659,6 +748,9 @@ private fun subLabel(sub: String, video: String): String {
     }
 }
 
+/** 用户 2026-10-23 反馈：长按临时倍速。 */
+private const val LONG_PRESS_SPEED = 2f
+
 /** media3's settings gear only offers speed (we have 倍速) and its own un-deduplicated audio list — hide it. */
 @androidx.annotation.OptIn(UnstableApi::class)
 private fun hideBuiltInSettings(pv: PlayerView) {
@@ -669,6 +761,35 @@ private fun hideBuiltInSettings(pv: PlayerView) {
 @Composable
 private fun TopTextButton(text: String, onClick: () -> Unit) {
     TextButton(onClick = onClick, modifier = Modifier.heightIn(min = 48.dp)) { Text(text, color = Color.White, fontSize = 14.sp) }
+}
+
+/** Center feedback for gestures: seek preview「+01:23 / 12:00」, volume / brightness level, 2× while long-pressing, play / pause. */
+@Composable
+private fun BoxScope.GestureHud(seek: String?, seekFrac: Float, level: Pair<String, Float>?, fast: Boolean, flash: Boolean?) {
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+    if (seek != null) {
+        Column(Modifier.align(Alignment.Center).background(Color(0xB3000000), shape).padding(horizontal = 20.dp, vertical = 14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(seek, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+            LinearProgressIndicator(progress = { seekFrac }, color = C.Accent, trackColor = Color(0x4DFFFFFF),
+                modifier = Modifier.padding(top = 10.dp).width(180.dp).height(3.dp))
+        }
+    } else if (level != null) {
+        Column(Modifier.align(Alignment.Center).background(Color(0xB3000000), shape).padding(horizontal = 20.dp, vertical = 14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("${level.first} ${(level.second * 100).toInt()}%", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            LinearProgressIndicator(progress = { level.second }, color = C.Accent, trackColor = Color(0x4DFFFFFF),
+                modifier = Modifier.padding(top = 10.dp).width(150.dp).height(3.dp))
+        }
+    } else if (flash != null) {
+        Box(Modifier.align(Alignment.Center).size(72.dp).background(Color(0x99000000), androidx.compose.foundation.shape.CircleShape), contentAlignment = Alignment.Center) {
+            Icon(if (flash) Icons.Rounded.PlayArrow else Icons.Rounded.Pause, if (flash) "播放" else "暂停", tint = Color.White, modifier = Modifier.size(40.dp))
+        }
+    }
+    if (fast) {
+        Text("${fmtSpeed(LONG_PRESS_SPEED)}× 快进中", color = Color.White, fontSize = 14.sp,
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 24.dp).background(Color(0xB3000000), shape).padding(horizontal = 14.dp, vertical = 8.dp))
+    }
 }
 
 /**
