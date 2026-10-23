@@ -410,6 +410,12 @@ fun BackgroundPolicyDialog(onDismiss: () -> Unit) {
             CheckRow("不充电时也整理", if (noCharge) "更耗电" else null, noCharge) {
                 noCharge = it; ScanPolicy.allowNoCharge = it; BackupScheduler.schedule(ctx); if (it) ScanWatch.resume(ctx)
             }
+            // 用户 2026-10-23：后台运行设置不再常驻，只在通知没开或电池优化没关时出现这一行
+            if (remember { BgGuidePrompt.permissionsMissing(ctx) }) Row(Modifier.fillMaxWidth().padding(top = 8.dp).clip(RoundedCornerShape(10.dp))
+                .clickable { onDismiss(); Nav.push(Route.X(ExtScreen.BgGuide)) }.padding(vertical = 10.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("后台可能被系统停掉", color = C.Danger, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                Text("去设置", color = C.Accent, fontSize = 14.sp)
+            }
         }
     }, confirmButton = { TextButton(onClick = onDismiss) { Text("完成", color = C.Accent) } })
 }
@@ -483,8 +489,6 @@ fun AdvancedSettingsScreen() {
                     info = "由系统在满足「后台整理」的网络和充电条件时定时扫描新照片、整理和备份，重启手机后也会继续。只在排查问题时才需要关掉。") {
                     wmOn = it; com.hark.shiguang.Features.workManager = it; BackupScheduler.schedule(ctx)
                 }
-                Div()
-                NavRow(Icons.Rounded.BatteryChargingFull, "后台运行设置") { Nav.push(Route.X(ExtScreen.BgGuide)) }
             }
             Text("一维相册是第三方应用，与飞牛官方无关", color = C.Faint, fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center)

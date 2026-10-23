@@ -517,6 +517,7 @@ fun BackupScreen() {
         }
     }
     if (policyOpen) BackgroundPolicyDialog { policyOpen = false }
+    BgGuidePrompt.Host(need = on)   // 用户 2026-10-23：自动备份靠后台运行，权限缺失时提示一次
     if (confirmAll) AlertDialog(onDismissRequest = { confirmAll = false }, containerColor = C.Surface,
         title = { Text("把已有照片也备份？", color = C.Text) },
         text = { Text("下次备份会从手机里最早的照片开始补传，照片多时要传很久。", color = C.Sub) },

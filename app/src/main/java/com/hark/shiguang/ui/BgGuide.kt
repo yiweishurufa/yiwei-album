@@ -43,10 +43,11 @@ fun BgGuideScreen() {
     val mine = BgRun.vendor
     var open by remember { mutableStateOf<BgRun.Vendor?>(mine) }
 
-    Page("后台运行设置", "让扫描和 AI 整理在后台不被系统停掉") {
+    Page("后台运行设置", actions = {
+        InfoDot("国产手机默认会限制后台应用。照片多时扫描和 AI 整理要跑一阵子，按下面三步设置后，锁屏或切到别的应用也能继续，进度显示在通知栏。" +
+            "仍然会被停掉时：把一维相册在最近任务里加锁，并在「设置 → 后台整理」里按需允许移动网络 / 不充电时整理。", "后台运行设置")
+    }) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 40.dp)) {
-            Text("国产手机默认会限制后台应用。照片多时扫描和 AI 整理要跑一阵子，按下面三步设置后，锁屏或切到别的应用也能继续，进度显示在通知栏。",
-                style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 22.dp, vertical = 12.dp))
 
             Section("1. 通知")
             Card {
@@ -84,8 +85,6 @@ fun BgGuideScreen() {
                     }
                 }
             }
-            Text("仍然会被停掉时：把一维相册在最近任务里加锁，并在「设置 → 网络与电量」里按需允许移动网络 / 不充电时整理。",
-                style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 22.dp, vertical = 16.dp))
         }
     }
 }
@@ -106,5 +105,35 @@ private fun StepRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title
             false -> Text("去设置", color = C.Accent, fontSize = 13.sp, fontWeight = FontWeight.Medium)
             null -> Icon(LI.chevron(), null, tint = C.Faint, modifier = Modifier.size(18.dp))
         }
+    }
+}
+
+/**
+ * 用户 2026-10-23：设置里不再常驻「后台运行设置」入口，改成真正需要时提示一次——
+ * 有一大批照片正在后台整理（或刚打开自动备份），而通知权限没开或电池优化没关时，弹一次引导；
+ * 点「去设置」或「以后再说」都记为已提示（键 bgguide.prompted），之后不再打扰。
+ * 之后要找这个页面：设置 → 后台整理 弹窗里，在权限缺失时会有一行「去设置」。
+ */
+object BgGuidePrompt {
+    private const val KEY = "bgguide.prompted"
+    /** 剩余要处理的照片少于这个数时不打扰：几分钟就跑完，被系统停掉的概率很小。 */
+    const val MIN_PENDING = 300
+    val prompted: Boolean get() = com.hark.shiguang.Store.getStr(KEY) == "1"
+    fun markPrompted() = com.hark.shiguang.Store.putStr(KEY, "1")
+    fun permissionsMissing(ctx: android.content.Context) = !BgRun.notificationsAllowed(ctx) || !BgRun.ignoringBattery(ctx)
+
+    /** [need] 由调用方判断「现在有一大批活要在后台跑」；其余条件（没提示过、权限缺失）在这里判断。 */
+    @Composable
+    fun Host(need: Boolean) {
+        val ctx = LocalContext.current
+        var show by remember { mutableStateOf(false) }
+        LaunchedEffect(need) { if (need && !prompted && permissionsMissing(ctx)) show = true }
+        if (!show) return
+        val close = { show = false; markPrompted() }
+        AlertDialog(onDismissRequest = close, containerColor = C.Surface,
+            title = { Text("让整理在后台继续", color = C.Text) },
+            text = { Text("照片比较多，整理要跑一阵子。打开通知、关闭电池优化后，锁屏或切到别的应用也能继续，进度显示在通知栏。", color = C.Sub, lineHeight = 21.sp) },
+            confirmButton = { TextButton(onClick = { close(); com.hark.shiguang.Nav.push(com.hark.shiguang.Route.X(ExtScreen.BgGuide)) }) { Text("去设置", color = C.Accent) } },
+            dismissButton = { TextButton(onClick = close) { Text("以后再说", color = C.Sub) } })
     }
 }
