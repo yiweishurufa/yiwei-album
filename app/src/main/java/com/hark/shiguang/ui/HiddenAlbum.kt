@@ -62,7 +62,7 @@ fun HiddenAlbumScreen() {
     var failed by remember { mutableStateOf(false) }
     val auth = rememberDeviceAuth { ok -> unlocked = ok; failed = !ok }
     LaunchedEffect(Unit) { auth() }
-    Box(Modifier.fillMaxSize().background(C.Bg)) {
+    Box(Modifier.fillMaxSize().appBackground()) {
         val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 64.dp
         if (!unlocked) Box(Modifier.fillMaxSize().padding(top = top)) {
             StateMessage(LI.lock(), "隐藏相册已锁定", if (failed) "验证没有通过" else "验证后查看", "解锁") { auth() }

@@ -119,11 +119,13 @@ fun MoviesTab() {
 
 @Composable
 fun Segmented(items: List<String>, sel: Int, onPick: (Int) -> Unit) {
-    Row(Modifier.clip(RoundedCornerShape(12.dp)).background(C.Surface).padding(3.dp)) {
+    // 用户 2026-10-23 拟物：内凹的槽 + 凸起的选中块（简洁风格时外观同以前）
+    Row(Modifier.skeuoInset(RoundedCornerShape(12.dp), if (Skeuo.on) C.Surface2 else C.Surface).padding(3.dp)) {
         items.forEachIndexed { i, t ->
             val on = i == sel
             Text(t, color = if (on) C.Text else C.Sub, fontSize = 14.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
-                modifier = Modifier.clip(RoundedCornerShape(9.dp)).background(if (on) C.Surface2 else Color.Transparent).clickable { onPick(i) }.padding(horizontal = 16.dp, vertical = 7.dp))
+                modifier = Modifier.then(if (on) Modifier.skeuoPressed(false, RoundedCornerShape(9.dp), if (Skeuo.on) C.Surface else C.Surface2, Elevation.pressed + 1.dp)
+                    else Modifier.clip(RoundedCornerShape(9.dp))).clickable { onPick(i) }.padding(horizontal = 16.dp, vertical = 7.dp))
         }
     }
 }

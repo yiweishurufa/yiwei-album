@@ -306,7 +306,7 @@ fun MusicListScreen(r: Route.MusicList) {
     }
     val art = tracks.firstNotNullOfOrNull { it.artPath }
     val first = tracks.firstOrNull()
-    Column(Modifier.fillMaxSize().background(C.Bg)) {
+    Column(Modifier.fillMaxSize().appBackground()) {
         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 110.dp)) {
             item {
                 Row(Modifier.statusBarsPadding().padding(start = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -394,7 +394,7 @@ fun MusicNowPlayingScreen() {
     }
     BackHandler { if (queueOpen) queueOpen = false else Nav.pop() }
 
-    Box(Modifier.fillMaxSize().background(C.Bg)) {
+    Box(Modifier.fillMaxSize().appBackground()) {
         // soft blurred-looking backdrop: the cover, very dim
         if (t?.artPath != null) Box(Modifier.fillMaxSize()) {
             NetImage("file://${t.artPath}", Modifier.fillMaxSize(), crossfade = false)

@@ -66,7 +66,7 @@ private val STEPS = listOf("照片源", "AI 整理", "影视刮削", "完成")
 @Composable
 fun OnboardingScreen(start: Int) {
     var step by remember { mutableIntStateOf(start.coerceIn(0, 3)) }
-    Column(Modifier.fillMaxSize().background(C.Bg).statusBarsPadding().navigationBarsPadding()) {
+    Column(Modifier.fillMaxSize().appBackground().statusBarsPadding().navigationBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("欢迎使用一维相册", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
             if (step < 3) TextButton(onClick = { Onboarding.finish() }) { Text("跳过", color = C.Sub) }

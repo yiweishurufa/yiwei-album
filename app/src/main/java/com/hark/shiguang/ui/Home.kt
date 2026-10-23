@@ -143,7 +143,7 @@ fun HomeScreen() {
     }
     LaunchedEffect(HomeState.switching) { if (HomeState.switching) { delay(550); HomeState.switching = false } }
     val wide = isWide()
-    Row(Modifier.fillMaxSize().background(C.Bg)) {
+    Row(Modifier.fillMaxSize().appBackground()) {
     if (wide) SideRail()
     Box(Modifier.weight(1f).fillMaxHeight()) {
         if (HomeState.switching && HomeState.tab != 4) Column { TopSwitch(); SkeletonGrid(4, 20.dp) }
@@ -206,14 +206,16 @@ private fun SideRail() {
 private fun BottomBar(modifier: Modifier) {
     if (Selection.active) return
     Row(
-        modifier.fillMaxWidth().background(C.Bg.copy(alpha = 0.97f)).navigationBarsPadding().padding(top = 8.dp, bottom = 6.dp),
+        modifier.fillMaxWidth().skeuoBar().navigationBarsPadding().padding(top = 8.dp, bottom = 6.dp),
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
         tabs.forEach { t ->
             val i = t.index
             val sel = HomeState.tab == i || (i == 0 && HomeState.tab == 2)
             Column(Modifier.clickable(remember { MutableInteractionSource() }, null) { onTabTap(i, sel) }.padding(horizontal = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(Modifier.width(52.dp).height(32.dp).clip(RoundedCornerShape(12.dp)).background(if (sel) C.Accent.copy(alpha = 0.16f) else Color.Transparent), contentAlignment = Alignment.Center) {
+                // 拟物：选中的标签像被按下去一样（内凹的小槽），其余平放
+                Box(Modifier.width(52.dp).height(32.dp).then(if (sel && Skeuo.on) Modifier.skeuoInset(RoundedCornerShape(12.dp), C.Accent.copy(alpha = 0.14f))
+                    else Modifier.clip(RoundedCornerShape(12.dp)).background(if (sel) C.Accent.copy(alpha = 0.16f) else Color.Transparent)), contentAlignment = Alignment.Center) {
                     Icon(t.icon(sel), null, tint = if (sel) C.Accent else C.Sub, modifier = Modifier.size(23.dp))
                 }
                 Text(t.title, fontSize = 11.sp, color = if (sel) C.Accent else C.Sub, fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal, modifier = Modifier.padding(top = 2.dp))
@@ -257,7 +259,7 @@ fun TopSwitch(showSearch: Boolean = true, extra: @Composable RowScope.() -> Unit
     val cur = currentSource()
     Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 16.dp, end = 12.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Box {
-            Row(Modifier.clip(RoundedCornerShape(18.dp)).background(C.Surface).clickable { open = true }.padding(start = 12.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
+            Row(Modifier.skeuoCard(RoundedCornerShape(18.dp), Elevation.pressed + 1.dp).clickable { open = true }.padding(start = 12.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 if (cur?.kind == "fn") {
                     val ok = Endpoint.online && Endpoint.latency >= 0
@@ -451,7 +453,7 @@ private fun DavPhotosTab() {
 
 @Composable
 fun LockOverlay(onUnlock: () -> Unit) {
-    Box(Modifier.fillMaxSize().background(C.Bg).clickable(remember { MutableInteractionSource() }, null) {}, contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize().appBackground().clickable(remember { MutableInteractionSource() }, null) {}, contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(LI.lock(), null, tint = C.Accent, modifier = Modifier.size(48.dp))
             Text("一维相册已锁定", color = C.Text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 16.dp))

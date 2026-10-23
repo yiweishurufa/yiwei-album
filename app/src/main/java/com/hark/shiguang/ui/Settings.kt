@@ -57,13 +57,13 @@ fun SettingsScreen() {
     var showDavFolders by remember { mutableStateOf(false) }
     // 第 4 批：平板/折叠屏——内容区最大宽度 720dp 居中，宽屏不再通栏拉伸。
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-    Column(Modifier.widthIn(max = 720.dp).fillMaxHeight().background(C.Bg).verticalScroll(rememberScrollState()).navigationBarsPadding().padding(bottom = 110.dp)) {
+    Column(Modifier.widthIn(max = 720.dp).fillMaxHeight().appBackground().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(bottom = 110.dp)) {
         if (Nav.stack.size > 1) Row(Modifier.statusBarsPadding().padding(start = 6.dp, top = 8.dp)) { IconButton(onClick = { Nav.pop() }) { Icon(LI.back(), null, tint = C.Text) } }
         else TopSwitch()
         Text("设置", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = C.Text, letterSpacing = (-0.4).sp, modifier = Modifier.padding(start = 20.dp, top = 8.dp, bottom = 4.dp))
 
         // ---- 当前来源的账号
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp).fillMaxWidth().clip(RoundedCornerShape(C.Card)).background(C.Surface)
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp).fillMaxWidth().skeuoCard()
             .clickable { if (dav) Nav.push(Route.DavAccounts) else Nav.push(Route.ConnectionSettings) }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Avatar(if (dav) davAcc?.title ?: "W" else nas?.user ?: "我", 48.dp)
             Spacer(Modifier.width(14.dp))
@@ -78,14 +78,13 @@ fun SettingsScreen() {
         // ---- 外观
         Section("外观")
         Card {
-            Row(Modifier.padding(12.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(C.Surface2).padding(3.dp)) {
-                ThemeMode.values().forEach { m ->
-                    val on = ThemeState.mode == m
-                    Box(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(if (on) C.Surface else Color.Transparent).clickable { ThemeState.pickMode(m) }.padding(vertical = 9.dp), contentAlignment = Alignment.Center) {
-                        Text(m.title, color = if (on) C.Text else C.Sub, fontSize = 14.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal)
-                    }
-                }
+            FillSegmented(ThemeMode.values().map { it.title }, ThemeMode.values().indexOf(ThemeState.mode)) { ThemeState.pickMode(ThemeMode.values()[it]) }
+            Div()
+            // 用户 2026-10-23：界面风格 拟物（锤子风格，默认）/ 简洁
+            Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 12.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("界面风格", color = C.Text, fontSize = 15.sp, modifier = Modifier.weight(1f))
             }
+            FillSegmented(listOf("拟物", "简洁"), if (ThemeState.skeuo) 0 else 1) { ThemeState.pickStyle(it == 0) }
             Div()
             Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("强调色", color = C.Text, fontSize = 15.sp, modifier = Modifier.weight(1f))
@@ -260,8 +259,29 @@ fun Section(t: String, info: String? = null) {
     }
 }
 
+/** 卡片里的细分隔线。拟物时是「刻线」：一道暗线下面跟一道高光线，像压在纸上的折痕。 */
 @Composable
-fun Div() = HorizontalDivider(color = C.Line, thickness = 0.6.dp, modifier = Modifier.padding(start = 64.dp))
+fun Div() {
+    if (!Skeuo.on) HorizontalDivider(color = C.Line, thickness = 0.6.dp, modifier = Modifier.padding(start = 64.dp))
+    else Column(Modifier.padding(start = 64.dp)) {
+        HorizontalDivider(color = C.Line, thickness = 0.6.dp)
+        HorizontalDivider(color = Skeuo.highlight.copy(alpha = Skeuo.highlight.alpha * 0.7f), thickness = 0.6.dp)
+    }
+}
+
+/** 撑满一行的分段控件（主题、界面风格）：拟物时是内凹的槽 + 凸起的选中块。 */
+@Composable
+fun FillSegmented(items: List<String>, sel: Int, onPick: (Int) -> Unit) {
+    Row(Modifier.padding(12.dp).fillMaxWidth().skeuoInset(RoundedCornerShape(12.dp)).padding(3.dp)) {
+        items.forEachIndexed { i, t ->
+            val on = i == sel
+            Box(Modifier.weight(1f).then(if (on) Modifier.skeuoPressed(false, RoundedCornerShape(10.dp), C.Surface, Elevation.pressed + 1.dp) else Modifier.clip(RoundedCornerShape(10.dp)))
+                .clickable { onPick(i) }.padding(vertical = 9.dp), contentAlignment = Alignment.Center) {
+                Text(t, color = if (on) C.Text else C.Sub, fontSize = 14.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal)
+            }
+        }
+    }
+}
 
 /**
  * 用户 2026-10-23：功能说明不再常驻成小字；确实需要解释的，放一个 ⓘ，点开用对话框看。
@@ -324,22 +344,25 @@ fun ToggleRow(icon: ImageVector, title: String, sub: String? = null, on: Boolean
 /** 设置行左侧的小图标底。 */
 @Composable
 internal fun RowIcon(icon: ImageVector, danger: Boolean) {
-    Box(Modifier.size(32.dp).clip(RoundedCornerShape(9.dp)).background(if (danger) C.Danger.copy(alpha = 0.12f) else C.Surface2), contentAlignment = Alignment.Center) {
-        Icon(icon, null, tint = if (danger) C.Danger else C.Text, modifier = Modifier.size(18.dp))
+    // 拟物：小图标底是微凹的槽，图标用次要色、线条细，颜色克制
+    Box(Modifier.size(32.dp).then(if (danger) Modifier.clip(RoundedCornerShape(9.dp)).background(C.Danger.copy(alpha = 0.12f)) else Modifier.skeuoInset(RoundedCornerShape(9.dp))),
+        contentAlignment = Alignment.Center) {
+        Icon(icon, null, tint = if (danger) C.Danger else if (Skeuo.on) C.Sub else C.Text, modifier = Modifier.size(18.dp))
     }
 }
 
-/** 开关（第二部分会换成拟物外观；这里先集中成一个入口）。 */
+/** 全局开关：拟物风格是凹槽 + 凸起圆钮（[SkeuoToggle]），简洁风格是 Material 开关。 */
 @Composable
 fun SkeuoSwitch(on: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
-    Switch(on, onChange, enabled = enabled, colors = SwitchDefaults.colors(checkedThumbColor = C.OnAccent, checkedTrackColor = C.Accent, uncheckedTrackColor = C.Surface2, uncheckedBorderColor = C.Line))
+    if (Skeuo.on) SkeuoToggle(on, enabled, onChange)
+    else Switch(on, onChange, enabled = enabled, colors = SwitchDefaults.colors(checkedThumbColor = C.OnAccent, checkedTrackColor = C.Accent, uncheckedTrackColor = C.Surface2, uncheckedBorderColor = C.Line))
 }
 
 @Composable
 fun InputRow(label: String, value: String, hint: String, onChange: (String) -> Unit) {
     Column(Modifier.padding(horizontal = 16.dp, vertical = 5.dp)) {
         Text(label, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = 2.dp, bottom = 6.dp))
-        Box(Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(14.dp)).background(C.Surface2).padding(horizontal = 14.dp), contentAlignment = Alignment.CenterStart) {
+        Box(Modifier.fillMaxWidth().height(48.dp).skeuoInset(RoundedCornerShape(14.dp)).padding(horizontal = 14.dp), contentAlignment = Alignment.CenterStart) {
             if (value.isEmpty()) Text(hint, color = C.Faint, fontSize = 14.sp)
             BasicTextField(value, onChange, singleLine = true, textStyle = MaterialTheme.typography.bodyMedium.copy(color = C.Text, fontSize = 15.sp), cursorBrush = SolidColor(C.Accent), modifier = Modifier.fillMaxWidth())
         }
@@ -348,7 +371,7 @@ fun InputRow(label: String, value: String, hint: String, onChange: (String) -> U
 
 @Composable
 fun Card(content: @Composable ColumnScope.() -> Unit) {
-    Column(Modifier.padding(horizontal = 16.dp).fillMaxWidth().clip(RoundedCornerShape(C.Card)).background(C.Surface), content = content)
+    Column(Modifier.padding(horizontal = 16.dp).fillMaxWidth().skeuoCard(), content = content)
 }
 
 @Composable

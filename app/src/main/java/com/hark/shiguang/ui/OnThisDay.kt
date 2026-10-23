@@ -80,7 +80,7 @@ fun MemoriesRow(groups: List<MemoryGroup>) {
             }
             LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(visible, key = { it.year }) { g ->
-                    Box(Modifier.size(132.dp, 168.dp).pressScale().clip(RoundedCornerShape(C.Card)).background(C.Surface)
+                    Box(Modifier.size(132.dp, 168.dp).pressScale().skeuoPhoto()
                         .clickableNoRipple { Nav.push(Route.Viewer(g.photos, 0)) }) {
                         NetImage(g.photos.first().thumbM, Modifier.fillMaxSize())
                         Box(Modifier.matchParentSize().background(Brush.verticalGradient(0.45f to Color.Transparent, 1f to Color(0xB3000000))))

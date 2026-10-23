@@ -147,7 +147,7 @@ private fun DavGroupsBody(r: Route.DavGroups, header: @Composable () -> Unit) {
             else LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 16.dp)) {
                 itemsIndexed(groups, key = { _, g -> g.first().key }) { gi, g ->
                     val best = Quality.best(g)
-                    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().clip(RoundedCornerShape(C.Card)).background(C.Surface).padding(12.dp)) {
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().skeuoCard().padding(12.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("第 ${gi + 1} 组 · ${g.size} 张", color = C.Text, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, modifier = Modifier.weight(1f))
                             Text("推荐保留：" + Quality.why(best, g), color = C.Sub, fontSize = 12.sp)

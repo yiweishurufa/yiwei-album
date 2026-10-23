@@ -176,7 +176,7 @@ fun PhotoMapScreen(dav: Boolean) {
             }
         }
     }
-    Box(Modifier.fillMaxSize().background(C.Bg)) {
+    Box(Modifier.fillMaxSize().appBackground()) {
         val list = pts
         when {
             list == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = C.Accent, modifier = Modifier.size(28.dp)) }

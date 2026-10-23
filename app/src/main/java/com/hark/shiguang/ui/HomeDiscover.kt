@@ -120,7 +120,7 @@ internal fun DiscoverTab() {
                 }
                 else LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(places) { pl ->
-                        Box(Modifier.size(150.dp, 180.dp).pressScale().clip(RoundedCornerShape(C.Card)).background(C.Surface).combinedClickable(onLongClick = { menuPlace = pl }) {
+                        Box(Modifier.size(150.dp, 180.dp).pressScale().skeuoPhoto().combinedClickable(onLongClick = { menuPlace = pl }) {
                             Nav.push(Route.Collection(pl.city.ifEmpty { pl.country }, pl.country, PhotoSource(pageSize = 200, grouped = true) { o, l -> Repo.placePhotos(pl, o, l) }))
                         }) {
                             NetImage(pl.poster, Modifier.fillMaxSize())
@@ -165,7 +165,7 @@ internal fun DiscoverTab() {
 @Composable
 private fun SearchBar() {
     Row(
-        Modifier.padding(horizontal = 16.dp, vertical = 6.dp).fillMaxWidth().height(50.dp).clip(RoundedCornerShape(16.dp)).background(C.Surface)
+        Modifier.padding(horizontal = 16.dp, vertical = 6.dp).fillMaxWidth().height(50.dp).skeuoInset(RoundedCornerShape(16.dp), C.Surface)
             .clickable { Nav.push(Route.Search) }.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(LI.search(), null, tint = C.Sub, modifier = Modifier.size(20.dp))
@@ -185,7 +185,7 @@ private fun ZoneHeader(title: String) {
 /** 发现页里成组的入口卡片（白色卡片 + 细分隔线）。 */
 @Composable
 private fun GroupCard(content: @Composable ColumnScope.() -> Unit) {
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth().clip(RoundedCornerShape(C.Card)).background(C.Surface), content = content)
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth().skeuoCard(), content = content)
 }
 
 @Composable
@@ -372,7 +372,7 @@ private fun ScanStatusCard(rows: List<Triple<String, Pair<Int, Int>, Boolean>>, 
     val allDone = rows.all { it.second.second > 0 && it.second.first >= it.second.second }
     // 用户 2026-10-23：全部整理完毕时整张卡隐藏，不再留一张「全部整理完毕 · 扫描设置」卡
     if (allDone) return
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().clip(RoundedCornerShape(C.Card)).background(C.Surface).padding(16.dp)) {
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().skeuoCard().padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(if (running) "正在整理" else "整理暂停", color = C.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
@@ -412,7 +412,7 @@ private fun RowHeader(title: String, trailing: String = "", action: String? = nu
 @OptIn(ExperimentalFoundationApi::class)
 private fun CoverCard(title: String, sub: String, cover: String?, small: Boolean = false, onLong: (() -> Unit)? = null, onClick: () -> Unit) {
     val w = if (small) 120.dp else 150.dp; val h = if (small) 120.dp else 180.dp
-    Box(Modifier.size(w, h).pressScale().clip(RoundedCornerShape(C.Card)).background(C.Surface).combinedClickable(onLongClick = onLong, onClick = onClick)) {
+    Box(Modifier.size(w, h).pressScale().skeuoPhoto().combinedClickable(onLongClick = onLong, onClick = onClick)) {
         NetImage(cover, Modifier.fillMaxSize())
         Box(Modifier.matchParentSize().background(C.Scrim))
         Column(Modifier.align(Alignment.BottomStart).padding(12.dp)) {
@@ -424,7 +424,7 @@ private fun CoverCard(title: String, sub: String, cover: String?, small: Boolean
 
 @Composable
 private fun InfoRow(icon: ImageVector, title: String, sub: String?, progress: Float?, action: String?, onAction: () -> Unit) {
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth().clip(RoundedCornerShape(C.Card)).background(C.Surface).padding(14.dp)) {
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth().skeuoCard().padding(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(C.Accent.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) { Icon(icon, null, tint = C.Accent, modifier = Modifier.size(19.dp)) }
             Spacer(Modifier.width(12.dp))

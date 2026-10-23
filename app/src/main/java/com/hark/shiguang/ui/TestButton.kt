@@ -68,7 +68,7 @@ fun TestButton(
         else -> if (filled) C.OnAccent else C.Text
     }
     Column(modifier) {
-        Box(Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(16.dp)).background(bg)
+        Box(Modifier.fillMaxWidth().height(height).then(if (Skeuo.on && state.phase <= 1) Modifier.skeuoPressed(state.phase == 1, RoundedCornerShape(16.dp), bg) else Modifier.clip(RoundedCornerShape(16.dp)).background(bg))
             .clickable(enabled = enabled && state.phase != 1) {
                 state.phase = 1; state.progress = -1f; state.detail = ""; state.stale = false
                 scope.launch {

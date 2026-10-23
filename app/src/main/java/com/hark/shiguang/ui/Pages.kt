@@ -59,7 +59,7 @@ fun PageTop(title: String, sub: String = "", actions: @Composable RowScope.() ->
 
 @Composable
 internal fun Page(title: String, sub: String = "", actions: @Composable RowScope.() -> Unit = {}, content: @Composable BoxScope.() -> Unit) {
-    Column(Modifier.fillMaxSize().background(C.Bg)) {
+    Column(Modifier.fillMaxSize().appBackground()) {
         PageTop(title, sub, actions)
         Box(Modifier.weight(1f).fillMaxWidth(), content = content)
     }
@@ -286,7 +286,7 @@ fun DuplicatesScreen() {
                 items(groups.size, key = { groups[it].id }) { gi ->
                     val g = groups[gi]
                     if (gi >= groups.size - 3 && groups.size < total && !loading) LaunchedEffect(groups.size) { load(false) }
-                    Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp).clip(RoundedCornerShape(C.Card)).background(C.Surface).padding(12.dp)) {
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp).skeuoCard().padding(12.dp)) {
                         Text("${g.photos.size} 张 · ${g.photos.firstOrNull()?.day?.replace(':', '.') ?: ""}", style = MaterialTheme.typography.bodySmall)
                         Spacer(Modifier.height(8.dp))
                         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {

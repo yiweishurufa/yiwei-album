@@ -132,7 +132,7 @@ private fun PersonScreen(s: ExtScreen.Person) {
         )
         onDispose { SelExtra.actions = emptyList() }
     }
-    Box(Modifier.fillMaxSize().background(C.Bg)) {
+    Box(Modifier.fillMaxSize().appBackground()) {
         if (p == null) StateMessage(LI.person(), "人物已不存在", "可能已被合并或重新归类。")
         else {
             val photos = Hidden.visible(p.photos)
@@ -200,7 +200,7 @@ private fun HiddenPersonsScreen(accountId: String) {
     val ctx = LocalContext.current
     val fl = remember(accountId) { Faces.lib(accountId) }
     val lib = remember(accountId) { Dav.lib(accountId) }
-    Column(Modifier.fillMaxSize().background(C.Bg)) {
+    Column(Modifier.fillMaxSize().appBackground()) {
         ExtTop("已隐藏的人物", "${fl.hiddenPersons.size} 位")
         if (fl.hiddenPersons.isEmpty()) StateMessage(LI.person(), "没有隐藏的人物", "在人物上长按选「隐藏（路人）」，就不会再出现在人物栏。")
         else LazyColumn(contentPadding = PaddingValues(bottom = 40.dp)) {
@@ -217,7 +217,7 @@ private fun HiddenPersonsScreen(accountId: String) {
 private fun FnHiddenPersonsScreen() {
     FnPersonHide.version
     val hidden = HomeState.persons.orEmpty().filter { FnPersonHide.has(it.id) }
-    Column(Modifier.fillMaxSize().background(C.Bg)) {
+    Column(Modifier.fillMaxSize().appBackground()) {
         ExtTop("已隐藏的人物", "${hidden.size} 位 · 只在本机隐藏")
         if (hidden.isEmpty()) StateMessage(LI.person(), "没有隐藏的人物", "在人物上长按选「隐藏（路人）」。")
         else LazyColumn(contentPadding = PaddingValues(bottom = 40.dp)) {

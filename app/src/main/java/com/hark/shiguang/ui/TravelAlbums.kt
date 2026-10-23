@@ -113,7 +113,7 @@ fun TravelAlbumsRow(lib: DavLib, metaVersion: Int) {
 private fun TripCard(a: TripAlbum) {
     val t = a.trip
     val range = tripRange(t.start, t.end)
-    Box(Modifier.size(150.dp, 188.dp).pressScale().clip(RoundedCornerShape(C.Card)).background(C.Surface)
+    Box(Modifier.size(150.dp, 188.dp).pressScale().skeuoPhoto()
         .semantics(mergeDescendants = true) { contentDescription = "旅行相册：${t.place}，$range，${a.photos.size} 张" }
         .clickableNoRipple { TravelAlbums.open(a) }) {
         NetImage(a.cover.thumbM, Modifier.fillMaxSize())

@@ -249,7 +249,7 @@ fun LoginScreen() {
         }
     }
 
-    Box(Modifier.fillMaxSize().background(C.Bg)) {
+    Box(Modifier.fillMaxSize().appBackground()) {
         Column(Modifier.fillMaxSize().systemBarsPadding().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
             Row(Modifier.padding(top = 8.dp).height(44.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (Nav.stack.size > 1) Icon(LI.back(), null, tint = C.Text, modifier = Modifier.size(24.dp).clickable { Nav.pop() })
@@ -408,7 +408,7 @@ fun CollectionScreen(r: Route.Collection) {
     var deleting by remember { mutableStateOf(false) }
     var title by remember { mutableStateOf(r.title) }
     DisposableEffect(r) { AlbumCtx.current = r.album; onDispose { if (AlbumCtx.current == r.album) AlbumCtx.current = null } }
-    Box(Modifier.fillMaxSize().background(C.Bg)) {
+    Box(Modifier.fillMaxSize().appBackground()) {
         val topPad = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 64.dp
         when {
             src.photos.isEmpty() && src.loading -> SkeletonGrid(cols, topPad)
@@ -525,7 +525,7 @@ fun SearchScreen() {
         val p = SearchState.pending
         if (p != null) { SearchState.pending = null; run(p) } else if (SearchState.results == null) fr.requestFocus()
     }
-    Column(Modifier.fillMaxSize().background(C.Bg).statusBarsPadding()) {
+    Column(Modifier.fillMaxSize().appBackground().statusBarsPadding()) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Row(
                 Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(16.dp)).background(C.Surface2).padding(horizontal = 14.dp),

@@ -213,8 +213,11 @@ fun ErrorState(message: String?, onRetry: () -> Unit, onFix: ((com.hark.shiguang
 
 @Composable
 fun GradientButton(text: String, modifier: Modifier = Modifier, loading: Boolean = false, onClick: () -> Unit) {
+    // 用户 2026-10-23 拟物：凸起的渐变按钮，按下变内凹（Skeuo.kt）；简洁风格时仍是纯色
+    val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
     Box(
-        modifier.height(52.dp).clip(RoundedCornerShape(16.dp)).background(C.Accent).clickable(enabled = !loading, onClick = onClick),
+        modifier.height(52.dp).skeuoPressable(interaction, RoundedCornerShape(16.dp), C.Accent)
+            .clickable(interaction, androidx.compose.foundation.LocalIndication.current, enabled = !loading, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         if (loading) CircularProgressIndicator(Modifier.size(22.dp), color = C.OnAccent, strokeWidth = 2.5.dp)
@@ -224,8 +227,13 @@ fun GradientButton(text: String, modifier: Modifier = Modifier, loading: Boolean
 
 @Composable
 fun RoundIcon(icon: ImageVector, modifier: Modifier = Modifier, tint: Color = C.Text, bg: Color = C.Chip, size: Dp = 40.dp, onClick: () -> Unit) {
+    // 顶栏的圆形按钮：拟物时是凸起的小圆钮（按下内凹），只在页面的默认底色上这样画；调用方给了别的底色（例如照片上的半透明黑）就保持原样
+    val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val skeuo = Skeuo.on && bg == C.Chip
     Box(
-        modifier.size(size).clip(CircleShape).background(bg).border(0.5.dp, C.Line, CircleShape).clickable(onClick = onClick),
+        (if (skeuo) modifier.size(size).skeuoPressable(interaction, CircleShape, C.Surface)
+        else modifier.size(size).clip(CircleShape).background(bg).border(0.5.dp, C.Line, CircleShape))
+            .clickable(interaction, androidx.compose.foundation.LocalIndication.current, onClick = onClick),
         contentAlignment = Alignment.Center
     ) { Icon(icon, null, tint = tint, modifier = Modifier.size(size * 0.5f)) }
 }
@@ -246,7 +254,7 @@ fun ScanProgressCard(
     modifier: Modifier = Modifier,
     onRetry: (() -> Unit)? = null,
 ) {
-    Column(modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(C.Surface).padding(horizontal = 14.dp, vertical = 12.dp)) {
+    Column(modifier.fillMaxWidth().skeuoCard(RoundedCornerShape(14.dp)).padding(horizontal = 14.dp, vertical = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(title, color = C.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (countText != null) Text(countText, color = C.Sub, fontSize = 12.sp)

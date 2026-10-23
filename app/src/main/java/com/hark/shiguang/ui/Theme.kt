@@ -49,6 +49,23 @@ private fun darkPalette(a: Accent) = Palette(
     accent = a.color, accent2 = a.soft, onAccent = Color.White,
 )
 
+/**
+ * 用户 2026-10-23 锤子拟物风格：暖灰 / 米白的纸面底，卡片是带一点暖意的白；文字用带暖色相的墨色，不用纯黑。
+ * 对比度（WCAG，脚本算）：text/surface 15.6:1，sub/surface 6.7:1，sub/bg 5.8:1；深色 13.6 / 6.4 / 7.3。
+ */
+private fun lightSkeuoPalette(a: Accent) = Palette(
+    false, bg = Color(0xFFEDEAE4), surface = Color(0xFFFBFAF7), surface2 = Color(0xFFEAE6DF), line = Color(0x1C3A2A1A),
+    text = Color(0xFF22201C), sub = Color(0xFF5E5951), faint = Color(0xFF8F8981),
+    accent = a.soft, accent2 = a.color, onAccent = Color.White,
+)
+
+/** 深色拟物：底更深、卡片略亮，层级靠阴影 + 低透明白高光区分。 */
+private fun darkSkeuoPalette(a: Accent) = Palette(
+    true, bg = Color(0xFF151619), surface = Color(0xFF212226), surface2 = Color(0xFF2B2C31), line = Color(0x14FFFFFF),
+    text = Color(0xFFEFEDE9), sub = Color(0xFFA8A49E), faint = Color(0xFF75726C),
+    accent = a.color, accent2 = a.soft, onAccent = Color.White,
+)
+
 private fun lightPalette(a: Accent) = Palette(
     false, bg = Color(0xFFF3F4F6), surface = Color(0xFFFFFFFF), surface2 = Color(0xFFECEEF1), line = Color(0x14000000),
     text = Color(0xFF14161A), sub = Color(0xFF5A5E66), faint = Color(0xFF8E929A),
@@ -59,8 +76,14 @@ object ThemeState {
     var mode by mutableStateOf(runCatching { ThemeMode.valueOf(Store.themeMode) }.getOrDefault(ThemeMode.DARK))
     var accent by mutableIntStateOf(Store.accent.coerceIn(0, Accents.lastIndex))
     var systemDark by mutableStateOf(true)
+    /** 用户 2026-10-23：界面风格 拟物（默认）/ 简洁。存储键 ui.style = "skeuo" / "flat"。 */
+    var skeuo by mutableStateOf(Store.getStr("ui.style", "skeuo") != "flat")
     val isDark: Boolean get() = when (mode) { ThemeMode.LIGHT -> false; ThemeMode.DARK -> true; ThemeMode.SYSTEM -> systemDark }
-    val current: Palette get() = Accents[accent].let { if (isDark) darkPalette(it) else lightPalette(it) }
+    val current: Palette get() = Accents[accent].let {
+        if (skeuo) { if (isDark) darkSkeuoPalette(it) else lightSkeuoPalette(it) }
+        else if (isDark) darkPalette(it) else lightPalette(it)
+    }
+    fun pickStyle(skeuomorphic: Boolean) { skeuo = skeuomorphic; Store.putStr("ui.style", if (skeuomorphic) "skeuo" else "flat") }
     fun pickMode(m: ThemeMode) { mode = m; Store.themeMode = m.name }
     fun pickAccent(i: Int) { accent = i; Store.accent = i }
     fun reload() {
@@ -151,7 +174,9 @@ fun ShiGuangTheme(content: @Composable () -> Unit) {
         surfaceVariant = p.surface2, onBackground = p.text, onSurface = p.text, onPrimary = p.onAccent,
         surfaceContainer = p.surface, surfaceContainerHigh = p.surface2, surfaceContainerLow = p.surface, onSurfaceVariant = p.sub,
     )
-    MaterialTheme(colorScheme = scheme, typography = typo(p)) {
+    // 对话框、底部面板的圆角统一（AlertDialog 用 extraLarge）
+    val shapes = androidx.compose.material3.Shapes(extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(if (ThemeState.skeuo) 22.dp else 28.dp))
+    MaterialTheme(colorScheme = scheme, typography = typo(p), shapes = shapes) {
         Box(Modifier.fillMaxSize().background(bg)) { content() }
     }
 }
