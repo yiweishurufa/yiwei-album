@@ -33,6 +33,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -89,9 +90,12 @@ internal fun DiscoverTab() {
     var fnMemories by remember { mutableStateOf<List<MemoryGroup>>(emptyList()) }
     LaunchedEffect(HomeState.timeline.days) { fnMemories = runCatching { OnThisDay.loadFn(HomeState.timeline, NasAccounts.currentId) }.getOrDefault(emptyList()) }
     LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 120.dp + miniPlayerPad)) {
-        item { TopSwitch() }
+        item { TopSwitch(showSearch = false) }   // 发现页有自己的搜索框，顶栏不再重复一个搜索图标
         item { BigTitle("发现", "") }
         item { SearchBar() }
+        // ================= 回忆（用户 2026-10-23：回忆 / 整理 / 工具 三区）
+        item { ZoneHeader("回忆") }
+        item { MemoriesRow(fnMemories) }
         val hiddenIds = FnPersonHide.version.let { FnPersonHide.ids() }
         val ps = HomeState.persons.orEmpty().filter { it.id !in hiddenIds }
         if (ps.isNotEmpty() || hiddenIds.isNotEmpty()) {
@@ -107,14 +111,14 @@ internal fun DiscoverTab() {
                 }
             }
         }
-        item { RowHeader("地点", places?.let { "${it.size} 处" } ?: "", "地图") { Nav.push(Route.X(ExtScreen.Map(false))) } }
-        item {
-            when {
-                places == null -> LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        // 地点：没有地点时整块不显示；地图入口只留标题右侧这一个
+        if (places == null || places.isNotEmpty()) {
+            item { RowHeader("地点", places?.let { "${it.size} 处" } ?: "", "地图") { Nav.push(Route.X(ExtScreen.Map(false))) } }
+            item {
+                if (places == null) LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(3) { Box(Modifier.size(150.dp, 180.dp).clip(RoundedCornerShape(18.dp)).background(shimmerBrush())) }
                 }
-                places.isEmpty() -> Text("照片里还没有地点信息。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 18.dp))
-                else -> LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                else LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(places) { pl ->
                         Box(Modifier.size(150.dp, 180.dp).pressScale().clip(RoundedCornerShape(C.Card)).background(C.Surface).combinedClickable(onLongClick = { menuPlace = pl }) {
                             Nav.push(Route.Collection(pl.city.ifEmpty { pl.country }, pl.country, PhotoSource(pageSize = 200, grouped = true) { o, l -> Repo.placePhotos(pl, o, l) }))
@@ -130,23 +134,28 @@ internal fun DiscoverTab() {
                 }
             }
         }
-        // 1.1.0 发现 → 回忆
-        item { RowHeader("回忆") }
-        item { MemoriesRow(fnMemories) }
-        item { Box(Modifier.padding(horizontal = 18.dp, vertical = 6.dp).padding(top = 10.dp)) { SectionTitle("整理 · 清理空间") } }
+        // ================= 整理
+        item { ZoneHeader("整理") }
         item {
-            Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ToolCard(LI.sparkle(), "智能分类", "风景、美食、文档…", Modifier.weight(1f)) { Nav.push(Route.Smart) }
-                    ToolCard(LI.copy(), "重复照片", "找出并清理", Modifier.weight(1f)) { Nav.push(Route.Duplicates) }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ToolCard(LI.map(), "地图", "按拍摄地点", Modifier.weight(1f)) { Nav.push(Route.X(ExtScreen.Map(false))) }
-                    ToolCard(LI.folder(), "文件夹", "按 NAS 目录", Modifier.weight(1f)) { Nav.push(Route.Folders("", "文件夹")) }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ToolCard(LI.trash(), "回收站", "可以恢复", Modifier.weight(1f)) { Nav.push(Route.Recycle) }
-                    ToolCard(LI.upload(), "上传", "传输队列", Modifier.weight(1f)) { Nav.push(Route.Transfers) }
+            GroupCard {
+                ToolRow(LI.sparkle(), "分类") { Nav.push(Route.Smart) }
+                GroupDivider()
+                ToolRow(LI.copy(), "重复与相似") { Nav.push(Route.Duplicates) }
+            }
+        }
+        // ================= 工具（低频，默认收起成一行；有传输进行中时自动展开）
+        item { ZoneHeader("工具") }
+        item {
+            var open by rememberSaveable { mutableStateOf(false) }
+            val expanded = open || Transfers.active > 0
+            GroupCard {
+                if (!expanded) ToolRow(LI.folder(), "文件夹 · 回收站 · 传输") { open = true }
+                else {
+                    ToolRow(LI.folder(), "文件夹") { Nav.push(Route.Folders("", "文件夹")) }
+                    GroupDivider()
+                    ToolRow(LI.trash(), "回收站") { Nav.push(Route.Recycle) }
+                    GroupDivider()
+                    ToolRow(LI.swap(), "传输队列", if (Transfers.active > 0) "${Transfers.active} 个进行中" else null) { Nav.push(Route.Transfers) }
                 }
             }
         }
@@ -166,21 +175,21 @@ private fun SearchBar() {
     }
 }
 
+/** 发现页三区（回忆 / 整理 / 工具）的区标题：比 [RowHeader] 大一号。 */
 @Composable
-private fun ToolCard(icon: ImageVector, title: String, sub: String, modifier: Modifier, covers: List<String?> = emptyList(), onClick: () -> Unit) {
-    Column(modifier.pressScale().clip(RoundedCornerShape(C.Card)).background(C.Surface).clickable(onClick = onClick).padding(14.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(32.dp).clip(RoundedCornerShape(9.dp)).background(C.Accent.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) { Icon(icon, null, tint = C.Accent, modifier = Modifier.size(18.dp)) }
-            Spacer(Modifier.width(10.dp))
-            Text(title, color = C.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-        }
-        Text(sub, style = MaterialTheme.typography.bodySmall, maxLines = 2, modifier = Modifier.padding(top = 8.dp))
-        if (covers.isNotEmpty()) Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            covers.take(3).forEach { c -> Box(Modifier.weight(1f).aspectRatio(1f).clip(RoundedCornerShape(8.dp)).background(C.Surface2)) { if (c != null) NetImage(c, Modifier.fillMaxSize()) } }
-            repeat(3 - covers.take(3).size) { Spacer(Modifier.weight(1f)) }
-        }
-    }
+private fun ZoneHeader(title: String) {
+    Text(title, color = C.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.2).sp,
+        modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 26.dp, bottom = 2.dp))
 }
+
+/** 发现页里成组的入口卡片（白色卡片 + 细分隔线）。 */
+@Composable
+private fun GroupCard(content: @Composable ColumnScope.() -> Unit) {
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth().clip(RoundedCornerShape(C.Card)).background(C.Surface), content = content)
+}
+
+@Composable
+private fun GroupDivider() = HorizontalDivider(color = C.Line, thickness = 0.6.dp, modifier = Modifier.padding(start = 58.dp))
 
 // ============================================================ discover (WebDAV)
 
@@ -209,34 +218,16 @@ internal fun DavDiscoverTab() {
     var menuPlace by remember { mutableStateOf<Pair<String, List<Photo>>?>(null) }
     val list = rememberMemList("dav-discover-" + lib.accountId)
     LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 120.dp + miniPlayerPad)) {
-        item { TopSwitch() }
-        item { BigTitle("发现", "${n(imgs)} 张照片 · ${fl.persons.size} 位人物 · ${places.size} 个地点") }
+        item { TopSwitch(showSearch = false) }   // 发现页有自己的搜索框，顶栏不再重复一个搜索图标
+        item { BigTitle("发现", "") }
         item { SearchBar() }
 
-        // ---------------- 整理进度：一张卡说清楚三件事
+        // ================= 回忆（用户 2026-10-23：回忆 / 整理 / 工具 三区）
+        item { ZoneHeader("回忆") }
         item {
-            ScanStatusCard(
-                rows = (if (lib.scanning) listOf(Triple("读取文件", lib.scanListed to maxOf(lib.scanKnown, lib.scanListed), true)) else emptyList()) + listOf(
-                    Triple("本地分析", (if (lib.analyzing) lib.analyzed else analyzedN) to imgs, lib.analyzing),
-                    Triple("人脸识别", (imgs - faceTodo).coerceAtLeast(0) to imgs, fl.running),
-                ) + if (AiRunner.on) listOf(Triple(AiRunner.rowLabel, aiN to imgs, AiRunner.running)) else emptyList(),
-                running = lib.scanning || lib.analyzing || fl.running || AiRunner.running,
-                note = run {
-                    val base = fl.status.ifEmpty { if (lib.analyzing || fl.running || AiRunner.running) "离开页面也会继续" else if (ScanPolicy.paused) "已暂停，点「立即继续」恢复" else ScanPolicy.waitingText() }
-                    val ai = if (AiRunner.on && AiRunner.cardNote.isNotEmpty() && (aiN < imgs || AiPool.switched.isNotEmpty())) "AI 分类：" + AiRunner.cardNote else ""
-                    if (ai.isEmpty()) base else if (lib.analyzing || fl.running) "$base\n$ai" else ai
-                },
-                onToggle = {
-                    if (lib.analyzing || fl.running || AiRunner.running) ScanPolicy.pauseAll()
-                    else ScanPolicy.resumeAll(ctx, startAiDav = AiRunner.on)
-                },
-                // S19: the 整理 card's settings go to the tab-4 Settings (one Settings, not two):
-                // pushing Route.Settings opened a second, stacked copy.
-                onSettings = { HomeState.tab = 4 },
-            )
+            val memories = remember(v, lib.photos.size) { OnThisDay.from(Hidden.visible(lib.photos.filter { !it.isVideo })) }
+            MemoriesRow(memories)
         }
-
-        // ---------------- 人物
         item {
             RowHeader("人物", if (fl.persons.isNotEmpty()) "${fl.persons.size} 位" else "", "识别设置", onAction = { HomeState.showFaceCfg = true },
                 extra = if (fl.hiddenPersons.isNotEmpty()) ("已隐藏 ${fl.hiddenPersons.size}" to { Nav.push(Route.X(ExtScreen.HiddenPersons(lib.accountId))) }) else null)
@@ -254,10 +245,7 @@ internal fun DavDiscoverTab() {
                 }
             }
             FaceStatusLine(lib, fl)   // 用户 2026-10-23 反馈 #7：人脸识别状态 / 原因 / 重试
-            Text("人脸只在本机识别，不会上传。长按人物可命名或建相册。", color = C.Faint, fontSize = 11.sp, modifier = Modifier.padding(start = 18.dp, top = 8.dp))
         }
-
-        // ---------------- 地点
         if (places.isNotEmpty()) {
             item { RowHeader("地点", "${places.size} 处", "地图") { Nav.push(Route.X(ExtScreen.Map(true))) } }
             item {
@@ -268,47 +256,66 @@ internal fun DavDiscoverTab() {
                 }
             }
         }
-
-        // ---------------- 回忆（1.1.0：那年今天、回忆短片）
-        item { RowHeader("回忆") }
-        item {
-            val memories = remember(v, lib.photos.size) { OnThisDay.from(Hidden.visible(lib.photos.filter { !it.isVideo })) }
-            MemoriesRow(memories)
-        }
-        // 1.1.0 回忆 → 旅行（自动旅行相册，设置里可关）
+        // 1.1.0 回忆 → 旅行（自动旅行相册，设置 → 智能整理 里可关；没有旅行就不显示）
         item { TravelAlbumsRow(lib, v) }
 
-        // ---------------- AI 分类
-        item { RowHeader("AI 分类", if (cats.isNotEmpty()) "${cats.size} 类" else "", if (AiConfig.configured) "AI 设置" else null) { Nav.push(Route.AiSettings) } }
+        // ================= 整理
+        item { ZoneHeader("整理") }
+        // 整理进度：全部完成后整张卡隐藏（有新照片时自己会再出现）
+        item {
+            ScanStatusCard(
+                rows = (if (lib.scanning) listOf(Triple("读取文件", lib.scanListed to maxOf(lib.scanKnown, lib.scanListed), true)) else emptyList()) + listOf(
+                    Triple("本地分析", (if (lib.analyzing) lib.analyzed else analyzedN) to imgs, lib.analyzing),
+                    Triple("人脸识别", (imgs - faceTodo).coerceAtLeast(0) to imgs, fl.running),
+                ) + if (AiRunner.on) listOf(Triple(AiRunner.rowLabel, aiN to imgs, AiRunner.running)) else emptyList(),
+                running = lib.scanning || lib.analyzing || fl.running || AiRunner.running,
+                note = run {
+                    val base = fl.status.ifEmpty { if (lib.analyzing || fl.running || AiRunner.running) "离开页面也会继续" else if (ScanPolicy.paused) "已暂停，点「立即继续」恢复" else ScanPolicy.waitingText() }
+                    val ai = if (AiRunner.on && AiRunner.cardNote.isNotEmpty() && (aiN < imgs || AiPool.switched.isNotEmpty())) "AI 分类：" + AiRunner.cardNote else ""
+                    if (ai.isEmpty() || lib.analyzing || fl.running) base else ai
+                },
+                onToggle = {
+                    if (lib.analyzing || fl.running || AiRunner.running) ScanPolicy.pauseAll()
+                    else ScanPolicy.resumeAll(ctx, startAiDav = AiRunner.on)
+                },
+            )
+        }
+        item { RowHeader("分类", if (cats.isNotEmpty()) "${cats.size} 类" else "", if (AiConfig.configured) "AI 设置" else null) { Nav.push(Route.AiSettings) } }
         item {
             if (cats.isNotEmpty()) LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(cats, key = { it.first }) { (c, ps) -> CoverCard(c, "${n(ps.size)} 张", ps.firstOrNull()?.thumbM, small = true) { openGroup(c, "AI 分类", ps) } }
+                items(cats, key = { it.first }) { (c, ps) -> CoverCard(c, "${n(ps.size)} 张", ps.firstOrNull()?.thumbM, small = true) { openGroup(c, "分类", ps) } }
             }
-            else InfoRow(LI.sparkle(), if (AiConfig.configured) "等待 AI 整理" else "接入大模型后自动分类", if (AiConfig.configured) (AiRunner.note.ifEmpty { AiRunner.status }.ifEmpty { "按设置的网络和充电条件开始" }) else "风景、美食、人像、文档…",
+            else InfoRow(LI.sparkle(), if (AiConfig.configured) "等待 AI 整理" else "接入 AI 后自动分类", null,
                 null, if (AiRunner.on) "立即整理" else "去配置") { if (!AiRunner.on) Nav.push(Route.AiSettings) else AiRunner.startDav(ctx, lib, manual = true) }
         }
-
-        // ---------------- 清理
         item { RowHeader("清理空间") }
         item {
-            Column(Modifier.padding(horizontal = 16.dp).clip(RoundedCornerShape(C.Card)).background(C.Surface)) {
-                var dupN by remember { mutableIntStateOf(0) }
-                var simN by remember { mutableIntStateOf(0) }
-                LaunchedEffect(v, lib.photos.size) {
-                    kotlinx.coroutines.delay(1500) // debounce: metaVersion ticks every few seconds while analysing
-                    val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { runCatching { lib.duplicates().size to lib.similar().size }.getOrNull() }
-                    if (r != null) { dupN = r.first; simN = r.second }
+            var dupN by remember { mutableIntStateOf(0) }
+            var shotN by remember { mutableIntStateOf(0) }
+            LaunchedEffect(v, lib.photos.size) {
+                kotlinx.coroutines.delay(1500) // debounce: metaVersion ticks every few seconds while analysing
+                val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                    runCatching { (lib.duplicates().size + lib.similar().size) to lib.photos.count { !it.isVideo && AdvFilter.isScreenshot(it) } }.getOrNull()
                 }
-                val pend = if (analyzedN < imgs) " · 已分析 ${n(analyzedN)}/${n(imgs)}" else ""
-                ToolRow(LI.copy(), "重复照片", (if (dupN > 0) "$dupN 组" else "完全相同的文件，保留一张") + pend) { Nav.push(Route.DavGroups("重复照片", lib.accountId, "dup")) }
-                HorizontalDivider(color = C.Line, modifier = Modifier.padding(start = 58.dp))
-                ToolRow(LI.layers(), "相似照片", (if (simN > 0) "$simN 组" else "连拍、相近的几张，挑最好的留下") + pend) { Nav.push(Route.DavGroups("相似照片", lib.accountId, "sim")) }
-                HorizontalDivider(color = C.Line, modifier = Modifier.padding(start = 58.dp))
-                ToolRow(LI.photos(), "截图", "手机截屏，看完可以批量删掉") {
+                if (r != null) { dupN = r.first; shotN = r.second }
+            }
+            GroupCard {
+                // 用户 2026-10-23：重复和相似合并成一个入口，进去再切换
+                ToolRow(LI.copy(), "重复与相似", if (dupN > 0) "$dupN 组" else null) { Nav.push(Route.DavGroups("重复与相似", lib.accountId, "dup")) }
+                GroupDivider()
+                ToolRow(LI.photos(), "截图", if (shotN > 0) "${n(shotN)} 张" else null) {
                     openGroup("截图", "清理空间", Hidden.visible(lib.photos.filter { !it.isVideo && AdvFilter.isScreenshot(it) }))
                 }
-                HorizontalDivider(color = C.Line, modifier = Modifier.padding(start = 58.dp))
-                ToolRow(LI.drive(), "大文件", "按大小排列，先清理最占空间的") { Nav.push(Route.DavBigFiles(lib.accountId)) }
+                GroupDivider()
+                ToolRow(LI.drive(), "大文件") { Nav.push(Route.DavBigFiles(lib.accountId)) }
+            }
+        }
+
+        // ================= 工具
+        item { ZoneHeader("工具") }
+        item {
+            GroupCard {
+                ToolRow(LI.swap(), "传输队列", if (Transfers.active > 0) "${Transfers.active} 个进行中" else null) { Nav.push(Route.Transfers) }
             }
         }
     }
@@ -359,19 +366,20 @@ private fun makeNasAlbum(ctx: android.content.Context, name: String, load: suspe
 }
 
 @Composable
-private fun ScanStatusCard(rows: List<Triple<String, Pair<Int, Int>, Boolean>>, running: Boolean, note: String, onToggle: () -> Unit, onSettings: () -> Unit) {
+private fun ScanStatusCard(rows: List<Triple<String, Pair<Int, Int>, Boolean>>, running: Boolean, note: String, onToggle: () -> Unit) {
     val allDone = rows.all { it.second.second > 0 && it.second.first >= it.second.second }
+    // 用户 2026-10-23：全部整理完毕时整张卡隐藏，不再留一张「全部整理完毕 · 扫描设置」卡
+    if (allDone) return
     Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().clip(RoundedCornerShape(C.Card)).background(C.Surface).padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(if (allDone) "全部整理完毕" else if (running) "正在整理" else "整理暂停", color = C.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                Text(if (allDone) "有新照片加入时自动处理" else note, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 2.dp))
+                Text(if (running) "正在整理" else "整理暂停", color = C.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text(note, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
             }
-            if (!allDone) Text(if (running) "暂停" else "立即继续", color = C.Accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+            Text(if (running) "暂停" else "立即继续", color = C.Accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(C.Accent.copy(alpha = 0.12f)).clickable(onClick = onToggle).padding(horizontal = 12.dp, vertical = 7.dp))
-            else Text("扫描设置", color = C.Sub, fontSize = 13.sp, modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable(onClick = onSettings).padding(horizontal = 8.dp, vertical = 6.dp))
         }
-        if (!allDone) rows.forEach { (label, pr, on) ->
+        rows.forEach { (label, pr, on) ->
             val (d, t) = pr
             Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(label, color = if (on) C.Text else C.Sub, fontSize = 13.sp, modifier = Modifier.width(64.dp))
@@ -413,14 +421,14 @@ private fun CoverCard(title: String, sub: String, cover: String?, small: Boolean
 }
 
 @Composable
-private fun InfoRow(icon: ImageVector, title: String, sub: String, progress: Float?, action: String?, onAction: () -> Unit) {
+private fun InfoRow(icon: ImageVector, title: String, sub: String?, progress: Float?, action: String?, onAction: () -> Unit) {
     Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth().clip(RoundedCornerShape(C.Card)).background(C.Surface).padding(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(C.Accent.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) { Icon(icon, null, tint = C.Accent, modifier = Modifier.size(19.dp)) }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(title, color = C.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                Text(sub, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                if (!sub.isNullOrEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (action != null) Text(action, color = C.Accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(C.Accent.copy(alpha = 0.12f)).clickable(onClick = onAction).padding(horizontal = 12.dp, vertical = 7.dp))
@@ -430,16 +438,14 @@ private fun InfoRow(icon: ImageVector, title: String, sub: String, progress: Flo
     }
 }
 
+/** 发现页的入口行。用户 2026-10-23：去掉说明小字和不准确的「扫描」字样，右侧只放状态值（「14 组」「230 张」）。 */
 @Composable
-private fun ToolRow(icon: ImageVector, title: String, sub: String, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+private fun ToolRow(icon: ImageVector, title: String, value: String? = null, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(32.dp).clip(RoundedCornerShape(9.dp)).background(C.Accent.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) { Icon(icon, null, tint = C.Accent, modifier = Modifier.size(18.dp)) }
         Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(title, color = C.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-            Text(sub, style = MaterialTheme.typography.bodySmall)
-        }
-        Text("扫描", color = C.Accent, fontSize = 13.sp)
+        Text(title, color = C.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        if (!value.isNullOrEmpty()) Text(value, color = C.Sub, fontSize = 13.sp, modifier = Modifier.padding(start = 8.dp, end = 4.dp))
         Icon(LI.chevron(), null, tint = C.Faint, modifier = Modifier.size(18.dp))
     }
 }

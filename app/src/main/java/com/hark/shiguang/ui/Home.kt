@@ -251,7 +251,7 @@ fun switchSource(ctx: android.content.Context, s: Src) {
 
 /** Source capsule (tap: dropdown of every 飞牛 / WebDAV account) + date filter + search, at the top of every home tab. */
 @Composable
-fun TopSwitch(extra: @Composable RowScope.() -> Unit = {}) {
+fun TopSwitch(showSearch: Boolean = true, extra: @Composable RowScope.() -> Unit = {}) {
     val ctx = LocalContext.current
     var open by remember { mutableStateOf(false) }
     val cur = currentSource()
@@ -291,7 +291,7 @@ fun TopSwitch(extra: @Composable RowScope.() -> Unit = {}) {
         Spacer(Modifier.weight(1f))
         extra()
         IconButton(onClick = { HomeState.showDate = true }) { Icon(LI.calendar(), null, tint = C.Text, modifier = Modifier.size(22.dp)) }
-        IconButton(onClick = { Nav.push(Route.Search) }) { Icon(LI.search(), null, tint = C.Text, modifier = Modifier.size(23.dp)) }
+        if (showSearch) IconButton(onClick = { Nav.push(Route.Search) }) { Icon(LI.search(), null, tint = C.Text, modifier = Modifier.size(23.dp)) }
     }
 }
 

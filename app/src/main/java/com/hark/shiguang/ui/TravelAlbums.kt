@@ -97,11 +97,7 @@ fun TravelAlbumsRow(lib: DavLib, metaVersion: Int) {
         catch (e: Exception) { Diag.e("TRIPS", e) }   // keep showing the last result
     }
     val list = albums ?: return
-    if (list.isEmpty()) {
-        Text("离开常住地 50 公里以上、拍了 15 张以上的出行，会自动整理成旅行相册。", style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp))
-        return
-    }
+    if (list.isEmpty()) return   // 用户 2026-10-23：没有旅行就不显示这一块，不再放说明段落
     Column(Modifier.padding(top = 6.dp, bottom = 6.dp)) {
         Row(Modifier.padding(start = 18.dp, end = 18.dp, bottom = 8.dp), verticalAlignment = Alignment.Bottom) {
             Text("旅行", color = C.Text, fontSize = 17.sp, fontWeight = FontWeight.Bold)

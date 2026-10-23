@@ -43,9 +43,26 @@ object Quality {
     }
 }
 
-/** 重复 / 相似: each group on its own, best one marked 「推荐保留」, the rest pre-selected for deletion. */
+/**
+ * 用户 2026-10-23：发现页「重复照片」「相似照片」合并成一个入口「重复与相似」，进来后用分段切换。
+ * 两种列表各自计算、各自保存勾选（key(kind) 让切换时重新建状态，不会把重复的勾选带到相似里）。
+ */
 @Composable
 fun DavGroupsScreen(r: Route.DavGroups) {
+    if (r.kind != "dup" && r.kind != "sim") { DavGroupsBody(r) {}; return }
+    var kind by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(r.kind) }
+    key(kind) {
+        DavGroupsBody(r.copy(title = "重复与相似", kind = kind)) {
+            Box(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                Segmented(listOf("重复", "相似"), if (kind == "dup") 0 else 1) { kind = if (it == 0) "dup" else "sim" }
+            }
+        }
+    }
+}
+
+/** 重复 / 相似: each group on its own, best one marked 「推荐保留」, the rest pre-selected for deletion. */
+@Composable
+private fun DavGroupsBody(r: Route.DavGroups, header: @Composable () -> Unit) {
     val ctx = LocalContext.current
     val lib = Dav.lib(r.accountId)
     val dup = r.kind == "dup"
@@ -68,7 +85,7 @@ fun DavGroupsScreen(r: Route.DavGroups) {
     val imgs = lib.imagesCount()
     val analyzedN = remember(v, lib.photos.size) { runCatching { lib.meta.values.count { it.done } }.getOrDefault(0) }
     val pending = imgs > 0 && analyzedN < imgs
-    if (!ready) { Page(r.title, "") { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = C.Accent) } }; return }
+    if (!ready) { Page(r.title, "") { Column(Modifier.fillMaxSize()) { header(); Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = C.Accent) } } }; return }
     var confirmAll by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     fun doDelete(list: List<Photo>, after: () -> Unit) {
@@ -110,8 +127,11 @@ fun DavGroupsScreen(r: Route.DavGroups) {
         }
     }
     val total = groups.sumOf { g -> g.count { del[it.key] == true } }
-    Page(r.title, "${groups.size} 组 · 已选 $total 张待删除") {
+    Page(r.title, "${groups.size} 组 · 已选 $total 张待删除", actions = {
+        if (dup) InfoDot("重复判定仅比对文件头部（前 128KB）+ 大小；删除前会做全文哈希二次校验，全文不同者自动排除。", "重复照片")
+    }) {
         Column(Modifier.fillMaxSize()) {
+            header()
             if (pending) Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(C.Accent.copy(alpha = 0.10f))
                 .clickable { HomeState.openAiTab() }.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -120,7 +140,6 @@ fun DavGroupsScreen(r: Route.DavGroups) {
                 }
                 Text("去发现页", color = C.Accent, fontSize = 13.sp)
             }
-            if (dup) Text("重复判定仅比对文件头部（前 128KB）+ 大小；删除前会做全文哈希二次校验，全文不同者自动排除。", color = C.Sub, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
             if (groups.isEmpty()) Box(Modifier.weight(1f)) {
                 StateMessage(if (dup) LI.copy() else LI.layers(), if (pending) "还没分析完" else "没有${if (dup) "重复" else "相似"}照片",
                     if (pending) "检测随「发现」页的整理一起进行，完成后结果会显示在这里" else "有新照片时会在 AI 整理里自动检测")
