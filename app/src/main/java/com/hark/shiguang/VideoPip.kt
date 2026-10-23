@@ -18,7 +18,7 @@ import androidx.compose.runtime.setValue
 /**
  * 1.1.0 视频画中画：影视播放器播放时离开 App（Home 键 / 上滑回桌面）进入小窗。
  * - Android 12+ 用 setAutoEnterEnabled（手势回桌面时动画更顺），8–11 在 onUserLeaveHint 里手动进入。
- * - 小窗只显示视频（播放器根据 [inPip] 隐藏控件、顶栏、弹幕），系统按钮：播放/暂停（+ 有下一集时「下一集」）。
+ * - 小窗只显示视频（播放器根据 [inPip] 隐藏控件、顶栏），系统按钮：播放/暂停（+ 有下一集时「下一集」）。
  * - 开关：影音设置 →「离开时画中画」（默认开，[enabled]）。
  */
 object VideoPip {

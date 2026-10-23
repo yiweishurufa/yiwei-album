@@ -163,16 +163,6 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     var dvFixedFor by remember { mutableStateOf("") }
     var casting by remember { mutableStateOf(false) }
     var playerView by remember { mutableStateOf<PlayerView?>(null) }
-    // 1.0.1 #11 弹幕 (弹弹play)
-    var curPath by remember { mutableStateOf(queue[start].path) }
-    var dmOn by remember { mutableStateOf(DanmakuPrefs.enabled) }
-    var dmView by remember { mutableStateOf<DanmakuView?>(null) }
-    var dmMatch by remember { mutableStateOf<DmMatch?>(null) }
-    var dmStatus by remember { mutableStateOf("") }
-    var dmMenu by remember { mutableStateOf(false) }
-    var dmSettings by remember { mutableStateOf(false) }
-    var dmSearch by remember { mutableStateOf(false) }
-    var dmReload by remember { mutableIntStateOf(0) }
     val skipped = remember { HashSet<String>() }
     // 1.1.0: libVLC removed. rmvb/rm/wmv/asf (no media3 extractor) and files media3 reports as unsupported → 「用其他播放器打开」
     fun needsExternal(q: QItem) = NameParser.ext(q.file.name) in ExternalPlayer.VIDEO_EXT
@@ -253,7 +243,6 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         val l = object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 mediaItem?.mediaMetadata?.title?.let { title = it.toString() }
-                mediaItem?.mediaId?.let { curPath = it }
                 if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
                     // previous episode ran to the end
                     val prev = queue.getOrNull(player.currentMediaItemIndex - 1)
@@ -364,28 +353,6 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     }
     fun playNextNow() { nextIn = null; save(); player.seekToNextMediaItem(); player.play() }
     LaunchedEffect(hint) { if (hint != null) { delay(6_000); hint = null } }
-    // load the comments of the current file whenever it changes (or after a manual match)
-    LaunchedEffect(curPath, dmOn, dmView, dmReload) {
-        val dv = dmView ?: return@LaunchedEffect
-        dv.visibility = if (dmOn && !VideoPip.inPip) android.view.View.VISIBLE else android.view.View.GONE
-        dv.clear(); dmMatch = null
-        if (!dmOn) { dmStatus = "弹幕已关闭"; return@LaunchedEffect }
-        if (!DanmakuPrefs.configured) { dmStatus = DanmakuPrefs.HINT; return@LaunchedEffect }
-        val q = queue.firstOrNull { it.path == curPath } ?: return@LaunchedEffect
-        dmStatus = "正在匹配弹幕…"
-        var dur = player.duration; var waited = 0
-        while ((dur <= 0 || dur == MC.TIME_UNSET) && waited < 6) { delay(500); dur = player.duration; waited++ }
-        val durMs = if (dur > 0 && dur != MC.TIME_UNSET) dur else q.file.duration * 1000L
-        runCatching {
-            withContext(Dispatchers.IO) {
-                val m = DanDan.auto(lib, item, q.file, q.path, durMs) ?: return@withContext null
-                m to DanDan.comments(m.episodeId).let { l -> if (m.shift != 0.0) l.map { it.copy(t = it.t + (m.shift * 1000).toLong()) } else l }
-            }
-        }.onSuccess { r ->
-            if (r == null) { dmStatus = "没有匹配到弹幕，可以手动匹配"; hint = "没有匹配到弹幕 · 点「弹幕」手动匹配" }
-            else { dmMatch = r.first; dv.setData(r.second); dmStatus = "${r.first.label} · ${r.second.size} 条"; if (r.second.isNotEmpty()) hint = "弹幕 ${r.second.size} 条" }
-        }.onFailure { dmStatus = it.message ?: "弹幕加载失败"; if (it !is DanmakuNotConfigured) hint = "弹幕加载失败" }
-    }
     fun applySubStyle() { playerView?.subtitleView?.let { sv -> sv.setApplyEmbeddedFontSizes(false); sv.setFractionalTextSize(PlayPrefs.subSize); sv.setBottomPaddingFraction(PlayPrefs.subBottom) } }
     fun setOffset(ms: Long) {
         subOffset = ms; PlayPrefs.setSubOffset(showId, ms)
@@ -451,10 +418,9 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         lifecycleOwner.lifecycle.addObserver(obs)
         onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
     }
-    // PiP shows only the video: no controller, no danmaku (and the Compose overlays below are hidden too)
-    LaunchedEffect(inPip, playerView, dmView, dmOn) {
+    // PiP shows only the video: no controller (and the Compose overlays below are hidden too)
+    LaunchedEffect(inPip, playerView) {
         playerView?.let { pv -> pv.useController = !inPip; if (inPip) pv.hideController() }
-        dmView?.visibility = if (dmOn && !inPip) android.view.View.VISIBLE else android.view.View.GONE
     }
 
     if (extIdx >= 0) {
@@ -490,12 +456,6 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                 keepScreenOn = true
                 playerView = this
                 subtitleView?.let { sv -> sv.setApplyEmbeddedFontSizes(false); sv.setFractionalTextSize(PlayPrefs.subSize); sv.setBottomPaddingFraction(PlayPrefs.subBottom) }
-                // danmaku layer: inside the overlay frame (above video + subtitles, below the controller; touches fall through)
-                overlayFrameLayout?.let { ov ->
-                    val dv = DanmakuView(it).apply { position = { player.currentPosition }; playing = { player.isPlaying }; visibility = if (dmOn) android.view.View.VISIBLE else android.view.View.GONE }
-                    ov.addView(dv, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-                    dmView = dv
-                }
             }
         }, modifier = Modifier.fillMaxSize())
         AnimatedVisibility(controls && !inPip, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopStart)) {
@@ -504,16 +464,6 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                 IconButton(onClick = { save(); Nav.pop() }) { Icon(LI.back(true), null, tint = Color.White) }
                 Text(title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 SpeedButton(player)
-                Box {
-                    TextButton(onClick = { dmMenu = true }) { Text(if (dmOn) "弹幕" else "弹幕关", color = if (dmOn) Color.White else Color(0x99FFFFFF), fontSize = 14.sp) }
-                    DropdownMenu(dmMenu, onDismissRequest = { dmMenu = false }) {
-                        Text(dmStatus.ifEmpty { "弹弹play 弹幕" }, fontSize = 12.sp, color = C.Sub, maxLines = 3, overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp).widthIn(max = 280.dp))
-                        DropdownMenuItem(text = { Text(if (dmOn) "关闭弹幕" else "打开弹幕") }, onClick = { dmMenu = false; dmOn = !dmOn; DanmakuPrefs.enabled = dmOn })
-                        DropdownMenuItem(text = { Text("手动匹配…") }, onClick = { dmMenu = false; dmSearch = true })
-                        DropdownMenuItem(text = { Text("弹幕设置…") }, onClick = { dmMenu = false; dmSettings = true })
-                    }
-                }
                 IconButton(onClick = { player.pause(); casting = true }) { Icon(Icons.Rounded.Cast, null, tint = Color.White) }
                 IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, null, tint = Color.White) }
             }
@@ -552,13 +502,6 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
             ?.let { g -> (0 until g.length).firstOrNull { g.isTrackSelected(it) }?.let { g.getTrackFormat(it) } }
         val extSelected = extLabels.isNotEmpty() && (selText == null || selText.label in extLabels)
         PlayerMenu(player, showId, subOffset, extSelected, { setOffset(it) }, { applySubStyle() }) { menu = false }
-    }
-    if (dmSettings) DanmakuSettingsDialog(onChanged = { dmView?.applyPrefs() }) { dmSettings = false }
-    if (dmSearch) {
-        val ep = item.episodes.firstOrNull { it.path == curPath }
-        DanmakuSearchDialog(dmMatch?.anime?.takeIf { it.isNotBlank() } ?: item.title, ep?.episode, onPick = { m ->
-            DanDan.remember(lib.sourceKey, curPath, m); if (!dmOn) { dmOn = true; DanmakuPrefs.enabled = true }; dmReload++
-        }) { dmSearch = false }
     }
     if (casting) {
         val q = queue.getOrNull(player.currentMediaItemIndex) ?: queue[start]

@@ -437,36 +437,9 @@ internal fun TmdbSettingsCard(extra: @Composable ColumnScope.() -> Unit = {}) {
     }
 }
 
-/** 1.1.0: 弹幕（弹弹play）card, shown in 影音设置. */
-@Composable
-internal fun DanmakuSettingsCard() {
-    var dmId by remember { mutableStateOf(DanmakuPrefs.appId) }
-    var dmSecret by remember { mutableStateOf(DanmakuPrefs.appSecret) }
-    var dmCell by remember { mutableStateOf(DanmakuPrefs.hashOnCell) }
-    Column {
-            // 1.0.1 #11
-            Section("弹幕（弹弹play，所有来源共用）")
-            Card {
-                Spacer(Modifier.height(8.dp))
-                InputRow("AppId", dmId, "在弹弹play开放平台申请") { dmId = it }
-                InputRow("AppSecret", dmSecret, "只保存在本机") { dmSecret = it }
-                TestButton("保存并测试", Modifier.padding(horizontal = 16.dp, vertical = 12.dp).fillMaxWidth(), resetKey = dmId + "|" + dmSecret, height = 44.dp) {
-                    DanmakuPrefs.appId = dmId; DanmakuPrefs.appSecret = dmSecret
-                    if (!DanmakuPrefs.configured) error("先填 AppId 和 AppSecret")
-                    withContext(Dispatchers.IO) { DanDan.test() }
-                }
-                ToggleRow(LI.videos(), "移动网络也精确匹配", "精确匹配要读取视频开头 16 MB 计算指纹；关闭时移动网络下只按文件名匹配", dmCell) { dmCell = it; DanmakuPrefs.hashOnCell = it }
-                Text(if (DanmakuPrefs.configured) "播放时自动按文件匹配弹幕（弹弹play 国内可直连），播放器顶部「弹幕」可开关、手动匹配和调整样式。用其他播放器打开时不显示弹幕。"
-                    else DanmakuPrefs.HINT + "。不填也不影响播放。",
-                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 14.dp))
-            }
-
-    }
-}
-
 /**
  * 1.1.0 影音设置：影音相关的设置只有这一个入口（设置页、影视页、音乐页的齿轮都到这里）。
- * 文件夹按来源各一份，点进各自页面；TMDB、音乐联网补全、弹幕所有来源共用，直接在这里改。
+ * 文件夹按来源各一份，点进各自页面；TMDB、音乐联网补全所有来源共用，直接在这里改。
  */
 @Composable
 fun MediaSettingsScreen() {
@@ -497,7 +470,6 @@ fun MediaSettingsScreen() {
                 ToggleRow(androidx.compose.material.icons.Icons.Rounded.Cloud, "音乐联网补全", on = online,
                     info = "文件里缺专辑、歌手、封面或歌词时，从网易云音乐（国内直连）和 LRCLIB 补上；不会改写文件里已有的信息。") { online = it; MusicPrefs.online = it }
             }
-            DanmakuSettingsCard()
         }
     }
 }
