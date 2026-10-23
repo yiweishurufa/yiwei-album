@@ -226,6 +226,7 @@ fun LoginScreen() {
     var err by remember { mutableStateOf<String?>(null) }
     var found by remember { mutableStateOf<List<com.hark.shiguang.data.Endpoint.Found>?>(null) }
     var scanning by remember { mutableStateOf(false) }
+    val addrFocus = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
     val focus = LocalFocusManager.current
 
@@ -278,7 +279,7 @@ fun LoginScreen() {
             }
             Spacer(Modifier.height(26.dp))
             Row(verticalAlignment = Alignment.Bottom) {
-                Box(Modifier.weight(1f)) { Field("地址", url, { url = it }, Icons.Rounded.Dns, "IP、域名或 FN ID", KeyboardType.Uri) }
+                Box(Modifier.weight(1f)) { Field("地址", url, { url = it }, Icons.Rounded.Dns, "IP、域名或 FN ID", KeyboardType.Uri, focusRequester = addrFocus) }
                 Spacer(Modifier.width(10.dp))
                 Box(Modifier.width(96.dp)) { Field("端口", port, { v -> port = v.filter { it.isDigit() }.take(5) }, null, "自动", KeyboardType.Number) }
             }
@@ -288,10 +289,24 @@ fun LoginScreen() {
             Text(if (scanning) "正在搜索局域网…" else "搜索局域网里的飞牛", color = C.Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                 // H17: 48dp tall touch target for the 13sp text link
                 modifier = Modifier.padding(top = 2.dp).minimumInteractiveComponentSize().clip(RoundedCornerShape(8.dp)).clickable(enabled = !scanning) {
-                    scanning = true; scope.launch { found = Endpoint.discover(); scanning = false }
+                    scanning = true; found = null
+                    scope.launch { found = runCatching { Endpoint.discover() }.getOrDefault(emptyList()); scanning = false }
                 }.padding(horizontal = 4.dp))
+            // 用户 2026-10-23 反馈 #1：扫描期间显示进度
+            if (scanning) Column(Modifier.padding(start = 4.dp, end = 4.dp, top = 2.dp)) {
+                val t = LanScan.total
+                if (t > 0) LinearProgressIndicator(progress = { (LanScan.done.toFloat() / t).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth(), color = C.Accent, trackColor = C.Surface2)
+                else LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = C.Accent, trackColor = C.Surface2)
+                Text(LanScan.phase.ifEmpty { "正在搜索…" } + if (t > 0) "（${LanScan.done}/$t）" else "", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
+            }
             found?.let { l ->
-                if (l.isEmpty()) Text("没找到飞牛。确认手机和 NAS 在同一个 Wi-Fi；开着 VPN 时可以先关掉再搜。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 4.dp, top = 6.dp))
+                if (l.isEmpty() && !scanning) Column(Modifier.padding(start = 4.dp, top = 6.dp)) {
+                    Text("没找到飞牛。" + LanScan.lastReason, style = MaterialTheme.typography.bodySmall)
+                    Text("手动输入地址", color = C.Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.minimumInteractiveComponentSize().clip(RoundedCornerShape(8.dp)).clickable {
+                            found = null; runCatching { addrFocus.requestFocus() }
+                        }.padding(horizontal = 4.dp))
+                }
                 l.forEach { f ->
                     Row(Modifier.padding(top = 6.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(C.Surface).clickable {
                         url = f.host; port = f.port
@@ -335,6 +350,7 @@ fun LoginScreen() {
 fun Field(
     label: String, value: String, onChange: (String) -> Unit, icon: ImageVector?, hint: String,
     type: KeyboardType = KeyboardType.Text, password: Boolean = false, ime: ImeAction = ImeAction.Next, onGo: (() -> Unit)? = null,
+    focusRequester: FocusRequester? = null,
 ) {
     var show by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
@@ -356,7 +372,7 @@ fun Field(
                     visualTransformation = if (password && !show) PasswordVisualTransformation() else VisualTransformation.None,
                     keyboardOptions = KeyboardOptions(keyboardType = type, imeAction = ime),
                     keyboardActions = KeyboardActions(onGo = { onGo?.invoke() }),
-                    modifier = Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused },
+                    modifier = Modifier.fillMaxWidth().let { m -> if (focusRequester != null) m.focusRequester(focusRequester) else m }.onFocusChanged { focused = it.isFocused },
                 )
             }
             if (password) Icon(
