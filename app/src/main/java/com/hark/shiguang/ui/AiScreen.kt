@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.sp
 import com.hark.shiguang.*
 import kotlinx.coroutines.launch
 
-/** 智能整理 · AI: provider presets, key/baseUrl/model, privacy & power limits, monthly budget. */
+/** AI 大模型（用户 2026-10-23 统一叫法；以前叫「智能整理 · AI」「大模型」「AI 设置」）: provider presets, key/baseUrl/model, privacy & power limits, monthly budget. */
 @Composable
 fun AiSettingsScreen() {
     val ctx = LocalContext.current
@@ -36,18 +36,16 @@ fun AiSettingsScreen() {
     Column(Modifier.fillMaxSize().background(C.Bg).statusBarsPadding().navigationBarsPadding()) {
         Row(Modifier.padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { Nav.pop() }) { Icon(LI.back(), null, tint = C.Text) }
-            Text("智能整理 · AI", style = MaterialTheme.typography.headlineSmall)
+            Text("AI 大模型", style = MaterialTheme.typography.headlineSmall)
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-            Text("地点、重复、相似照片在手机本地完成，不需要 AI、不上传。下面只用于场景分类和智能搜索。", color = C.Sub, fontSize = 13.sp, lineHeight = 19.sp,
-                modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth().clip(RoundedCornerShape(C.Card)).background(C.Surface).padding(16.dp))
-            Section("大模型接口")
+            Section("接口", info = "地点、重复、相似照片在手机本地完成，不需要 AI、不上传。大模型只用于场景分类和智能搜索。")
             Card {
                 Row(Modifier.fillMaxWidth().clickable { pickProvider = true }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("提供商", style = MaterialTheme.typography.labelSmall)
                         Text(prov.name, color = C.Text, fontSize = 15.sp, modifier = Modifier.padding(top = 2.dp))
-                        if (prov.note.isNotEmpty()) Text(prov.note, style = MaterialTheme.typography.bodySmall)
+                        if (prov.note.isNotEmpty()) Text(prov.note, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                     }
                     Text(AiProviders.GROUPS.firstOrNull { it.first == prov.group }?.second?.substringBefore("（").orEmpty(), fontSize = 11.sp,
                         color = if (prov.group == "free") C.OnAccent else C.Sub,
@@ -60,7 +58,7 @@ fun AiSettingsScreen() {
             InputRow("API Key", AiConfig.key, if (prov.needsKey) "sk-…" else "本地模型可留空") { AiConfig.key = it }
             InputRow("模型", AiConfig.model, "模型名") { AiConfig.model = it }
             val sees = remember(AiConfig.model, freeList) { AiClient.modelSeesImages() }
-            if (sees == false) Text("⚠ 这个模型只能处理文字，不能看图：照片分类会失败，只能用于智能搜索的关键词扩展。请选带「看图」标记的模型。",
+            if (sees == false) Text("这个模型不能看图，分类会失败",
                 color = C.Danger, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp))
             if (prov.id == "openrouter" || AiConfig.baseUrl.contains("openrouter.ai")) {
                 Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -73,7 +71,6 @@ fun AiSettingsScreen() {
                                 freeBusy = false
                             }
                         }.padding(horizontal = 14.dp, vertical = 8.dp))
-                    Text("  每日免费，次数有限；分类照片要选「看图」的", style = MaterialTheme.typography.bodySmall)
                 }
                 freeErr?.let { Text(it, color = C.Danger, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 18.dp)) }
             }
@@ -84,26 +81,19 @@ fun AiSettingsScreen() {
                         .clickable { AiConfig.model = m }.padding(horizontal = 12.dp, vertical = 7.dp))
                 }
             }
-            Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
-                TestButton("测速", Modifier.fillMaxWidth(), resetKey = inputsKey, height = 44.dp, holdMs = 8000, okLabel = { it.substringBefore(" ·") }) {
-                    AiConfig.save()
-                    "延迟 " + AiClient.speed().toString() + "（一次约 30 字的请求，含网络时间）"
-                }
-            }
+            // 用户 2026-10-23：单独的「测速」和底部「测试连接」重复，只留「测试连接」（结果里带延迟）
             // 1.1.0: 「免费模型自动切换」并入模型列表：列表顺序就是切换优先级
-            Section("模型列表")
+            Section("出错时")
             Card {
-                ToggleRow(LI.swap(), "出错时按顺序自动换下一个", "额度用完、限流、超时或下线时，同一张照片换列表里的下一个模型继续；填过 Key 的免费平台会自动加入列表", AiPool.autoSwitch) { AiPool.setAuto(it) }
+                ToggleRow(LI.swap(), "按顺序换下一个模型", on = AiPool.autoSwitch,
+                    info = "额度用完、限流、超时或下线时，同一张照片换列表里的下一个模型继续；填过 Key 的免费平台会自动加入列表。用 ↑ ↓ 调整顺序，上面的优先。") { AiPool.setAuto(it) }
+                Div()
+                ToggleRow(LI.sparkle(), "本地识别兜底", on = LocalAi.enabled,
+                    info = "没配大模型、或所有模型额度用完时，用手机上的识别模型继续分类：不联网、不耗额度，结果标「本地识别」，大模型恢复后自动细分。") { LocalAi.set(it) }
             }
             PoolList()
-            Section("本地识别（离线）")
-            Card {
-                ToggleRow(LI.sparkle(), "本地识别兜底", "没配大模型、或所有模型额度用完时，用手机上的识别模型继续分类：不联网、不耗额度，结果标「本地识别」，大模型恢复后自动细分", LocalAi.enabled) { LocalAi.set(it) }
-            }
-            Section("隐私与费用")
-            Text("只发送 512px 缩略图，不传原图和位置。什么时候运行跟随 ${ScanPolicy.SETTINGS_REF}（移动网络 / 不充电时是否继续），暂停后到「发现」页点「立即继续」。",
-                style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp))
-            InputRow("每月预算上限（元，到达后自动暂停）", AiConfig.budget, "10") { AiConfig.budget = it.filter { c -> c.isDigit() || c == '.' } }
+            Section("费用", info = "只发送 512px 缩略图，不传原图和位置。什么时候运行跟随「${ScanPolicy.SETTINGS_REF}」（移动网络 / 不充电时是否继续），暂停后到「发现」页点「立即继续」。到达每月预算后自动暂停。")
+            InputRow("每月预算（元）", AiConfig.budget, "10") { AiConfig.budget = it.filter { c -> c.isDigit() || c == '.' } }
             // 1.1.0: 单价不再手填，按内置价目表估算；不认识的模型按 0 计并标注「无法估算」
             val curEp = AiEndpoint.current()
             val known = AiConfig.priceOf(curEp.model, curEp.free) != null
@@ -117,14 +107,17 @@ fun AiSettingsScreen() {
                 Text(if (adv) "收起" else "展开", color = C.Accent, fontSize = 13.sp)
             }
             if (adv) Card {
-                ToggleRow(LI.nas(), "飞牛照片也用 AI 搜索", "默认关闭。飞牛自带智能分类，打开后再用你的模型整理一遍（会消耗额度）", AiConfig.nasToo) { AiConfig.nasToo = it }
+                ToggleRow(LI.nas(), "飞牛照片也用 AI 整理", on = AiConfig.nasToo,
+                    info = "默认关闭。飞牛自带智能分类，打开后再用你的模型整理一遍（会消耗额度）。") { AiConfig.nasToo = it }
             }
             Spacer(Modifier.height(20.dp))
         }
         Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
             TestButton("测试连接", Modifier.weight(1f), resetKey = inputsKey) {
                 AiConfig.enabled = true; AiConfig.save()
-                "连接成功：" + AiClient.test()
+                val t0 = System.currentTimeMillis()
+                val r = AiClient.test()
+                "连接成功 · ${System.currentTimeMillis() - t0} ms：" + r
             }
             GradientButton("保存并开始", Modifier.weight(1f)) {
                 AiConfig.enabled = true; AiConfig.save()
@@ -183,17 +176,12 @@ private fun PoolList() {
     val cands = remember(v, AiConfig.provider, AiConfig.model, AiConfig.key, AiPool.autoSwitch, AiConfig.enabled) { AiPool.candidates() }
     Column(Modifier.padding(horizontal = 18.dp, vertical = 6.dp)) {
         // 第 4 批：冷却按平台/错误类型拆分后的卡片提示（余额不足 / 模型下线），与 AI 卡片上的 AiPool.topHint 同源。
-        if (AiPool.balanceInsufficient) Text("余额不足，请充值：付费模型已长冷 7 天；可换成免费模型，或充值后点「清除冷却」立即重试。",
+        if (AiPool.balanceInsufficient) Text("余额不足，请充值或换免费模型",
             color = C.Danger, fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.padding(bottom = 4.dp))
-        if (AiPool.modelOffline) Text("有模型已下线，请换模型：点「获取免费模型」重新选，或在上方改模型名。",
+        if (AiPool.modelOffline) Text("有模型已下线，请换模型",
             color = C.Danger, fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.padding(bottom = 4.dp))
-        AiRunner.skippedSummary().takeIf { it.isNotEmpty() }?.let {
-            Text("本轮$it（下一轮会重新尝试）", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 4.dp))
-        }
-        if (cands.isEmpty()) Text("还没有可用的模型：填好 Key 并点「测试连接」或「保存并开始」。", style = MaterialTheme.typography.bodySmall)
-        else if (!AiPool.autoSwitch) Text("已关闭：只用上面选的模型，出错时等待后重试。", style = MaterialTheme.typography.bodySmall)
-        else {
-            Text("按顺序使用，上面的优先；用 ↑ ↓ 调整（在某个平台填过 Key 就会加入列表）：", style = MaterialTheme.typography.bodySmall)
+        // 用户 2026-10-23：只留危险提示（余额不足、模型下线），其余说明删掉；列表本身就说明了顺序
+        if (cands.isNotEmpty() && AiPool.autoSwitch) {
             cands.forEachIndexed { i, ep ->
                 val cool = AiPool.coolUntil(ep).takeIf { it > System.currentTimeMillis() }
                 val act = AiPool.active?.id == ep.id

@@ -203,13 +203,13 @@ private fun MoreSheet(p: Photo, onInfo: () -> Unit, onDismiss: () -> Unit, onHid
     var albumPick by remember { mutableStateOf(false) }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = C.Surface, dragHandle = { BottomSheetDefaults.DragHandle(color = C.Faint) }) {
         Column(Modifier.padding(bottom = 30.dp)) {
-            NavRow(Icons.Rounded.Info, "详情", "拍摄参数、位置、文件") { onInfo() }
-            NavRow(Icons.Rounded.PhotoAlbum, "加入相册", "加入已有相册，或新建一个") { albumPick = true }
-            if (!p.isCloud) NavRow(Icons.Rounded.ImageSearch, "找相似照片", "") { onDismiss(); Ops.openSimilar(p) }
-            if (p.isLive) NavRow(Icons.Rounded.MotionPhotosOn, "保存实况视频部分", "") { onDismiss(); Ops.downloadLiveVideo(ctx, p) }
-            if (!p.isVideo) NavRow(Icons.Rounded.Tune, "编辑", "裁剪、旋转、亮度，另存为新照片") { onDismiss(); Nav.push(com.hark.shiguang.Route.X(ExtScreen.Edit(p))) }
+            NavRow(Icons.Rounded.Info, "详情") { onInfo() }
+            NavRow(Icons.Rounded.PhotoAlbum, "加入相册") { albumPick = true }
+            if (!p.isCloud) NavRow(Icons.Rounded.ImageSearch, "找相似照片") { onDismiss(); Ops.openSimilar(p) }
+            if (p.isLive) NavRow(Icons.Rounded.MotionPhotosOn, "保存实况视频部分") { onDismiss(); Ops.downloadLiveVideo(ctx, p) }
+            if (!p.isVideo) NavRow(Icons.Rounded.Tune, "编辑") { onDismiss(); Nav.push(com.hark.shiguang.Route.X(ExtScreen.Edit(p))) }
             val hid = remember(p.key) { com.hark.shiguang.Hidden.has(p) }
-            NavRow(if (hid) Icons.Rounded.Visibility else Icons.Rounded.VisibilityOff, if (hid) "取消隐藏" else "隐藏", if (hid) "回到时间线和相册" else "移到隐藏相册，需验证指纹才能查看") {
+            NavRow(if (hid) Icons.Rounded.Visibility else Icons.Rounded.VisibilityOff, if (hid) "取消隐藏" else "隐藏") {
                 com.hark.shiguang.Hidden.hide(listOf(p), !hid); toast(ctx, if (hid) "已取消隐藏" else "已隐藏"); onHidden()
             }
         }

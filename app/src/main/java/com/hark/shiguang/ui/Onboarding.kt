@@ -201,5 +201,5 @@ private fun DoneStep() {
         Div()
         NavRow(LI.film(), "影视刮削", if (Tmdb.key.isNotBlank()) "TMDB 已配置" else "未填 TMDB 密钥") {}
     }
-    Note("照片分析、人脸识别和 AI 整理会按 设置 → 网络与电量 的规则在后台进行。")
+    Note("照片分析、人脸识别和 AI 整理会按「设置 → 后台整理」的规则在后台进行。")
 }

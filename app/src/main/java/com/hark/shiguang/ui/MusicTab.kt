@@ -558,27 +558,22 @@ fun MusicSettingsScreen() {
             }
         }; return@Page }
         Column(Modifier.fillMaxSize().verticalScroll(androidx.compose.foundation.rememberScrollState()).navigationBarsPadding().padding(bottom = 40.dp)) {
-            Section("音乐文件夹")
+            Section("音乐文件夹", info = "和照片、影视分开设置。音乐文件夹里的文件不会出现在照片和视频页，影视扫描也会跳过它们。\n\n" +
+                "格式：mp3、flac、wav、m4a（AAC / ALAC）、ogg、opus 用内置播放器；ape、wma、wv、aiff、dsf / dff（DSD）内置播放器不支持，播放列表里会自动跳过，可长按歌曲选「用其他播放器打开」。")
             Card {
-                if (lib.dirs.isEmpty()) Text("和照片、影视分开设置。音乐文件夹里的文件不会出现在照片和视频页，影视扫描也会跳过它们。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
+                if (lib.dirs.isEmpty()) Text("还没有音乐文件夹", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
                 lib.dirs.forEachIndexed { i, d ->
                     if (i > 0) Div()
                     LibraryDirRow(d.name, d.path.removePrefix("fm:")) { lib.saveDirs(lib.dirs - d) }
                 }
                 Div()
-                NavRow(LI.plus(), "添加文件夹", if (lib.kind == "fn") "飞牛请选「文件管理」里的文件夹（相册文件夹读不到音乐）" else "浏览这个 WebDAV") { picking = true }
+                NavRow(LI.plus(), "添加文件夹", info = if (lib.kind == "fn") "飞牛请选「文件管理」里的文件夹，相册文件夹读不到音乐。" else null) { picking = true }
             }
             LibraryScanRow(lib.scanning, lib.dirs.isNotEmpty(), "先添加音乐文件夹",
                 onScan = { lib.scan(); ScanService.ensure(ctx) }, redoLabel = "重新刮削", redoEnabled = !lib.scanning) {
                 if (lib.dirs.isEmpty()) toast(ctx, "先添加音乐文件夹") else { lib.scan(rescrape = true); ScanService.ensure(ctx); toast(ctx, "重新读取所有歌曲的标签") }
             }
-            // 1.1.0: 联网补全 moved to 影音设置
-            Card { NavRow(Icons.Rounded.Cloud, "联网补全", if (MusicPrefs.online) "已开启 · 在「影音设置」里修改" else "已关闭 · 在「影音设置」里修改") { Nav.push(Route.MediaSettings) } }
-            Section("格式")
-            Card {
-                Text("mp3、flac、wav、m4a（AAC / ALAC）、ogg、opus 用内置播放器；ape、wma、wv、aiff、dsf / dff（DSD）内置播放器不支持，播放列表里会自动跳过，可长按歌曲选「用其他播放器打开」。",
-                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
-            }
+            // 用户 2026-10-23：回到影音设置的回链删掉（这页本来就是从那里进来的）；格式说明并进分组标题的 ⓘ
             Section("缓存")
             Card { NavRow(LI.trash(), "清空这个来源的音乐库", "${lib.tracks.size} 首 · 封面和歌词缓存一起删除", danger = true) { confirmClear = true } }
         }

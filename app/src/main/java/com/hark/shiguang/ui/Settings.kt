@@ -17,10 +17,12 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -89,12 +91,9 @@ fun SettingsScreen() {
     val nas = NasAccounts.current
     val dav = HomeState.source == "dav"
     val davAcc = Dav.current
-    var cell by remember { mutableStateOf(ScanPolicy.allowCellular) }
-    var noCharge by remember { mutableStateOf(ScanPolicy.allowNoCharge) }
-    var wmOn by remember { mutableStateOf(com.hark.shiguang.Features.workManager) }
-    var forever by remember { mutableStateOf(Store.getStr("nas.deleteForever") == "1") }
     var syncOpen by remember { mutableStateOf(false) }
-    var caOpen by remember { mutableStateOf(false) }
+    var bgOpen by remember { mutableStateOf(false) }
+    var helpOpen by remember { mutableStateOf(false) }
     var davFolderSel by remember { mutableStateOf(Dav.lib()?.getSelectedDirs() ?: emptyList()) }
     var showDavFolders by remember { mutableStateOf(false) }
     // 第 4 批：平板/折叠屏——内容区最大宽度 720dp 居中，宽屏不再通栏拉伸。
@@ -146,93 +145,42 @@ fun SettingsScreen() {
             }
         }
 
-        // ---- 照片
-        Section("照片")
+        // ---- 照片与整理（用户 2026-10-23：一件事只有一个家；副标题只放状态值）
+        Section("照片与整理")
         Card {
-            // 1.0.9: WebDAV 账户 lives only in the header card (「切换与管理」)
-            if (!dav) { NavRow(LI.backup(), "手机备份", if (Store.backupOn) "已开启，自动传到飞牛" else "未开启") { Nav.push(Route.Backup) }; Div() }
-            NavRow(LI.swap(), "传输队列", if (Transfers.active > 0) "${Transfers.active} 个进行中" else "上传和下载记录") { Nav.push(Route.Transfers) }
-            if (dav) {
-                Div()
-                NavRow(LI.folder(), "WebDAV 照片文件夹", if (davFolderSel.isEmpty()) "全部文件夹" else "已选 ${davFolderSel.size} 个文件夹") { showDavFolders = true }
-                Div()
-                ToggleRow(LI.pin(), "自动旅行相册", "按拍摄时间和位置，把离常住地 50 公里以上、15 张以上的出行整理成相册，显示在「发现 → 回忆」", TravelAlbums.enabled) {
-                    TravelAlbums.enabled = it
-                }
-            }
-            if (!dav) {
-                Div()
-                ToggleRow(LI.trash(), "彻底删除", if (forever) "删除时跳过飞牛回收站，无法恢复" else "删除的照片先进飞牛回收站，30 天内可恢复", forever) {
-                    forever = it; Store.putStr("nas.deleteForever", if (it) "1" else "")
-                }
-            }
+            if (dav) NavRow(LI.folder(), "照片文件夹", value = if (davFolderSel.isEmpty()) "全部" else "已选 ${davFolderSel.size} 个") { showDavFolders = true }
+            else NavRow(LI.backup(), "手机备份", value = if (Store.backupOn) "已开启" else "未开启") { Nav.push(Route.Backup) }
+            Div()
+            // 飞牛的「智能整理」只有 AI 一项，直接进 AI 页，不多走一层
+            NavRow(LI.sparkle(), "智能整理", value = if (AiConfig.configured) "AI 已配置" else "AI 未配置") { Nav.push(if (dav) Route.SmartSettings else Route.AiSettings) }
+            Div()
+            NavRow(LI.clock(), "后台整理", value = ScanPolicy.label()) { bgOpen = true }
         }
 
-        // ---- 影音（1.1.0：TMDB、音乐刮削、弹幕、影视/音乐文件夹合并为一个入口）
+        // ---- 影音（1.1.0：TMDB、音乐刮削、影视/音乐文件夹合并为一个入口）
         Section("影音")
         Card {
             val ml = Movies.lib(); val mu = Music.lib()
-            NavRow(LI.film(), "影音设置", listOf(
-                ml?.dirs?.size?.let { if (it == 0) "未选影视文件夹" else "影视 $it 个文件夹" } ?: "先添加来源",
-                mu?.dirs?.size?.let { if (it == 0) "未选音乐文件夹" else "音乐 $it 个文件夹" } ?: "",
-                if (Tmdb.configured) "TMDB 已配置" else "TMDB 未配置",
-            ).filter { it.isNotEmpty() }.joinToString(" · ")) { Nav.push(Route.MediaSettings) }
+            val folders = (ml?.dirs?.size ?: 0) + (mu?.dirs?.size ?: 0)
+            NavRow(LI.film(), "影音设置", value = if (!Tmdb.configured) "TMDB 未配置" else if (folders > 0) "$folders 个文件夹" else null) { Nav.push(Route.MediaSettings) }
         }
 
-        // ---- 整理与 AI
-        Section("整理与 AI")
+        // ---- 安全与存储
+        Section("安全与存储")
         Card {
-            NavRow(LI.sparkle(), "大模型", if (AiConfig.configured) AiProviders.of(AiConfig.provider).name +
-                (if (dav) "" else if (AiConfig.nasToo) " · 飞牛照片也整理" else "")
-            else if (dav) "未配置，配置后自动分类和智能搜索" else "未配置，可用于智能搜索") { Nav.push(Route.AiSettings) }
-            if (dav) {
-                Div()
-                NavRow(LI.person(), "人脸识别", "置信度 ${"%.2f".format(FaceConfig.conf)} · 至少 ${FaceConfig.minPhotos} 张 · 差异 ${"%.2f".format(FaceConfig.diff)}") { HomeState.showFaceCfg = true }
-                // 1.1.0 图中文字（端上 OCR）
-                Div()
-                val ocrLib = Dav.lib()
-                LaunchedEffect(ocrLib?.accountId) { ocrLib?.let { OcrRunner.refresh(it) } }
-                ToggleRow(LI.search(), "识别图中文字（用于搜索）", ocrSub(ocrLib), OcrRunner.enabled) { OcrRunner.set(ctx, it) }
+            // H18: tell the user when passwords could not be stored encrypted on this phone（只留一行危险提示，细节放 ⓘ）
+            if (Store.insecure || com.hark.shiguang.cloud.CloudAccounts.insecure) {
+                Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 8.dp, top = 6.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("本机无法加密保存密码", color = C.Danger, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    InfoDot("这台手机的加密存储不可用，飞牛 / WebDAV 的密码和登录凭据只能以普通方式保存在本机。介意的话请不要在这台手机上保存密码，或在「设置 → 反馈与帮助 → 导出诊断日志」发给开发者。")
+                }
             }
-        }
-
-        // ---- 网络与电量：扫描、人脸、AI 分类、手机备份共用一套规则
-        Section("网络与电量")
-        Card {
-            ToggleRow(LI.swap(), "允许使用移动网络", ScanPolicy.CELLULAR_DESC, cell) {
-                cell = it; ScanPolicy.allowCellular = it; BackupScheduler.schedule(ctx); if (it) ScanWatch.resume(ctx)
+            val lockOk = android.os.Build.VERSION.SDK_INT >= 28
+            ToggleRow(LI.lock(), "应用锁", if (lockOk) null else "需要 Android 9+", lockOn, enabled = lockOk) {
+                if (lockOk) { lockOn = it; Store.lockOn = it }
             }
             Div()
-            ToggleRow(LI.clock(), "不充电时也整理", ScanPolicy.NO_CHARGE_DESC, noCharge) {
-                noCharge = it; ScanPolicy.allowNoCharge = it; BackupScheduler.schedule(ctx); if (it) ScanWatch.resume(ctx)
-            }
-            Div()
-            ToggleRow(LI.clock(), "系统定时后台整理", "由系统在满足上面的网络和充电条件时定时扫描新照片、整理和备份，重启手机后也会继续", wmOn) {
-                wmOn = it; com.hark.shiguang.Features.workManager = it; BackupScheduler.schedule(ctx)
-            }
-            Div()
-            NavRow(Icons.Rounded.BatteryChargingFull, "后台运行设置", "通知权限、电池优化、自启动（小米/OPPO/vivo/华为…）") { Nav.push(com.hark.shiguang.Route.X(ExtScreen.BgGuide)) }
-            Text("扫完一遍后只处理新加入的照片；条件满足时自动继续，离开页面或切到后台也不停，进度在通知栏。",
-                style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 4.dp, bottom = 14.dp))
-        }
-
-        // ---- 隐私与存储
-        Section("隐私与存储")
-        // H18: tell the user when passwords could not be stored encrypted on this phone
-        if (Store.insecure || com.hark.shiguang.cloud.CloudAccounts.insecure) {
-            Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(C.Danger.copy(alpha = 0.12f)).padding(12.dp)) {
-                Text("这台手机的加密存储不可用，飞牛 / WebDAV 的密码和登录凭据只能以普通方式保存在本机。介意的话请不要在这台手机上保存密码，或在下方「关于 → 导出诊断日志」发给开发者。",
-                    color = C.Text, fontSize = 13.sp, lineHeight = 19.sp)
-            }
-        }
-        Card {
-            ToggleRow(LI.lock(), "应用锁", if (android.os.Build.VERSION.SDK_INT >= 28) "打开时验证指纹或锁屏密码" else "需要 Android 9 及以上", lockOn) {
-                if (android.os.Build.VERSION.SDK_INT >= 28) { lockOn = it; Store.lockOn = it }
-            }
-            Div()
-            NavRow(LI.lock(), "隐藏相册", "需验证指纹或锁屏密码才能查看") { Nav.push(Route.X(ExtScreen.HiddenAlbum)) }
-            Div()
-            NavRow(LI.layers(), "清理缓存", if (cacheSize >= 0) "已用 ${"%.0f".format(cacheSize / 1048576.0)} MB，会自动控制在 460 MB 内；诊断日志和已下载更新包不会被删除" else "") {
+            NavRow(LI.layers(), "清理缓存", value = if (cacheSize >= 0) "${"%.0f".format(cacheSize / 1048576.0)} MB" else null) {
                 scope.launch {
                     // B38: never delete the diagnostic log, downloaded update packages, or crash reports —
                     // they are the evidence when something goes wrong, and the update would need re-downloading.
@@ -248,32 +196,33 @@ fun SettingsScreen() {
                 }
             }
             Div()
-            NavRow(LI.copy(), "同步设置到其他手机", "二维码或设置码，不含密码") { syncOpen = true }
-            Div()
-            NavRow(LI.lock(), "信任用户证书的主机", "手机里自己安装的证书（自签名 NAS）只对勾选的地址生效") { caOpen = true }
+            NavRow(LI.copy(), "同步设置到其他手机") { syncOpen = true }
         }
 
-        // ---- 关于
-        Section("关于")
+        // ---- 通用
+        Section("通用")
         Card {
-            NavRow(LI.info(), "一维相册 ${BuildInfo.version} 公测版", "版本号 ${BuildInfo.code} · 第三方应用，与飞牛官方无关") {}
+            NavRow(LI.info(), "一维相册 ${BuildInfo.version} 公测版") {}
             Div()
-            NavRow(LI.refresh(), "检查更新", if (AppUpdate.checking) "正在检查…" else "从 GitHub 获取新版本") {
+            NavRow(LI.refresh(), "检查更新", value = if (AppUpdate.checking) "检查中…" else AppUpdate.offer?.let { "有新版本 ${it.version}" }) {
                 if (!AppUpdate.checking) scope.launch { AppUpdate.manualCheck()?.let { Toast.makeText(ctx, it, Toast.LENGTH_SHORT).show() } }
             }
             Div()
-            NavRow(LI.sparkle(), "使用引导", "照片源、免费 AI 模型、影视刮削，一步步设置") { Onboarding.open(0) }
+            NavRow(LI.sparkle(), "使用引导") { Onboarding.open(0) }
             Div()
-            NavRow(Icons.Rounded.MailOutline, "反馈", "发邮件给开发者，自动附上版本和机型") { Feedback.email(ctx) }
+            NavRow(Icons.Rounded.MailOutline, "反馈与帮助") { helpOpen = true }
             Div()
-            NavRow(Icons.Rounded.Groups, "加入 QQ 群", "群号 ${Feedback.QQ_GROUP}，打不开 QQ 时自动复制") { Feedback.joinQq(ctx) }
-            Div()
-            NavRow(LI.upload(), "导出诊断日志", "脱敏后保存在本机，由你决定发给谁") { Diag.export(ctx) }
+            NavRow(LI.settings(), "高级") { Nav.push(Route.AdvancedSettings) }
         }
         // 1.1.0: 账号入口只保留顶部卡片（切换与管理 → 退出 / 移除都在账号页里）
     }
     }
-    if (caOpen) UserCaDialog { caOpen = false }
+    if (bgOpen) BackgroundPolicyDialog { bgOpen = false }
+    if (helpOpen) ActionListDialog("反馈与帮助", onDismiss = { helpOpen = false }, actions = listOf(
+        "发邮件给开发者" to { helpOpen = false; Feedback.email(ctx) },
+        "加入 QQ 群（${Feedback.QQ_GROUP}）" to { helpOpen = false; Feedback.joinQq(ctx) },
+        "导出诊断日志" to { helpOpen = false; Diag.export(ctx) },
+    ))
     if (syncOpen) ActionListDialog("同步设置", onDismiss = { syncOpen = false }, actions = listOf(
         "显示设置二维码" to { syncOpen = false; showQr = true },
         "从截图识别二维码" to { syncOpen = false; pickQr.launch("image/*") },
@@ -384,40 +333,86 @@ fun DavFolderSelectDialog(initial: List<String>, onDismiss: () -> Unit, onSave: 
 
 /** Settings group label (small grey text). Deliberately NOT [SectionTitle]: that one is a titleMedium row with a trailing count for content lists — merging them would restyle every Settings section. */
 @Composable
-fun Section(t: String) {
-    Text(t, color = C.Sub, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(start = 22.dp, top = 24.dp, bottom = 8.dp))
+fun Section(t: String, info: String? = null) {
+    Row(Modifier.padding(start = 22.dp, end = 12.dp, top = 24.dp, bottom = if (info == null) 8.dp else 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(t, color = C.Sub, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+        if (info != null) InfoDot(info, t)
+    }
 }
 
 @Composable
 fun Div() = HorizontalDivider(color = C.Line, thickness = 0.6.dp, modifier = Modifier.padding(start = 64.dp))
 
+/**
+ * 用户 2026-10-23：功能说明不再常驻成小字；确实需要解释的，放一个 ⓘ，点开用对话框看。
+ */
 @Composable
-fun NavRow(icon: ImageVector, title: String, sub: String, danger: Boolean = false, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(32.dp).clip(RoundedCornerShape(9.dp)).background(if (danger) C.Danger.copy(alpha = 0.12f) else C.Surface2), contentAlignment = Alignment.Center) {
-            Icon(icon, null, tint = if (danger) C.Danger else C.Text, modifier = Modifier.size(18.dp))
-        }
+fun InfoDot(text: String, title: String = "说明") {
+    var open by remember { mutableStateOf(false) }
+    Box(Modifier.size(32.dp).clip(CircleShape).clickable { open = true }, contentAlignment = Alignment.Center) {
+        Icon(Icons.Outlined.Info, "说明", tint = C.Faint, modifier = Modifier.size(16.dp))
+    }
+    if (open) AlertDialog(onDismissRequest = { open = false }, containerColor = C.Surface,
+        title = { Text(title, color = C.Text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold) },
+        text = { Text(text, color = C.Sub, fontSize = 14.sp, lineHeight = 21.sp) },
+        confirmButton = { TextButton(onClick = { open = false }) { Text("知道了", color = C.Accent) } })
+}
+
+/**
+ * 设置行。用户 2026-10-23：副标题可选，只用来显示状态值或危险提示（一行）；功能说明改用 [info]（ⓘ）。
+ * [value] 是右侧灰色状态值（「已开启」「320 MB」）；[alert] 让副标题变红；[danger] 是整行危险操作（退出、清空）。
+ */
+@Composable
+fun NavRow(icon: ImageVector, title: String, sub: String? = null, danger: Boolean = false, value: String? = null, alert: Boolean = false,
+           info: String? = null, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+        RowIcon(icon, danger)
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, color = if (danger) C.Danger else C.Text, fontSize = 15.sp)
-            if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(title, color = if (danger) C.Danger else C.Text, fontSize = 15.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                if (info != null) InfoDot(info, title)
+            }
+            if (!sub.isNullOrEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall, color = if (alert) C.Danger else C.Sub, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
-        if (!danger) Icon(LI.chevron(), null, tint = C.Faint, modifier = Modifier.size(18.dp))
+        if (!value.isNullOrEmpty()) Text(value, color = C.Sub, fontSize = 13.sp, maxLines = 1, modifier = Modifier.padding(start = 10.dp).widthIn(max = 150.dp), overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        if (!danger) Icon(LI.chevron(), null, tint = C.Faint, modifier = Modifier.padding(start = 4.dp).size(18.dp))
     }
 }
 
+/** 开关行，规则同 [NavRow]：[sub] 只放状态或危险提示（[alert] 变红），说明放 [info]；[enabled] = false 时整行置灰。 */
 @Composable
-fun ToggleRow(icon: ImageVector, title: String, sub: String, on: Boolean, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable { onChange(!on) }.padding(horizontal = 16.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(32.dp).clip(RoundedCornerShape(9.dp)).background(C.Surface2), contentAlignment = Alignment.Center) { Icon(icon, null, tint = C.Text, modifier = Modifier.size(18.dp)) }
+fun ToggleRow(icon: ImageVector, title: String, sub: String? = null, on: Boolean, enabled: Boolean = true, alert: Boolean = false, info: String? = null,
+              onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable(enabled = enabled) { onChange(!on) }.padding(horizontal = 16.dp, vertical = 9.dp)
+        .then(if (enabled) Modifier else Modifier.alpha(0.5f)), verticalAlignment = Alignment.CenterVertically) {
+        RowIcon(icon, false)
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, color = C.Text, fontSize = 15.sp)
-            if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 1.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(title, color = C.Text, fontSize = 15.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                if (info != null) InfoDot(info, title)
+            }
+            if (!sub.isNullOrEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall, color = if (alert) C.Danger else C.Sub, maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(top = 1.dp))
         }
         Spacer(Modifier.width(10.dp))
-        Switch(on, onChange, colors = SwitchDefaults.colors(checkedThumbColor = C.OnAccent, checkedTrackColor = C.Accent, uncheckedTrackColor = C.Surface2, uncheckedBorderColor = C.Line))
+        SkeuoSwitch(on, enabled, onChange)
     }
+}
+
+/** 设置行左侧的小图标底。 */
+@Composable
+internal fun RowIcon(icon: ImageVector, danger: Boolean) {
+    Box(Modifier.size(32.dp).clip(RoundedCornerShape(9.dp)).background(if (danger) C.Danger.copy(alpha = 0.12f) else C.Surface2), contentAlignment = Alignment.Center) {
+        Icon(icon, null, tint = if (danger) C.Danger else C.Text, modifier = Modifier.size(18.dp))
+    }
+}
+
+/** 开关（第二部分会换成拟物外观；这里先集中成一个入口）。 */
+@Composable
+fun SkeuoSwitch(on: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+    Switch(on, onChange, enabled = enabled, colors = SwitchDefaults.colors(checkedThumbColor = C.OnAccent, checkedTrackColor = C.Accent, uncheckedTrackColor = C.Surface2, uncheckedBorderColor = C.Line))
 }
 
 @Composable
@@ -444,36 +439,144 @@ fun Avatar(name: String, size: androidx.compose.ui.unit.Dp, ring: Boolean = fals
     }
 }
 
-/** H19: per-host switch for user-installed CA certificates (self-signed NAS / WebDAV). */
+/** H19: per-host switch for user-installed CA certificates (self-signed NAS / WebDAV). 用户 2026-10-23 改名「自签名证书的 NAS 地址」并移进高级。 */
 @Composable
-private fun UserCaDialog(onDismiss: () -> Unit) {
+fun UserCaDialog(onDismiss: () -> Unit) {
+    val ctx = LocalContext.current
     val hosts = remember { (TlsTrust.accountHosts() + TlsTrust.allowedHosts()).distinct().sorted() }
     var allowed by remember { mutableStateOf(TlsTrust.allowedHosts()) }
-    AlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface, title = { Text("信任用户证书的主机", color = C.Text) }, text = {
+    val changed = remember { mutableStateOf(false) }
+    val close = { if (changed.value) Toast.makeText(ctx, "已保存，新建的连接生效", Toast.LENGTH_SHORT).show(); onDismiss() }
+    AlertDialog(onDismissRequest = close, containerColor = C.Surface, title = {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(CA_TITLE, color = C.Text, modifier = Modifier.weight(1f, fill = false))
+            InfoDot(CA_INFO, CA_TITLE)
+        }
+    }, text = {
         Column {
-            Text("手机「设置 → 安全 → 加密与凭据」里自己安装的证书，只对下面打开的地址生效；其他地址只认系统证书，抓包工具装的证书无法冒充它们。只有自签名证书的 NAS / WebDAV 才需要打开。",
-                color = C.Sub, fontSize = 13.sp, lineHeight = 19.sp)
-            Spacer(Modifier.height(8.dp))
-            if (hosts.isEmpty()) Text("还没有使用 https 的账户。", color = C.Sub, fontSize = 14.sp)
+            if (hosts.isEmpty()) Text("还没有使用 https 的账户", color = C.Sub, fontSize = 14.sp)
             hosts.forEach { h ->
                 Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(h, color = C.Text, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                    Switch(checked = h in allowed, onCheckedChange = { on -> TlsTrust.setAllowed(h, on); allowed = TlsTrust.allowedHosts() })
+                    SkeuoSwitch(h in allowed) { on -> TlsTrust.setAllowed(h, on); allowed = TlsTrust.allowedHosts(); changed.value = true }
                 }
             }
-            Text("改动后新建的连接生效；已打开的页面可下拉刷新。", color = C.Sub, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+        }
+    }, confirmButton = { TextButton(onClick = close) { Text("完成", color = C.Accent) } })
+}
+
+private const val CA_TITLE = "自签名证书的 NAS 地址"
+private const val CA_INFO = "手机「设置 → 安全 → 加密与凭据」里自己安装的证书，只对这里打开的地址生效；其他地址只认系统证书，抓包工具装的证书无法冒充它们。只有使用自签名证书的 NAS / WebDAV 才需要打开。改动后新建的连接生效，已打开的页面可下拉刷新。"
+
+/**
+ * 用户 2026-10-23：「允许移动网络」「不充电时也整理」合并成一行「后台整理」，点开是这个弹窗。
+ * 存储键（scan.cell / scan.nocharge）和默认值都不变，见 [ScanPolicy]。
+ */
+@Composable
+fun BackgroundPolicyDialog(onDismiss: () -> Unit) {
+    val ctx = LocalContext.current
+    var cell by remember { mutableStateOf(ScanPolicy.allowCellular) }
+    var noCharge by remember { mutableStateOf(ScanPolicy.allowNoCharge) }
+    AlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface, title = {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("后台整理", color = C.Text)
+            InfoDot("本地分析、人脸识别、AI 分类和手机备份共用这套规则。扫完一遍后只处理新加入的照片；条件满足时自动继续，离开页面或切到后台也不停，进度在通知栏。", "后台整理")
+        }
+    }, text = {
+        Column {
+            CheckRow("允许使用移动网络", if (cell) "会产生流量" else null, cell) {
+                cell = it; ScanPolicy.allowCellular = it; BackupScheduler.schedule(ctx); if (it) ScanWatch.resume(ctx)
+            }
+            CheckRow("不充电时也整理", if (noCharge) "更耗电" else null, noCharge) {
+                noCharge = it; ScanPolicy.allowNoCharge = it; BackupScheduler.schedule(ctx); if (it) ScanWatch.resume(ctx)
+            }
         }
     }, confirmButton = { TextButton(onClick = onDismiss) { Text("完成", color = C.Accent) } })
 }
 
-/** 「识别图中文字」开关下的说明 + 进度。 */
-private fun ocrSub(lib: DavLib?): String {
-    if (!OcrRunner.enabled) return "关闭。打开后在手机上识别照片里的字，搜索时能按图中文字找到照片"
+@Composable
+private fun CheckRow(title: String, sub: String?, on: Boolean, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { onChange(!on) }.heightIn(min = 52.dp).padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked = on, onCheckedChange = onChange, colors = CheckboxDefaults.colors(checkedColor = C.Accent, checkmarkColor = C.OnAccent, uncheckedColor = C.Faint))
+        Column(Modifier.padding(start = 6.dp)) {
+            Text(title, color = C.Text, fontSize = 15.sp)
+            if (sub != null) Text(sub, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+/**
+ * 用户 2026-10-23 新二级页「智能整理」（仅 WebDAV；飞牛只有 AI 一项，直接进 AI 页）：
+ * AI 大模型 / 人脸识别 / 识别图中文字 / 自动旅行相册。存储键都不变。
+ */
+@Composable
+fun SmartSettingsScreen() {
+    val ctx = LocalContext.current
+    val lib = Dav.lib()
+    Page("智能整理") {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(bottom = 40.dp)) {
+            Spacer(Modifier.height(8.dp))
+            Card {
+                NavRow(LI.sparkle(), "AI 大模型", value = if (AiConfig.configured) "已配置 · " + AiProviders.of(AiConfig.provider).name else "未配置") { Nav.push(Route.AiSettings) }
+                if (lib != null) {
+                    val fl = remember(lib.accountId) { Faces.lib(lib.accountId) }
+                    Div()
+                    NavRow(LI.person(), "人脸识别", value = if (fl.persons.isNotEmpty()) "已识别 ${fl.persons.size} 人" else null) { HomeState.showFaceCfg = true }
+                    Div()
+                    LaunchedEffect(lib.accountId) { OcrRunner.refresh(lib) }
+                    ToggleRow(LI.search(), "识别图中文字", ocrStatus(lib), OcrRunner.enabled,
+                        info = "在手机上识别照片里的字，搜索时能按图中文字找到照片。只在本机识别，用缩略图，不下原图；小字可能认不出。还没有缩略图的照片，在照片页浏览过后会补上。") { OcrRunner.set(ctx, it) }
+                    Div()
+                    ToggleRow(LI.pin(), "自动旅行相册", on = TravelAlbums.enabled,
+                        info = "按拍摄时间和位置，把离常住地 50 公里以上、15 张以上的出行整理成相册，显示在「发现 → 回忆」。") { TravelAlbums.enabled = it }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 用户 2026-10-23 新二级页「高级」：低频、有风险或排障用的选项。
+ * 存储键都不变（TlsTrust 主机列表、nas.deleteForever、feat.workmanager）。
+ */
+@Composable
+fun AdvancedSettingsScreen() {
+    val ctx = LocalContext.current
+    val dav = HomeState.source == "dav"
+    var caOpen by remember { mutableStateOf(false) }
+    var forever by remember { mutableStateOf(Store.getStr("nas.deleteForever") == "1") }
+    var wmOn by remember { mutableStateOf(com.hark.shiguang.Features.workManager) }
+    Page("高级") {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(bottom = 40.dp)) {
+            Spacer(Modifier.height(8.dp))
+            Card {
+                NavRow(LI.lock(), CA_TITLE, value = TlsTrust.allowedHosts().size.takeIf { it > 0 }?.let { "$it 个" }) { caOpen = true }
+                if (!dav) {
+                    Div()
+                    ToggleRow(LI.trash(), "彻底删除", if (forever) "删除后无法恢复" else null, forever, alert = forever,
+                        info = "打开后删除照片时跳过飞牛回收站，无法恢复；关闭时删除的照片先进飞牛回收站，30 天内可恢复。") {
+                        forever = it; Store.putStr("nas.deleteForever", if (it) "1" else "")
+                    }
+                }
+                Div()
+                ToggleRow(LI.clock(), "系统定时后台整理", on = wmOn,
+                    info = "由系统在满足「后台整理」的网络和充电条件时定时扫描新照片、整理和备份，重启手机后也会继续。只在排查问题时才需要关掉。") {
+                    wmOn = it; com.hark.shiguang.Features.workManager = it; BackupScheduler.schedule(ctx)
+                }
+                Div()
+                NavRow(Icons.Rounded.BatteryChargingFull, "后台运行设置") { Nav.push(Route.X(ExtScreen.BgGuide)) }
+            }
+            Text("一维相册是第三方应用，与飞牛官方无关", color = C.Faint, fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        }
+    }
+    if (caOpen) UserCaDialog { caOpen = false }
+}
+
+/** 「识别图中文字」的状态值：一行，只说进度。 */
+private fun ocrStatus(lib: DavLib?): String? {
+    if (!OcrRunner.enabled) return null
     val cur = lib != null && OcrRunner.countsFor == lib.accountId
-    val prog = if (!cur) "" else if (OcrRunner.total == 0) "" else
-        "已识别 ${OcrRunner.done.coerceAtMost(OcrRunner.total)} / ${OcrRunner.total} 张" +
-            (if (OcrRunner.withText > 0) "，${OcrRunner.withText} 张有文字" else "") +
-            (if (OcrRunner.running) " · 识别中" else if (OcrRunner.done + OcrRunner.noImage < OcrRunner.total) " · " + ScanPolicy.waitingText() else "") +
-            (if (OcrRunner.noImage > 0) "\n${OcrRunner.noImage} 张暂无缩略图，在照片页浏览过后会补上" else "")
-    return listOf(prog, "只在本机识别，用缩略图，不下原图；小字可能认不出").filter { it.isNotEmpty() }.joinToString("\n")
+    if (!cur || OcrRunner.total == 0) return null
+    return "已识别 ${OcrRunner.done.coerceAtMost(OcrRunner.total)} / ${OcrRunner.total}" + if (OcrRunner.running) " · 识别中" else ""
 }

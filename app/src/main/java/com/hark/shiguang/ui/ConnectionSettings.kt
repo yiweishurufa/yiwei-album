@@ -99,33 +99,45 @@ fun ConnectionSettingsContent(onClose: () -> Unit) {
                         }.padding(vertical = 10.dp), contentAlignment = Alignment.Center) { Text(t, color = if (on) C.Text else C.Sub, fontSize = 14.sp) }
                     }
                 }
-                NavRow(LI.edit(), "重命名", a.title) { renaming = true }
-                NavRow(LI.nas(), "内网地址", a.lanUrl.ifEmpty { "未设置 · 点按填写" } + if (Endpoint.active == "内网") "  · 使用中" else "") { editLan = true }
-                NavRow(LI.swap(), "外网地址", a.wanUrl.ifEmpty { "未设置 · 点按填写" } + if (Endpoint.active == "外网") "  · 使用中" else "") { editWan = true }
-                // 1.0.0: 内网 / 外网 speed test, result inline on each button
-                val samples = remember(HomeState.source) { if (HomeState.source == "fn") HomeState.timeline.photos.asSequence().filter { !it.isVideo }.map { it.thumbM }.filter { it.isNotEmpty() }.take(24).toList() else emptyList() }
-                listOf(true, false).forEach { isLan ->
-                    val addr = if (isLan) a.lanUrl else a.wanUrl
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp), verticalAlignment = Alignment.Top) {
-                        Column(Modifier.weight(1f).padding(top = 10.dp)) {
-                            Text(if (isLan) "内网测速" else "外网测速", color = C.Text, fontSize = 15.sp)
-                            Text(addr.ifEmpty { "未设置地址" }.substringAfter("://"), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        TestButton("测速", Modifier.width(170.dp), resetKey = addr, height = 42.dp, holdMs = 6000, enabled = addr.isNotEmpty(),
-                            okLabel = { it.substringAfter("下载 ", "").substringBefore("（").ifEmpty { it.substringBefore(" ·") } }) { prog ->
-                            val r = Endpoint.speedTest(addr, samples, prog)
-                            if (isLan) speedLan = r else speedWan = r
-                            Endpoint.rememberFaster(speedLan, speedWan)
-                            r.line()
+                // 用户 2026-10-23：延迟并成连接方式下面的一行状态，点一下重测
+                Text("当前：" + if (testing) "测速中…" else if (Endpoint.latency >= 0) "${Endpoint.active.ifEmpty { "当前地址" }} · ${Endpoint.latency} ms" else "连不上",
+                    color = if (!testing && Endpoint.latency < 0) C.Danger else C.Sub, fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).clip(RoundedCornerShape(8.dp)).clickable(enabled = !testing) {
+                        testing = true; scope.launch { runCatching { Endpoint.autoSelect() }; testing = false }
+                    }.padding(horizontal = 6.dp, vertical = 6.dp))
+                Spacer(Modifier.height(6.dp))
+                Card {
+                    NavRow(LI.edit(), "重命名", value = a.title) { renaming = true }
+                    // 1.0.0: 内网 / 外网 speed test — 用户 2026-10-23：测速按钮并进地址行行尾，地址不再显示两遍
+                    val samples = remember(HomeState.source) { if (HomeState.source == "fn") HomeState.timeline.photos.asSequence().filter { !it.isVideo }.map { it.thumbM }.filter { it.isNotEmpty() }.take(24).toList() else emptyList() }
+                    listOf(true, false).forEach { isLan ->
+                        val addr = if (isLan) a.lanUrl else a.wanUrl
+                        Div()
+                        Row(Modifier.fillMaxWidth().clickable { if (isLan) editLan = true else editWan = true }.padding(start = 16.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            RowIcon(if (isLan) LI.nas() else LI.swap(), false)
+                            Spacer(Modifier.width(14.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(if (isLan) "内网地址" else "外网地址", color = C.Text, fontSize = 15.sp)
+                                Text(addr.ifEmpty { "未设置" }.substringAfter("://") + if (Endpoint.active == (if (isLan) "内网" else "外网")) " · 使用中" else "",
+                                    style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            TestButton("测速", Modifier.width(118.dp), resetKey = addr, height = 38.dp, holdMs = 6000, enabled = addr.isNotEmpty(),
+                                okLabel = { it.substringAfter("下载 ", "").substringBefore("（").ifEmpty { it.substringBefore(" ·") } }) { prog ->
+                                val r = Endpoint.speedTest(addr, samples, prog)
+                                if (isLan) speedLan = r else speedWan = r
+                                Endpoint.rememberFaster(speedLan, speedWan)
+                                r.line()
+                            }
                         }
                     }
                 }
-                NavRow(LI.clock(), "延迟", if (testing) "测速中…" else if (Endpoint.latency >= 0) "${Endpoint.latency} ms · ${Endpoint.active.ifEmpty { "当前地址" }} · 点按重测" else "连不上 · 点按重测") {
-                    testing = true; scope.launch { runCatching { Endpoint.autoSelect() }; testing = false }
-                }
-                NavRow(LI.close(), "退出这个账号", a.user, danger = true) {
-                    onClose(); Ops.logoutNas(a.id)
+                Spacer(Modifier.height(16.dp))
+                Card {
+                    NavRow(LI.close(), "退出这个账号", value = a.user, danger = true) {
+                        onClose(); Ops.logoutNas(a.id)
+                    }
                 }
             }
     }

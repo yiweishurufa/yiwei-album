@@ -45,6 +45,10 @@ sealed class Route {
     data object Recycle : Route()
     data object DavAccounts : Route()
     data object AiSettings : Route()
+    /** 用户 2026-10-23：设置 → 智能整理（WebDAV：AI / 人脸 / 图中文字 / 旅行相册）。 */
+    data object SmartSettings : Route()
+    /** 用户 2026-10-23：设置 → 通用 → 高级（证书、彻底删除、系统定时整理）。 */
+    data object AdvancedSettings : Route()
     data class Upload(val uris: List<android.net.Uri>) : Route()
     data class MovieDetail(val sourceKey: String, val itemId: String) : Route()
     data class MoviePlay(val sourceKey: String, val itemId: String, val path: String) : Route()
@@ -84,6 +88,8 @@ object Nav {
             is Route.Recycle -> "recycle"
             is Route.DavAccounts -> "davAccounts"
             is Route.AiSettings -> "aiSettings"
+            is Route.SmartSettings -> "smartSettings"
+            is Route.AdvancedSettings -> "advSettings"
             is Route.Search -> "search"
             is Route.MusicSettings -> "musicSettings"
             is Route.MusicNowPlaying -> "musicNowPlaying"
@@ -108,6 +114,8 @@ object Nav {
             "recycle" -> Route.Recycle
             "davAccounts" -> Route.DavAccounts
             "aiSettings" -> Route.AiSettings
+            "smartSettings" -> Route.SmartSettings
+            "advSettings" -> Route.AdvancedSettings
             "search" -> Route.Search
             "musicSettings" -> Route.MusicSettings
             "musicNowPlaying" -> Route.MusicNowPlaying
@@ -210,6 +218,8 @@ class MainActivity : ComponentActivity() {
                             Route.Recycle -> RecycleScreen()
                             Route.DavAccounts -> DavAccountsScreen()
                             Route.AiSettings -> AiSettingsScreen()
+                            Route.SmartSettings -> SmartSettingsScreen()
+                            Route.AdvancedSettings -> AdvancedSettingsScreen()
                             is Route.Upload -> UploadScreen(r)
                             is Route.MovieDetail -> MovieDetailScreen(r)
                             is Route.MoviePlay -> MoviePlayerScreen(r)

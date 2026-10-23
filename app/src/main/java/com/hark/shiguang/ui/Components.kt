@@ -201,7 +201,9 @@ fun ErrorState(message: String?, onRetry: () -> Unit, onFix: ((com.hark.shiguang
                 k == com.hark.shiguang.ErrorKind.NETWORK || k == com.hark.shiguang.ErrorKind.OTHER -> onRetry()
                 onFix != null -> onFix(k)
                 k == com.hark.shiguang.ErrorKind.AUTH -> com.hark.shiguang.Nav.push(if (HomeState.source == "dav") com.hark.shiguang.Route.DavAccounts else com.hark.shiguang.Route.ConnectionSettings)
-                else -> { HomeState.tab = 4; com.hark.shiguang.Nav.reset(com.hark.shiguang.Route.Home) }   // 证书 / 空间 / 位置：设置页里有对应入口
+                // 用户 2026-10-23：证书设置移进了「高级」，直接打开高级页，不再让人在设置首页里找
+                k == com.hark.shiguang.ErrorKind.CERT -> com.hark.shiguang.Nav.push(com.hark.shiguang.Route.AdvancedSettings)
+                else -> { HomeState.tab = 4; com.hark.shiguang.Nav.reset(com.hark.shiguang.Route.Home) }   // 空间 / 位置：设置页里有对应入口
             }
         }
         if (k != com.hark.shiguang.ErrorKind.NETWORK && k != com.hark.shiguang.ErrorKind.OTHER)

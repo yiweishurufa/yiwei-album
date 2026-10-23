@@ -26,6 +26,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
@@ -449,18 +451,31 @@ fun FaceSettingsDialog(onDismiss: () -> Unit) {
     var minP by remember { mutableFloatStateOf(FaceConfig.minPhotos.toFloat()) }
     var diff by remember { mutableFloatStateOf(FaceConfig.diff) }
     var confirmClear by remember { mutableStateOf(false) }
-    AlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface, title = { Text("人脸识别设置", color = C.Text) }, text = {
+    // 用户 2026-10-23：最常调的「至少几张」留在外面，另外两个阈值和恢复默认收进「高级参数」；解释改成 ⓘ
+    var adv by remember { mutableStateOf(false) }
+    AlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface, title = {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("人脸识别设置", color = C.Text)
+            InfoDot("人脸只在本机识别，不会上传。长按人物可以命名、合并或建相册。", "人脸识别")
+        }
+    }, text = {
         Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
-            Text("人脸置信度阈值  %.2f".format(conf), color = C.Text, fontSize = 14.sp)
-            Text("越高越只认清晰的正脸；侧脸、模糊、太小的会被忽略", style = MaterialTheme.typography.bodySmall)
-            Slider(conf, { conf = (it * 100).toInt() / 100f }, valueRange = 0.3f..0.95f)
-            Text("生成人物的最少照片数  ${minP.toInt()} 张", color = C.Text, fontSize = 14.sp)
-            Text("一个人出现在这么多张照片里才生成人物", style = MaterialTheme.typography.bodySmall)
+            Text("至少出现几张才算一个人  ${minP.toInt()} 张", color = C.Text, fontSize = 14.sp)
             Slider(minP, { minP = it }, valueRange = 1f..20f, steps = 18)
-            Text("人物相似度差异阈值  %.2f".format(diff), color = C.Text, fontSize = 14.sp)
-            Text("越小越严格：同一人容易被拆成几个；越大越宽松：不同人容易被并在一起", style = MaterialTheme.typography.bodySmall)
-            Slider(diff, { diff = (it * 100).toInt() / 100f }, valueRange = 0.15f..0.6f)
-            Text("恢复默认（0.65 · 5 张 · 0.36）", color = C.Accent, fontSize = 13.sp, modifier = Modifier.clickable { conf = FaceConfig.DEF_CONF; minP = FaceConfig.DEF_MIN.toFloat(); diff = FaceConfig.DEF_DIFF }.padding(vertical = 8.dp))
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { adv = !adv }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("高级参数", color = C.Text, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                Icon(if (adv) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null, tint = C.Faint)
+            }
+            if (adv) {
+                Text("人脸置信度  %.2f".format(conf), color = C.Text, fontSize = 14.sp)
+                Slider(conf, { conf = (it * 100).toInt() / 100f }, valueRange = 0.3f..0.95f)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("人物差异阈值  %.2f".format(diff), color = C.Text, fontSize = 14.sp)
+                    InfoDot("越小越严格：同一人容易被拆成几个；越大越宽松：不同人容易被并在一起。置信度越高越只认清晰的正脸，侧脸、模糊、太小的会被忽略。", "人脸参数")
+                }
+                Slider(diff, { diff = (it * 100).toInt() / 100f }, valueRange = 0.15f..0.6f)
+                Text("恢复默认（0.65 · 5 张 · 0.36）", color = C.Accent, fontSize = 13.sp, modifier = Modifier.clickable { conf = FaceConfig.DEF_CONF; minP = FaceConfig.DEF_MIN.toFloat(); diff = FaceConfig.DEF_DIFF }.padding(vertical = 8.dp))
+            }
             Text("清除识别结果并重新识别", color = C.Danger, fontSize = 13.sp, modifier = Modifier.clickable { confirmClear = true }.padding(vertical = 8.dp))
         }
     }, confirmButton = {

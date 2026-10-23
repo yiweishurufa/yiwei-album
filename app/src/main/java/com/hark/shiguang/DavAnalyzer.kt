@@ -278,10 +278,15 @@ object ScanPolicy {
         !allowNoCharge -> "充电时自动继续"
         else -> "会在后台继续"
     }
-    /** Single source for the two toggle wordings + the settings reference used by AI / backup pages. */
-    const val SETTINGS_REF = "设置 → 网络与电量"
-    const val CELLULAR_DESC = "本地分析、人脸识别、AI 分类和手机备份都会读取或上传照片，产生流量"
-    const val NO_CHARGE_DESC = "关掉更省电：本地分析、人脸识别和 AI 分类只在充电时继续"
+    /** 设置 →「后台整理」一行的状态值（用户 2026-10-23：两个开关合并成一行）。 */
+    fun label(): String = when {
+        !allowCellular && !allowNoCharge -> "Wi-Fi + 充电时"
+        !allowCellular -> "仅 Wi-Fi"
+        !allowNoCharge -> "充电时"
+        else -> "不限"
+    }
+    /** The settings reference used by AI / backup / onboarding texts. */
+    const val SETTINGS_REF = "设置 → 后台整理"
     /**
      * The one pause / resume pair (notification action, AI card toggle, AI tab). Callers keep their own
      * UI entry points; the coordination lives here so the notification and the card can never drift apart.

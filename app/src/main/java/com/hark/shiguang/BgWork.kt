@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit
 /**
  * 1.1.0 (3c): one scheduler for background work — incremental WebDAV scan, local analysis, faces, AI labelling and
  * phone backup — on top of WorkManager, so the system restarts it after reboot / process death and only runs it when
- * [ScanPolicy]'s network and charging rules hold (the same two switches in 设置 → 网络与电量).
+ * [ScanPolicy]'s network and charging rules hold (the same two switches in 设置 → 后台整理).
  *
  * The runners themselves (Analyzer / Faces / AiRunner / BackupRunner) are unchanged: a worker only starts them and
  * keeps the process alive while they make progress. Switch: [Features.workManager] (off = old behaviour: backup via

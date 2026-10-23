@@ -10,6 +10,9 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -314,9 +317,10 @@ fun MovieLibrarySettingsScreen() {
             if (lib.dirs.none { it.path == path }) lib.saveDirs(lib.dirs + MovieDir(path, name, "auto"))
         }; return@Page }
         Column(Modifier.fillMaxSize().verticalScrollCompat().navigationBarsPadding().padding(bottom = 40.dp)) {
-            Section("影视文件夹")
+            Section("影视文件夹", info = "和相册的扫描目录分开设置。可以加多个，每个标成电影、剧集或自动识别。" +
+                if (lib.kind == "fn") "\n\n飞牛的相册接口只返回视频本身，读不到同目录的 NFO、海报和字幕；这些会用 TMDB 补上。" else "")
             Card {
-                if (lib.dirs.isEmpty()) Text("和相册的扫描目录分开设置。可以加多个，每个标成电影、剧集或自动识别。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
+                if (lib.dirs.isEmpty()) Text("还没有影视文件夹", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
                 lib.dirs.forEachIndexed { i, d ->
                     if (i > 0) Div()
                     LibraryDirRow(d.name, d.path) { lib.saveDirs(lib.dirs - d) }
@@ -327,16 +331,13 @@ fun MovieLibrarySettingsScreen() {
                     }
                 }
                 Div()
-                NavRow(LI.plus(), "添加文件夹", if (lib.kind == "fn") "飞牛可选相册或文件管理里的文件夹" else "浏览这个 WebDAV") { picking = true }
+                NavRow(LI.plus(), "添加文件夹") { picking = true }
             }
             LibraryScanRow(lib.scanning, lib.dirs.isNotEmpty(), "先添加影视文件夹",
                 onScan = { lib.scan(); ScanService.ensure(ctx) }, redoLabel = "重新匹配未匹配") {
                 lib.scan(rescrapeUnmatched = true); ScanService.ensure(ctx)
             }
-            if (lib.kind == "fn") Text("飞牛的相册接口只返回视频本身，读不到同目录的 NFO、海报和字幕；这些会用 TMDB 补上。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 20.dp))
-
-            // 1.1.0: TMDB 和弹幕设置搬到「影音设置」（MediaSettingsScreen），这里只管影视文件夹
-            Card { NavRow(LI.settings(), "TMDB 刮削与弹幕", "在「影音设置」里，所有来源共用") { Nav.push(Route.MediaSettings) } }
+            // 用户 2026-10-23：这页本来就是从「影音设置」进来的，回到影音设置的回链删掉（绕圈）
             Section("缓存")
             Card {
                 NavRow(LI.trash(), "清空这个来源的影视库", "${lib.items.size} 部作品 · 播放进度保留", danger = true) { confirmClear = true }
@@ -392,35 +393,47 @@ internal fun FolderPicker(fs: MovieFs, kind: String, onDismiss: () -> Unit, fmOn
 }
 
 
-/** 1.1.0: TMDB 刮削 card (was inside 影视媒体库), shown in 影音设置. */
+/**
+ * 1.1.0: TMDB 刮削 card (was inside 影视媒体库), shown in 影音设置 →「资料补全」.
+ * 用户 2026-10-23：代理已是自动选择（直连 → 内置代理），两个代理输入框收进就地折叠的「高级」，默认收起；
+ * 以前填过代理的用户默认展开并标「已自定义」，免得一个看不见的值在起作用。存储键 tmdb.api / tmdb.img 不变。
+ */
 @Composable
-internal fun TmdbSettingsCard() {
+internal fun TmdbSettingsCard(extra: @Composable ColumnScope.() -> Unit = {}) {
     var tmdbKey by remember { mutableStateOf(Tmdb.key) }
     var api by remember { mutableStateOf(Tmdb.apiBase) }
     var img by remember { mutableStateOf(Tmdb.imgBase) }
-    Column {
-            Section("TMDB 刮削（所有来源共用）")
-            Card {
-                Spacer(Modifier.height(8.dp))
-                InputRow("API 密钥", tmdbKey, "v3 API Key 或 v4 读取令牌") { tmdbKey = it }
-                InputRow("接口代理（可选）", api, "直连不通时优先用它，再用内置代理") { api = it }
-                InputRow("图片代理（可选）", img, "直连不通时优先用它") { img = it }
-                TestButton("保存并测试", Modifier.padding(horizontal = 16.dp, vertical = 12.dp).fillMaxWidth(), resetKey = tmdbKey + "|" + api + "|" + img, height = 44.dp) {
-                    Tmdb.key = tmdbKey; Tmdb.apiBase = api; Tmdb.imgBase = img
-                    val t0 = System.currentTimeMillis()
-                    withContext(Dispatchers.IO) { Tmdb.test() } + " · ${System.currentTimeMillis() - t0} ms"
-                }
-                // 1.0.1 #1: which way TMDB is reached right now (direct overseas, an automatically verified proxy in China)
-                Row(Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("当前网络", color = C.Sub, fontSize = 12.sp)
-                        Text(if (TmdbNet.checking) "检测中…" else TmdbNet.status.ifEmpty { TmdbNet.describe() }, color = C.Text, fontSize = 14.sp)
-                    }
-                    TextButton(onClick = { TmdbNet.recheckAsync() }, enabled = !TmdbNet.checking) { Text("重新检测", color = C.Accent) }
-                }
-                Text("在 themoviedb.org 注册后，于 设置 → API 免费申请。填好后会自动检测：能直连就直连，连不上自动换国内可用的代理（每天和换网络时重新检测）。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 14.dp))
-            }
-
+    val custom = Tmdb.apiBase.isNotBlank() || Tmdb.imgBase.isNotBlank()
+    var adv by remember { mutableStateOf(custom) }
+    Card {
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f)) { InputRow("TMDB API 密钥", tmdbKey, "v3 API Key 或 v4 读取令牌") { tmdbKey = it } }
+            InfoDot("在 themoviedb.org 注册后，于「设置 → API」免费申请。填好后会自动检测：能直连就直连，连不上自动换国内可用的代理（每天和换网络时重新检测）。", "TMDB API 密钥")
+        }
+        // 1.0.1 #1: which way TMDB is reached right now (direct overseas, an automatically verified proxy in China)
+        Row(Modifier.padding(start = 18.dp, end = 8.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("当前网络：" + if (TmdbNet.checking) "检测中…" else TmdbNet.status.ifEmpty { TmdbNet.describe() }, color = C.Sub, fontSize = 13.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            TextButton(onClick = { TmdbNet.recheckAsync() }, enabled = !TmdbNet.checking) { Text("重新检测", color = C.Accent, fontSize = 13.sp) }
+        }
+        if (adv) {
+            InputRow("接口代理", api, "留空 = 自动") { api = it }
+            InputRow("图片代理", img, "留空 = 自动") { img = it }
+        }
+        TestButton("保存并测试", Modifier.padding(horizontal = 16.dp, vertical = 12.dp).fillMaxWidth(), resetKey = tmdbKey + "|" + api + "|" + img, height = 44.dp) {
+            Tmdb.key = tmdbKey; Tmdb.apiBase = api; Tmdb.imgBase = img
+            val t0 = System.currentTimeMillis()
+            withContext(Dispatchers.IO) { Tmdb.test() } + " · ${System.currentTimeMillis() - t0} ms"
+        }
+        Div()
+        extra()
+        Div()
+        Row(Modifier.fillMaxWidth().clickable { adv = !adv }.padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("高级", color = C.Text, fontSize = 15.sp, modifier = Modifier.weight(1f))
+            if (custom) Text("已自定义", color = C.Sub, fontSize = 13.sp, modifier = Modifier.padding(end = 8.dp))
+            Icon(if (adv) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null, tint = C.Faint, modifier = Modifier.size(20.dp))
+        }
     }
 }
 
@@ -463,26 +476,27 @@ fun MediaSettingsScreen() {
     var autoNext by remember { mutableStateOf(PlayPrefs.autoNext) }
     Page("影音设置", src?.let { "${if (it.kind == "dav") "WebDAV" else "飞牛"} · ${it.title}" } ?: "") {
         Column(Modifier.fillMaxSize().verticalScrollCompat().navigationBarsPadding().padding(bottom = 40.dp)) {
-            Section("文件夹（当前来源）")
+            Section("媒体库")
             Card {
                 val ml = Movies.lib()
-                NavRow(LI.film(), "影视文件夹", ml?.dirs?.size?.let { if (it == 0) "还没选，电影和剧集通常不和照片放一起" else "$it 个 · 自动配海报和简介" } ?: "先添加来源") { Nav.push(Route.MovieLibrarySettings) }
+                NavRow(LI.film(), "影视文件夹", value = ml?.dirs?.size?.let { if (it == 0) "未选择" else "$it 个" } ?: "先添加来源") { Nav.push(Route.MovieLibrarySettings) }
                 Div()
                 val mu = Music.lib()
-                NavRow(LI.music(), "音乐文件夹", mu?.dirs?.size?.let { if (it == 0) "还没选" else "$it 个 · ${mu.tracks.size} 首" } ?: "先添加来源") { Nav.push(Route.MusicSettings) }
+                NavRow(LI.music(), "音乐文件夹", value = mu?.dirs?.size?.let { if (it == 0) "未选择" else "$it 个 · ${mu.tracks.size} 首" } ?: "先添加来源") { Nav.push(Route.MusicSettings) }
             }
             Section("播放")
             Card {
                 val ctx = LocalContext.current
-                ToggleRow(LI.videos(), "离开时画中画",
-                    if (VideoPip.supported(ctx)) "播放电影剧集时按 Home 键或上滑回桌面，视频缩成小窗继续播放" else "这台手机不支持画中画（需要 Android 8 及以上）", pip) { pip = it; VideoPip.enabled = it }
-                ToggleRow(LI.play(), "自动播放下一集", "剧集播完前显示「下一集 5 秒后播放」，可以取消；每部剧记住看到第几集、看到哪里", autoNext) { autoNext = it; PlayPrefs.autoNext = it }
+                val pipOk = VideoPip.supported(ctx)
+                ToggleRow(LI.videos(), "离开时画中画", if (pipOk) null else "本机不支持", pip && pipOk, enabled = pipOk) { pip = it; VideoPip.enabled = it }
+                Div()
+                ToggleRow(LI.play(), "自动播放下一集", on = autoNext) { autoNext = it; PlayPrefs.autoNext = it }
             }
-            Section("音乐刮削（所有来源共用）")
-            Card {
-                ToggleRow(androidx.compose.material.icons.Icons.Rounded.Cloud, "联网补全", "文件里缺专辑、歌手、封面或歌词时，从网易云音乐（国内直连）和 LRCLIB 补上；不会改写文件里已有的信息", online) { online = it; MusicPrefs.online = it }
+            Section("资料补全（所有来源共用）")
+            TmdbSettingsCard {
+                ToggleRow(androidx.compose.material.icons.Icons.Rounded.Cloud, "音乐联网补全", on = online,
+                    info = "文件里缺专辑、歌手、封面或歌词时，从网易云音乐（国内直连）和 LRCLIB 补上；不会改写文件里已有的信息。") { online = it; MusicPrefs.online = it }
             }
-            TmdbSettingsCard()
             DanmakuSettingsCard()
         }
     }

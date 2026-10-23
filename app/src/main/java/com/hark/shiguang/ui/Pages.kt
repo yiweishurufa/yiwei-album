@@ -473,21 +473,31 @@ fun BackupScreen() {
         if (uris.isNotEmpty()) Nav.push(Route.Upload(uris))
     }
     LaunchedEffect(Unit) { if (on) refreshPending() }
-    Page("手机相册备份") {
+    var policyOpen by remember { mutableStateOf(false) }
+    var confirmAll by remember { mutableStateOf(false) }
+    // 用户 2026-10-23：传输队列从设置首页移走，备份页右上角放一个入口；页面说明放进 ⓘ
+    Page("手机相册备份", actions = {
+        InfoDot("照片上传到飞牛相册设置的上传目录。自动备份每小时检查一次，只备份开启之后新拍的照片；备份只上传，不会删除手机上的照片。", "手机相册备份")
+        RoundIcon(LI.swap()) { Nav.push(Route.Transfers) }
+    }) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 40.dp)) {
             Section("手动")
-            NavRow(Icons.Rounded.AddPhotoAlternate, "选择照片上传", "从手机相册挑选照片或视频") {
-                picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+            Card {
+                NavRow(Icons.Rounded.AddPhotoAlternate, "选择照片上传") {
+                    picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+                }
             }
             Section("自动备份")
-            ToggleRow(Icons.Rounded.Backup, "自动备份新照片", if (on) "每小时检查一次，从开启那一刻起的新照片会上传到 NAS" else "开启后只备份之后新拍的照片", on) { v ->
+            Card {
+            ToggleRow(Icons.Rounded.Backup, "自动备份新照片", on = on) { v ->
                 if (v) permLauncher.launch(perms) else { on = false; Store.backupOn = false; BackupScheduler.cancel(ctx) }
             }
-            Text(if (ScanPolicy.allowCellular) "Wi-Fi 和移动网络都会备份（${ScanPolicy.SETTINGS_REF}）" else "只在 Wi-Fi 下备份（${ScanPolicy.SETTINGS_REF} 可允许移动网络）",
-                style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp))
+            Div()
+            NavRow(Icons.Rounded.Wifi, "网络", value = if (ScanPolicy.allowCellular) "Wi-Fi + 移动网络" else "仅 Wi-Fi") { policyOpen = true }
             if (on) {
+                Div()
                 NavRow(Icons.Rounded.CloudUpload, if (running) "正在加入队列…" else "立即备份",
-                    when { pending > 0 -> "有 $pending 项待备份"; pending == 0 -> "已全部备份" + if (BackupRunner.lastResult.isNotEmpty()) " · 上次：${BackupRunner.lastResult}" else ""; else -> "" }) {
+                    value = when { pending > 0 -> "$pending 项待备份"; pending == 0 -> "已全部备份"; else -> null }) {
                     if (running) return@NavRow
                     running = true
                     scope.launch {
@@ -500,13 +510,18 @@ fun BackupScreen() {
                         running = false; refreshPending()
                     }
                 }
-                NavRow(Icons.Rounded.History, "把已有照片也备份", "从最早的照片开始补传（可能很多）") {
-                    Store.backupSince = 0L; refreshPending(); toast(ctx, "下次备份会从最早的照片开始")
-                }
+                Div()
+                NavRow(Icons.Rounded.History, "把已有照片也备份") { confirmAll = true }
             }
-            Text("照片上传到飞牛相册设置的上传目录。备份只上传，不会删除手机上的照片。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(20.dp))
+            }
         }
     }
+    if (policyOpen) BackgroundPolicyDialog { policyOpen = false }
+    if (confirmAll) AlertDialog(onDismissRequest = { confirmAll = false }, containerColor = C.Surface,
+        title = { Text("把已有照片也备份？", color = C.Text) },
+        text = { Text("下次备份会从手机里最早的照片开始补传，照片多时要传很久。", color = C.Sub) },
+        confirmButton = { TextButton(onClick = { confirmAll = false; Store.backupSince = 0L; refreshPending(); toast(ctx, "下次备份会从最早的照片开始") }) { Text("开始补传", color = C.Accent) } },
+        dismissButton = { TextButton(onClick = { confirmAll = false }) { Text("取消", color = C.Sub) } })
 }
 
 // ============================================================ WebDAV accounts
@@ -520,7 +535,7 @@ fun DavAccountsScreen() {
     var editing by remember { mutableStateOf<CloudAccount?>(null) }
     var adding by remember { mutableStateOf(false) }
     var removing by remember { mutableStateOf<CloudAccount?>(null) }
-    Page("WebDAV", "可添加多个，照片不会被移动", actions = { RoundIcon(LI.plus()) { adding = true } }) {
+    Page("WebDAV", actions = { RoundIcon(LI.plus()) { adding = true } }) {
         if (accounts.isEmpty()) StateMessage(LI.drive(), "还没有 WebDAV", "支持 123 云盘、坚果云、群晖、Nextcloud、Alist 等任何 WebDAV 服务。", "添加") { adding = true }
         else LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
             items(accounts, key = { it.id }) { a ->
@@ -586,7 +601,10 @@ fun DavDialog(old: CloudAccount?, onDismiss: () -> Unit, onSaved: (CloudAccount)
                 color = C.Danger, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(bottom = 8.dp))
             Field2(preset?.userHint?.let { "用户名（$it）" } ?: "用户名", user) { user = it }
             Field2(if (preset?.key == "123" || preset?.key == "jgy") "应用密码" else "密码", pass, secret = true) { pass = it }
-            if (preset == null) Text("例：https://webdav.123pan.cn/webdav、https://dav.jianguoyun.com/dav/、http://<IP>:5244/dav", color = C.Sub, fontSize = 12.sp)
+            if (preset == null) Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("地址怎么填", color = C.Sub, fontSize = 12.sp)
+                InfoDot("例：https://webdav.123pan.cn/webdav、https://dav.jianguoyun.com/dav/、http://<IP>:5244/dav", "服务器地址")
+            }
             TestButton("测试连接", Modifier.fillMaxWidth().padding(top = 10.dp), resetKey = url + "|" + user + "|" + pass, height = 44.dp) {
                 val d = draft()
                 // 1.0.2: with a VPN on, measure VPN vs direct first so the test itself already uses the faster route
