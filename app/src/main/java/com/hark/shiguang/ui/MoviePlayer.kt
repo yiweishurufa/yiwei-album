@@ -163,6 +163,10 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     var dvFixedFor by remember { mutableStateOf("") }
     var casting by remember { mutableStateOf(false) }
     var playerView by remember { mutableStateOf<PlayerView?>(null) }
+    // 用户 2026-10-23 反馈：右侧面板（音轨 / 字幕 / 清晰度 / 详细信息）
+    var panel by remember { mutableStateOf<PlayerPanel?>(null) }
+    var moreMenu by remember { mutableStateOf(false) }
+    var tracksVer by remember { mutableIntStateOf(0) }
     val skipped = remember { HashSet<String>() }
     // 1.1.0: libVLC removed. rmvb/rm/wmv/asf (no media3 extractor) and files media3 reports as unsupported → 「用其他播放器打开」
     fun needsExternal(q: QItem) = NameParser.ext(q.file.name) in ExternalPlayer.VIDEO_EXT
@@ -255,6 +259,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                 error = null
             }
             override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                tracksVer++
                 val id = player.currentMediaItem?.mediaId ?: return
                 // badges from the real streams, shown on the detail page next time
                 val badges = MediaBadges.fromTracks(tracks)
@@ -362,6 +367,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         player.replaceMediaItem(i, itemFor(q, urls[q.path].orEmpty(), ms)); player.seekTo(i, pos)
     }
     BackHandler { if (extIdx < 0) save(); Nav.pop() }
+    BackHandler(enabled = panel != null || moreMenu) { panel = null; moreMenu = false }   // a panel closes before the player does
 
     // 1.1.0 画中画：把播放状态、视频宽高比和视频在屏幕上的位置告诉系统（离开 App 时进入小窗，见 VideoPip）
     val inPip = VideoPip.inPip
@@ -421,6 +427,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     // PiP shows only the video: no controller (and the Compose overlays below are hidden too)
     LaunchedEffect(inPip, playerView) {
         playerView?.let { pv -> pv.useController = !inPip; if (inPip) pv.hideController() }
+        if (inPip) panel = null
     }
 
     if (extIdx >= 0) {
@@ -442,17 +449,29 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         return
     }
 
+    val tracksNow = remember(tracksVer) { player.currentTracks }
+    val audioRows = remember(tracksNow) { trackRows(tracksNow, MC.TRACK_TYPE_AUDIO) }
+    val textRows = remember(tracksNow) { trackRows(tracksNow, MC.TRACK_TYPE_TEXT) }
+    val qualityRowsNow = remember(tracksNow) { qualityRows(tracksNow) }
+    val qualityLabel = when {
+        qualityRowsNow.size <= 1 -> "原画"
+        hasVideoOverride(player) -> qualityRowsNow.firstOrNull { it.selected }?.option?.title ?: "清晰度"
+        else -> "自动"
+    }
+
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(factory = {
             PlayerView(it).apply {
                 layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                 this.player = player
                 useController = true
-                setShowSubtitleButton(true)
+                // 用户 2026-10-23 反馈：音轨 / 字幕在顶栏自己的面板里选（去重、显示 mkv 标题），不用 media3 自带的 CC 和齿轮
+                setShowSubtitleButton(false)
                 setShowNextButton(queue.size > 1); setShowPreviousButton(queue.size > 1)
                 setShowFastForwardButton(true); setShowRewindButton(true)
                 controllerShowTimeoutMs = 3500
-                setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { v -> controls = v == android.view.View.VISIBLE })
+                hideBuiltInSettings(this)
+                setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { v -> controls = v == android.view.View.VISIBLE; hideBuiltInSettings(this) })
                 keepScreenOn = true
                 playerView = this
                 subtitleView?.let { sv -> sv.setApplyEmbeddedFontSizes(false); sv.setFractionalTextSize(PlayPrefs.subSize); sv.setBottomPaddingFraction(PlayPrefs.subBottom) }
@@ -464,8 +483,17 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                 IconButton(onClick = { save(); Nav.pop() }) { Icon(LI.back(true), null, tint = Color.White) }
                 Text(title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 SpeedButton(player)
-                IconButton(onClick = { player.pause(); casting = true }) { Icon(Icons.Rounded.Cast, null, tint = Color.White) }
-                IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, null, tint = Color.White) }
+                TopTextButton(qualityLabel) { panel = PlayerPanel.QUALITY }
+                if (audioRows.size > 1) TopTextButton("音轨") { panel = PlayerPanel.AUDIO }
+                if (textRows.isNotEmpty()) TopTextButton("字幕") { panel = PlayerPanel.TEXT }
+                IconButton(onClick = { player.pause(); casting = true }) { Icon(Icons.Rounded.Cast, "投屏", tint = Color.White) }
+                Box {
+                    IconButton(onClick = { moreMenu = true }) { Icon(Icons.Rounded.MoreVert, "更多", tint = Color.White) }
+                    DropdownMenu(moreMenu, onDismissRequest = { moreMenu = false }) {
+                        DropdownMenuItem(text = { Text("详细信息") }, onClick = { moreMenu = false; panel = PlayerPanel.INFO })
+                        DropdownMenuItem(text = { Text("播放设置") }, onClick = { moreMenu = false; menu = true })
+                    }
+                }
             }
         }
         hint?.takeIf { !inPip }?.let { h ->
@@ -491,6 +519,31 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                     if (player.hasNextMediaItem()) TextButton(onClick = { error = null; player.seekToNextMediaItem(); player.prepare(); player.play() }) { Text("下一集", color = Color.White) }
                 }
             }
+        }
+        if (!inPip) when (panel) {
+            PlayerPanel.AUDIO -> SidePanel("音轨", { panel = null }) {
+                audioRows.forEach { r -> PanelRow(r.option.title, r.option.detail, r.selected) { selectTrack(player, MC.TRACK_TYPE_AUDIO, r.refs.first()); panel = null } }
+            }
+            PlayerPanel.TEXT -> SidePanel("字幕", { panel = null }) {
+                val off = textRows.none { it.selected }
+                PanelRow("关闭", null, off) { subtitlesOff(player); panel = null }
+                textRows.forEach { r -> PanelRow(r.option.title, r.option.detail, r.selected) { selectTrack(player, MC.TRACK_TYPE_TEXT, r.refs.first()); panel = null } }
+            }
+            PlayerPanel.QUALITY -> SidePanel("清晰度", { panel = null }) {
+                if (qualityRowsNow.size > 1) {
+                    val auto = !hasVideoOverride(player)
+                    PanelRow("自动", "按网速自动切换", auto) { qualityAuto(player); panel = null }
+                    qualityRowsNow.forEach { r -> PanelRow(r.option.title, r.option.detail, !auto && r.selected) { selectTrack(player, MC.TRACK_TYPE_VIDEO, r.refs.first()); panel = null } }
+                } else {
+                    val r = qualityRowsNow.firstOrNull()
+                    PanelRow("原画", r?.option?.detail, true) { panel = null }
+                    PanelNote(if (lib.kind == "dav") "WebDAV 直接播放原文件，只有原画一种清晰度。" else "飞牛暂未提供转码档位，播放的是原文件。")
+                }
+            }
+            PlayerPanel.INFO -> SidePanel("详细信息", { panel = null }) {
+                PlayerInfo(player, lib, queue.getOrNull(player.currentMediaItemIndex) ?: queue[start])
+            }
+            null -> Unit
         }
     }
     if (menu) {
@@ -533,7 +586,7 @@ private fun PlayerMenu(player: ExoPlayer, showId: String, offset: Long, offsetEn
                 { size = (size + 0.005f).coerceAtMost(0.1f); PlayPrefs.subSize = size; onStyle() })
             Stepper("字幕位置", if (bottom <= 0.03f) "最低" else "抬高 ${(bottom * 100).toInt()}%", { bottom = (bottom - 0.02f).coerceAtLeast(0f); PlayPrefs.subBottom = bottom; onStyle() },
                 { bottom = (bottom + 0.02f).coerceAtMost(0.4f); PlayPrefs.subBottom = bottom; onStyle() })
-            Text("音轨和字幕轨在播放器底栏的设置按钮里选，选过的语言本剧会记住。", color = C.Faint, fontSize = 11.sp, modifier = Modifier.padding(top = 10.dp))
+            Text("音轨和字幕在顶栏「音轨」「字幕」里选，选过的语言本剧会记住。", color = C.Faint, fontSize = 11.sp, modifier = Modifier.padding(top = 10.dp))
         }
     }, confirmButton = { TextButton(onDismiss) { Text("完成", color = C.Accent) } })
 }
@@ -604,4 +657,56 @@ private fun subLabel(sub: String, video: String): String {
         rest.isEmpty() -> "外挂字幕"
         else -> rest
     }
+}
+
+/** media3's settings gear only offers speed (we have 倍速) and its own un-deduplicated audio list — hide it. */
+@androidx.annotation.OptIn(UnstableApi::class)
+private fun hideBuiltInSettings(pv: PlayerView) {
+    pv.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_settings)?.visibility = android.view.View.GONE
+    pv.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_subtitle)?.visibility = android.view.View.GONE
+}
+
+@Composable
+private fun TopTextButton(text: String, onClick: () -> Unit) {
+    TextButton(onClick = onClick, modifier = Modifier.heightIn(min = 48.dp)) { Text(text, color = Color.White, fontSize = 14.sp) }
+}
+
+/**
+ * 用户 2026-10-23 反馈：「详细信息」面板。来源只写账号类型、账号名和文件路径，不显示播放地址（可能带密码 / token）。
+ * 编码、分辨率等从 media3 当前选中的 Format 读；缓冲每秒刷新。
+ */
+@androidx.annotation.OptIn(UnstableApi::class)
+@Composable
+private fun ColumnScope.PlayerInfo(player: ExoPlayer, lib: MovieLib, q: QItem) {
+    var tick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) { while (true) { delay(1_000); tick++ } }
+    if (tick < 0) return   // reading tick makes the panel recompose every second
+    val vf = player.videoFormat
+    val af = player.audioFormat
+    val account = if (lib.kind == "dav") com.hark.shiguang.cloud.CloudAccounts.all.firstOrNull { it.id == lib.accountId }?.title
+        else NasAccounts.list.firstOrNull { it.id == lib.accountId }?.title
+    val path = q.file.path.let { p ->
+        // never a full url (a WebDAV url can carry user:password); fnOS 文件管理 paths start with "fm:"
+        if (p.startsWith("http", ignoreCase = true)) runCatching { Uri.parse(p).path }.getOrNull().orEmpty() else p.removePrefix("fm:")
+    }
+    val dash = "—"
+    InfoSection("来源")
+    InfoRow("账号", listOfNotNull(if (lib.kind == "dav") "WebDAV" else "飞牛", account?.takeIf { it.isNotBlank() }).joinToString(" · "))
+    InfoRow("路径", path.ifEmpty { q.file.name })
+    TrackNames.sizeName(q.file.size)?.let { InfoRow("文件大小", it) }
+    InfoSection("视频")
+    InfoRow("容器", TrackNames.containerName(vf?.containerMimeType ?: af?.containerMimeType, q.file.name) ?: dash)
+    InfoRow("编码", vf?.let { f -> TrackNames.videoCodecName(f.sampleMimeType)?.let { c -> MediaBadges.dvProfile(f)?.let { "$c · 杜比视界 P$it" } ?: c } } ?: dash)
+    InfoRow("分辨率", vf?.takeIf { it.width > 0 && it.height > 0 }?.let { "${it.width}×${it.height}" } ?: dash)
+    InfoRow("帧率", vf?.let { TrackNames.frameRateName(it.frameRate) } ?: dash)
+    val vbr = vf?.let { f -> listOf(f.averageBitrate, f.bitrate, f.peakBitrate).firstOrNull { it > 0 } }
+    val dur = player.duration.takeIf { it > 0 && it != MC.TIME_UNSET } ?: (q.file.duration * 1000L)
+    InfoRow("码率", vbr?.let { TrackNames.bitrateName(it.toLong()) }
+        ?: TrackNames.bitrateName(if (q.file.size > 0 && dur > 0) q.file.size * 8_000 / dur else 0)?.let { "约 $it（整体平均）" } ?: dash)
+    InfoSection("音频")
+    InfoRow("编码", af?.let { TrackNames.codecName(it.sampleMimeType, it.codecs) ?: it.sampleMimeType } ?: dash)
+    InfoRow("声道", af?.channelCount?.takeIf { it > 0 }?.let { n -> when (n) { 1 -> "单声道"; 2 -> "立体声 2.0"; else -> "${TrackNames.channelName(n)} 环绕声" } } ?: dash)
+    InfoRow("采样率", af?.let { TrackNames.sampleRateName(it.sampleRate) } ?: dash)
+    InfoSection("播放")
+    InfoRow("缓冲", "已缓冲 ${player.totalBufferedDuration / 1000} 秒" + player.bufferedPercentage.takeIf { it > 0 }?.let { " · 全片 $it%" }.orEmpty())
 }
