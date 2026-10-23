@@ -69,7 +69,10 @@ class FaceLib(val accountId: String) {
     var done by mutableIntStateOf(0)
     var total by mutableIntStateOf(0)
     var status by mutableStateOf("")
+    /** 用户 2026-10-23 反馈 #7：出错原因（模型加载失败、任务异常），非空时界面显示原因 + 重试；重试或成功启动时清空。 */
+    var error by mutableStateOf("")
     private var loaded = false
+    private var lastClusterLog = ""
 
     fun cropFile(faceId: String) = File(dir, "$faceId.jpg")
 
@@ -163,6 +166,11 @@ class FaceLib(val accountId: String) {
         }
         val built = edits.build(members.map { it.toList() }, byPath, names) { com.hark.shiguang.Hidden.hasDav(accountId, it) }
         persons = built.first; hiddenPersons = built.second
+        // FACE 诊断：只在结果变化时记一行（cluster 会被页面频繁调用）
+        val small = members.count { m -> m.map { it.path }.distinct().size < FaceConfig.minPhotos }
+        val line = "cluster: ${faces.values.sumOf { it.size }} faces in ${scanned.size} scanned photos, ${all.size} pass conf ${FaceConfig.conf} → " +
+            "${members.size} groups, $small below ${FaceConfig.minPhotos} photos → ${persons.size} persons (+${hiddenPersons.size} hidden), diff ${FaceConfig.diff}"
+        if (line != lastClusterLog) { lastClusterLog = line; Diag.log("FACE", line) }
     }
 
     companion object {
@@ -182,6 +190,10 @@ object Faces {
     private var interp: Interpreter? = null
     private var inShape = intArrayOf(1, 112, 112, 3)
     private var outDim = 192
+    @Volatile private var mlkitWarned = false
+    @Volatile private var lastStartLog = ""
+    /** start() 被页面和后台频繁调用：同样的「为什么没开始」只记一次。 */
+    private fun logOnce(msg: String) { if (msg != lastStartLog) { lastStartLog = msg; Diag.log("FACE", msg) } }
 
     private val detector by lazy {
         FaceDetection.getClient(FaceDetectorOptions.Builder()
@@ -193,7 +205,7 @@ object Faces {
 
     private fun model(c: Context): Interpreter {
         interp?.let { return it }
-        val fd = c.assets.openFd("mobilefacenet.tflite")
+        val fd = c.assets.openFd(MODEL)
         val buf = java.io.FileInputStream(fd.fileDescriptor).channel.map(FileChannel.MapMode.READ_ONLY, fd.startOffset, fd.declaredLength)
         val i = Interpreter(buf, Interpreter.Options().setNumThreads(2))
         inShape = i.getInputTensor(0).shape()
@@ -207,50 +219,96 @@ object Faces {
     fun stop(accountId: String) { jobs.remove(accountId)?.cancel() }
     val running: Boolean get() = jobs.values.any { it.isActive }
 
+    /** 人脸模型（MobileFaceNet）是否打包进了 APK。用户 2026-10-23 反馈 #7 的根因就是它缺失。 */
+    fun modelPresent(c: Context): Boolean = runCatching { c.assets.openFd(MODEL).close(); true }.getOrDefault(false)
+    private const val MODEL = "mobilefacenet.tflite"
+
+    private val SKIP_CATS = setOf("文档", "截图", "美食", "风景", "建筑", "植物", "交通")
+    /** AI 整理已判定「无人脸」或属于无人类别的照片，人脸识别跳过（省流量）。 */
+    fun skipByAi(lib: DavLib, p: Photo): Boolean = lib.meta[p.cloudPath]?.let { m -> m.aiFaces == 0 || m.aiCat in SKIP_CATS } ?: false
+    /** 还需要做人脸识别的图片数（不含视频和被 AI 跳过的）。 */
+    fun pending(lib: DavLib, fl: FaceLib): Int = lib.photos.count { !it.isVideo && it.cloudPath !in fl.scanned && !skipByAi(lib, it) }
+
     /** Scans every photo not scanned yet, then clusters. [manual] ignores the Wi-Fi + charging rule. */
     fun start(c: Context, lib: DavLib, manual: Boolean) {
         if (jobs[lib.accountId]?.isActive == true) return
         val fl = lib(lib.accountId)
-        if (!manual && !Analyzer.canScan(c)) { fl.cluster(lib); return }
-        if (lib.photos.none { !it.isVideo && it.cloudPath !in fl.scanned }) { fl.cluster(lib); return }
+        val left = pending(lib, fl)
+        if (!manual && !Analyzer.canScan(c)) {
+            fl.status = if (left > 0) ScanPolicy.waitingText() else ""
+            logOnce("skip start: wifi=${Net.isWifi(c)} charging=${Net.isCharging(c)} cell=${ScanPolicy.allowCellular} noCharge=${ScanPolicy.allowNoCharge}, $left photos left")
+            fl.cluster(lib); return
+        }
+        if (left == 0) { fl.status = ""; logOnce("nothing new (${fl.scanned.size} scanned)"); fl.cluster(lib); return }
+        if (manual) fl.error = ""
         ScanService.ensure(c)
         jobs[lib.accountId] = scope.launch {
             fl.running = true; fl.status = ""
-            val s = lib.src ?: run { fl.running = false; jobs.remove(lib.accountId); return@launch }
-            val skipCats = setOf("文档", "截图", "美食", "风景", "建筑", "植物", "交通")
-            val todo = lib.photos.filter { p ->
-                if (p.isVideo || p.cloudPath in fl.scanned) return@filter false
-                val m = lib.meta[p.cloudPath]
-                !(m != null && (m.aiFaces == 0 || m.aiCat in skipCats))
+            try { scanAll(c, lib, fl, manual) }
+            catch (e: CancellationException) { Diag.log("FACE", "stopped at ${fl.done}/${fl.total}"); throw e }
+            catch (e: Throwable) {
+                // 以前异常会让 running 一直为 true、界面静默；现在记下原因给界面显示
+                Diag.e("FACE", e); fl.error = "人脸识别出错：${e.message ?: e.javaClass.simpleName}"; fl.status = fl.error
+            } finally {
+                runCatching { fl.save() }
+                fl.running = false
+                jobs.remove(lib.accountId)
             }
-            fl.total = todo.size; fl.done = 0
-            runCatching { model(c) }.onFailure { fl.status = "人脸模型加载失败：${it.message}"; fl.running = false; jobs.remove(lib.accountId); return@launch }
-            val gate = kotlinx.coroutines.sync.Semaphore(3)
-            val chunks = todo.chunked(12)
-            var ci = 0
-            while (ci < chunks.size) {
-                if (!isActive) break
-                // B29: Wi-Fi / charging lost mid-run → wait here (like AiRunner.loop) instead of running
-                // dry through the queue; the chunk is retried after the wait, nothing is skipped.
-                if (!manual && !Analyzer.canScan(c)) { fl.status = ScanPolicy.waitingText(); delay(20_000); continue }
-                val chunk = chunks[ci]
-                chunk.map { p -> async {
-                    gate.acquire()
-                    // B9: only a completed detection attempt marks the photo scanned. Download / decode
-                    // failures go to failed (+failedAt) and are retried on the next start.
-                    val ok = try { runCatching { scanOne(c, s, p, fl) }.getOrDefault(false) } finally { gate.release() }
-                    if (ok) { fl.scanned.add(p.cloudPath); fl.failed.remove(p.cloudPath) }
-                    else fl.failed[p.cloudPath] = System.currentTimeMillis()
-                } }.awaitAll()
-                fl.done += chunk.size
-                if (fl.done % 48 < 12) { fl.save(); withContext(Dispatchers.Main) { fl.cluster(lib) } }
-                ci++
-            }
-            fl.save()
-            withContext(Dispatchers.Main) { fl.cluster(lib) }
-            fl.running = false
-            jobs.remove(lib.accountId)
         }
+    }
+
+    private suspend fun CoroutineScope.scanAll(c: Context, lib: DavLib, fl: FaceLib, manual: Boolean) {
+        val s = lib.src ?: run { Diag.log("FACE", "no WebDAV source → stop"); return }
+        var skippedByAi = 0
+        val todo = lib.photos.filter { p ->
+            if (p.isVideo || p.cloudPath in fl.scanned) return@filter false
+            if (skipByAi(lib, p)) { skippedByAi++; return@filter false }
+            true
+        }
+        fl.total = todo.size; fl.done = 0
+        Diag.log("FACE", "start manual=$manual: ${lib.photos.size} items, ${fl.scanned.size} scanned, ${todo.size} to do, skipped $skippedByAi (AI: no face / scenery category)")
+        runCatching { model(c) }.onFailure {
+            fl.error = if (!modelPresent(c)) "人脸模型文件缺失（安装包不完整），请更新到最新版" else "人脸模型加载失败：${it.message ?: it.javaClass.simpleName}"
+            fl.status = fl.error
+            Diag.log("FACE", "model load failed: ${it.javaClass.simpleName}: ${it.message} (present=${modelPresent(c)})")
+            return
+        }
+        fl.error = ""
+        Diag.log("FACE", "model ok: in=${inShape.joinToString("x")} out=$outDim")
+        var facesTotal = 0; var failedTotal = 0; var noFaceTotal = 0
+        val gate = kotlinx.coroutines.sync.Semaphore(3)
+        val chunks = todo.chunked(12)
+        var ci = 0
+        while (ci < chunks.size) {
+            if (!isActive) break
+            // B29: Wi-Fi / charging lost mid-run → wait here (like AiRunner.loop) instead of running
+            // dry through the queue; the chunk is retried after the wait, nothing is skipped.
+            if (!manual && !Analyzer.canScan(c)) {
+                if (fl.status.isEmpty()) Diag.log("FACE", "waiting at ${fl.done}/${fl.total}: wifi=${Net.isWifi(c)} charging=${Net.isCharging(c)}")
+                fl.status = ScanPolicy.waitingText(); delay(20_000); continue
+            }
+            fl.status = ""
+            val chunk = chunks[ci]
+            val got = chunk.map { p -> async {
+                gate.acquire()
+                // B9: only a completed detection attempt marks the photo scanned. Download / decode
+                // failures go to failed (+failedAt) and are retried on the next start.
+                val n = try { runCatching { scanOne(c, s, p, fl) }.onFailure { e -> if (e is CancellationException) throw e; Diag.log("FACE", "photo failed: ${e.javaClass.simpleName}: ${e.message}") }.getOrDefault(-1) } finally { gate.release() }
+                if (n >= 0) { fl.scanned.add(p.cloudPath); fl.failed.remove(p.cloudPath) }
+                else fl.failed[p.cloudPath] = System.currentTimeMillis()
+                n
+            } }.awaitAll()
+            facesTotal += got.filter { it > 0 }.sum(); failedTotal += got.count { it < 0 }; noFaceTotal += got.count { it == 0 }
+            fl.done += chunk.size
+            if (fl.done % 48 < 12) {
+                Diag.log("FACE", "progress ${fl.done}/${fl.total}: $facesTotal faces, $noFaceTotal photos without face, $failedTotal failed (download/decode)")
+                fl.save(); withContext(Dispatchers.Main) { fl.cluster(lib) }
+            }
+            ci++
+        }
+        Diag.log("FACE", "done ${fl.done}/${fl.total}: $facesTotal faces, $noFaceTotal photos without face, $failedTotal failed")
+        fl.save()
+        withContext(Dispatchers.Main) { fl.cluster(lib) }
     }
 
     private fun decode(bytes: ByteArray, max: Int): Bitmap? {
@@ -268,13 +326,13 @@ object Faces {
         return b
     }
 
-    /** Returns true when the detection attempt completed (even with zero faces found); false on download / decode failure. */
-    private fun scanOne(c: Context, s: com.hark.shiguang.cloud.WebDavSource, p: Photo, fl: FaceLib): Boolean {
-        if (p.size > 40_000_000) return false
-        val bytes = s.allBytes(p.cloudPath, 40_000_000L) ?: return false
-        val bmp = decode(bytes, 1280) ?: return false
+    /** Number of faces kept (0 when none), or -1 on download / decode failure (retried next start). */
+    private fun scanOne(c: Context, s: com.hark.shiguang.cloud.WebDavSource, p: Photo, fl: FaceLib): Int {
+        if (p.size > 40_000_000) return -1
+        val bytes = s.allBytes(p.cloudPath, 40_000_000L) ?: return -1
+        val bmp = decode(bytes, 1280) ?: return -1
         val found = detect(bmp)
-        if (found.isEmpty()) return true
+        if (found.isEmpty()) return 0
         val list = mutableListOf<FaceRec>()
         found.forEachIndexed { i, f ->
             // S7: the landmarks travel with the detection result — no shared RectF-keyed map.
@@ -289,7 +347,7 @@ object Faces {
             list.add(FaceRec(id, p.cloudPath, f.conf, emb))
         }
         if (list.isNotEmpty()) fl.faces[p.cloudPath] = list
-        return true
+        return list.size
     }
 
     /** Eye / mouth landmarks in bitmap pixels (null when the detector gave none). */
@@ -328,6 +386,7 @@ object Faces {
             }
         }
         r.getOrNull()?.let { return it }
+        if (!mlkitWarned) { mlkitWarned = true; Diag.log("FACE", "ML Kit detector failed (${r.exceptionOrNull()?.javaClass?.simpleName}: ${r.exceptionOrNull()?.message}) → Android FaceDetector fallback") }
         // fallback without Play services: Android's built-in detector (eyes only)
         val rgb = b.copy(Bitmap.Config.RGB_565, false).let { if (it.width % 2 == 1) Bitmap.createBitmap(it, 0, 0, it.width - 1, it.height) else it }
         val arr = arrayOfNulls<android.media.FaceDetector.Face>(10)

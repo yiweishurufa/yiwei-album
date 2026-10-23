@@ -1,0 +1,26 @@
+mobilefacenet.tflite
+来源：https://github.com/syaringan357/Android-MobileFaceNet-MTCNN-FaceAntiSpoofing （app/src/main/assets/MobileFaceNet.tflite，基于 sirius-ai/MobileFaceNet_TF）
+SHA-256：d8ba40c0127fb8ca9917e8fddc79bbbda063657bc92a496d34da0bc8a760443b
+输入 [2,112,112,3] float32（(v-127.5)/128），输出 [2,192] embeddings
+
+MIT License
+
+Copyright (c) 2019 syaringan357
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

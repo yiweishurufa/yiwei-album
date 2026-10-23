@@ -201,7 +201,7 @@ internal fun DavDiscoverTab() {
     val analyzedN = remember(v, lib.photos.size) { lib.meta.values.count { it.done } }
     val aiN = remember(v, lib.photos.size) { lib.aiDone() }
     val imgs = lib.imagesCount()
-    val faceTodo = remember(fl.done, fl.running, lib.photos.size) { lib.photos.count { !it.isVideo && it.cloudPath !in fl.scanned } }
+    val faceTodo = remember(fl.done, fl.running, lib.photos.size) { Faces.pending(lib, fl) }   // 不含 AI 已判定无人脸的
     var menuPerson by remember { mutableStateOf<com.hark.shiguang.FacePerson?>(null) }
     var mergeFrom by remember { mutableStateOf<com.hark.shiguang.FacePerson?>(null) }
     var menuPlace by remember { mutableStateOf<Pair<String, List<Photo>>?>(null) }
@@ -250,8 +250,8 @@ internal fun DavDiscoverTab() {
                         Text("${p.photos.size} 张", fontSize = 11.sp, color = C.Faint)
                     }
                 }
-            } else Text(if (fl.scanned.isEmpty()) "识别后按人归类，长按人物可以命名或建相册。" else "已识别 ${n(fl.scanned.size)} 张，还没有人达到 ${FaceConfig.minPhotos} 张，可以在识别设置里调低。",
-                style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 18.dp))
+            }
+            FaceStatusLine(lib, fl)   // 用户 2026-10-23 反馈 #7：人脸识别状态 / 原因 / 重试
             Text("人脸只在本机识别，不会上传。长按人物可命名或建相册。", color = C.Faint, fontSize = 11.sp, modifier = Modifier.padding(start = 18.dp, top = 8.dp))
         }
 
