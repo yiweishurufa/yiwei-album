@@ -11,6 +11,7 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.TimeBar
 import kotlin.math.abs
@@ -177,6 +178,7 @@ class PlayerGestureLayer(ctx: Context, val playerView: PlayerView) : FrameLayout
         return hit(controller, rawX, rawY, root = true)
     }
 
+    @androidx.annotation.OptIn(UnstableApi::class)   // TimeBar
     private fun hit(v: View, x: Float, y: Float, root: Boolean): Boolean {
         if (!v.isShown || v.alpha < 0.05f) return false
         if (!root && (v.isClickable || v is TimeBar)) {

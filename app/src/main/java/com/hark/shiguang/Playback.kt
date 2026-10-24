@@ -8,6 +8,7 @@ import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Tracks
 import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import org.json.JSONObject
 
@@ -53,6 +54,7 @@ object MediaBadges {
     }
 
     /** Badges from the selected / first tracks after the player loaded the file. */
+    @androidx.annotation.OptIn(UnstableApi::class)   // Format.colorInfo.colorTransfer, MimeTypes.AUDIO_DTS_X
     fun fromTracks(t: Tracks): List<String> {
         val out = ArrayList<String>()
         var v: Format? = null; var a: Format? = null
@@ -233,6 +235,7 @@ object SubShift {
  * audio-attribute setup (lifecycles differ), but the FFmpeg-first renderer config is identical in the
  * movie and music players — the photo viewer intentionally stays on the default renderers (no FFmpeg).
  */
+@androidx.annotation.OptIn(UnstableApi::class)   // DefaultRenderersFactory 的扩展解码器 / 解码器回退设置
 fun ffmpegRenderersFactory(ctx: Context): DefaultRenderersFactory =
     DefaultRenderersFactory(ctx)
         .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)

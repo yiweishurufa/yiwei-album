@@ -66,6 +66,7 @@ internal fun trackRows(tracks: Tracks, type: Int): List<TrackRow> {
  * Quality rows. Only a real ladder counts: an adaptive group, or several video streams when none is Dolby Vision
  * (a DV profile 7 file has a base and an enhancement layer — two video groups that are not two qualities).
  */
+@androidx.annotation.OptIn(UnstableApi::class)   // Format.bitrate
 internal fun qualityRows(tracks: Tracks): List<TrackRow> {
     val groups = tracks.groups.filter { it.type == MC.TRACK_TYPE_VIDEO }
     val dv = groups.any { g -> (0 until g.length).any { MediaBadges.dvProfile(g.getTrackFormat(it)) != null } }
@@ -92,6 +93,7 @@ internal fun qualityAuto(player: ExoPlayer) {
     player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().clearOverridesOfType(MC.TRACK_TYPE_VIDEO).build()
 }
 
+@androidx.annotation.OptIn(UnstableApi::class)   // TrackGroup.type
 internal fun hasVideoOverride(player: ExoPlayer) =
     player.trackSelectionParameters.overrides.values.any { it.mediaTrackGroup.type == MC.TRACK_TYPE_VIDEO }
 
