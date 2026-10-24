@@ -107,7 +107,12 @@ class FaceLib(val accountId: String) {
         }
         val nm = JSONObject(); names.forEach { (k, v) -> nm.put(k, v) }
         val fl = JSONObject(); failed.forEach { (k, v) -> fl.put(k, v) }
-        File(dir, "faces.json").writeText(JSONObject().put("scanned", JSONArray(scanned.toList())).put("names", nm).put("faces", fa).put("failed", fl).put("v", ALG).toString())
+        // 用户 2026-10-24 要求排查：先写临时文件再改名。以前直接覆盖 faces.json，整理中途被系统杀掉会留下半个文件，
+        // 下次读不出来就静默丢掉全部人脸结果（命名也没了），要从头识别。
+        val text = JSONObject().put("scanned", JSONArray(scanned.toList())).put("names", nm).put("faces", fa).put("failed", fl).put("v", ALG).toString()
+        val tmp = File(dir, "faces.json.tmp")
+        tmp.writeText(text)
+        if (!tmp.renameTo(File(dir, "faces.json"))) { File(dir, "faces.json").writeText(text); tmp.delete() }
     }
 
     @Synchronized fun rename(p: FacePerson, name: String) {
@@ -206,10 +211,12 @@ object Faces {
             .setMinFaceSize(0.06f).build())
     }
 
-    private fun model(c: Context): Interpreter {
+    /** 用户 2026-10-24 要求排查：两个账号同时开始识别时不再各建一个解释器；映射完就关掉文件句柄（映射本身仍有效）。 */
+    @Synchronized private fun model(c: Context): Interpreter {
         interp?.let { return it }
-        val fd = c.assets.openFd(MODEL)
-        val buf = java.io.FileInputStream(fd.fileDescriptor).channel.map(FileChannel.MapMode.READ_ONLY, fd.startOffset, fd.declaredLength)
+        val buf = c.assets.openFd(MODEL).use { fd ->
+            java.io.FileInputStream(fd.fileDescriptor).use { it.channel.map(FileChannel.MapMode.READ_ONLY, fd.startOffset, fd.declaredLength) }
+        }
         val i = Interpreter(buf, Interpreter.Options().setNumThreads(2))
         inShape = i.getInputTensor(0).shape()
         outDim = i.getOutputTensor(0).shape().last()
