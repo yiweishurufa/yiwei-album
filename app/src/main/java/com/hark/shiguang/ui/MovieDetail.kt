@@ -447,6 +447,7 @@ fun MediaSettingsScreen() {
     var online by remember { mutableStateOf(MusicPrefs.online) }
     var pip by remember { mutableStateOf(VideoPip.enabled) }
     var autoNext by remember { mutableStateOf(PlayPrefs.autoNext) }
+    var fnQuality by remember { mutableStateOf(PlayPrefs.fnQualityRemember) }
     Page("影音设置", src?.let { "${if (it.kind == "dav") "WebDAV" else "飞牛"} · ${it.title}" } ?: "") {
         Column(Modifier.fillMaxSize().verticalScrollCompat().navigationBarsPadding().padding(bottom = 40.dp)) {
             Section("媒体库")
@@ -464,6 +465,11 @@ fun MediaSettingsScreen() {
                 ToggleRow(LI.videos(), "离开时画中画", if (pipOk) null else "本机不支持", pip && pipOk, enabled = pipOk) { pip = it; VideoPip.enabled = it }
                 Div()
                 ToggleRow(LI.play(), "自动播放下一集", on = autoNext) { autoNext = it; PlayPrefs.autoNext = it }
+                // 用户 2026-10-23 反馈（清晰度）：只有飞牛来源有转码档位，WebDAV 时不显示
+                if (src != null && src.kind != "dav") {
+                    Div()
+                    ToggleRow(LI.film(), "记住飞牛清晰度", on = fnQuality) { fnQuality = it; PlayPrefs.fnQualityRemember = it }
+                }
             }
             Section("资料补全（所有来源共用）")
             TmdbSettingsCard {

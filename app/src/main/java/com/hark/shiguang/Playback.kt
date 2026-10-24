@@ -189,6 +189,11 @@ object PlayPrefs {
     /** 1.1.0 影音设置「自动播放下一集」（全局，默认开）：剧集播完后倒数 5 秒自动播下一集。 */
     var autoNext: Boolean get() = Store.getStr("play.autoNext", "1") == "1"; set(v) = Store.putStr("play.autoNext", if (v) "1" else "0")
 
+    /** 用户 2026-10-23 反馈（清晰度）：影音设置「记住飞牛清晰度」（全局，默认关 = 每次从原画开始）。 */
+    var fnQualityRemember: Boolean get() = Store.getStr("play.fnQRemember", "0") == "1"; set(v) = Store.putStr("play.fnQRemember", if (v) "1" else "0")
+    /** Last 清晰度 picked on a 飞牛 source: FnTvTier.key ("1080|5000000"), "" = 原画. */
+    var fnQualityLast: String get() = Store.getStr("play.fnQLast", ""); set(v) = Store.putStr("play.fnQLast", v)
+
     /** Subtitle text size as a fraction of the view height (media3 default 0.0533). */
     var subSize: Float get() = Store.getStr("play.subSize", "0.0533").toFloatOrNull() ?: 0.0533f; set(v) = Store.putStr("play.subSize", v.toString())
     /** Bottom padding fraction (media3 default 0.08). */

@@ -470,6 +470,9 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         val q = queue.firstOrNull { it.path == curPath } ?: return@LaunchedEffect
         val ep = item.episodes.firstOrNull { it.path == q.path }
         tv.lookup(q.path, q.file, listOf(item.title, NameParser.stem(q.file.name)), ep?.season, ep?.episode)
+        // 「记住飞牛清晰度」打开时直接用上次选的档位（同分辨率码率变了取最高的；没有就保持原画）
+        if (PlayPrefs.fnQualityRemember && player.currentMediaItem?.mediaId == q.path)
+            tv.info(q.path)?.let { i -> FnTvParse.pickTier(i.tiers, PlayPrefs.fnQualityLast) }?.let { switchQuality(it) }
     }
     fun applySubStyle() { playerView?.subtitleView?.let { sv -> sv.setApplyEmbeddedFontSizes(false); sv.setFractionalTextSize(PlayPrefs.subSize); sv.setBottomPaddingFraction(PlayPrefs.subBottom) } }
     fun setOffset(ms: Long) {
@@ -727,7 +730,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                 val cur = queue.getOrNull(player.currentMediaItemIndex)
                 if (isFn && cur != null) {
                     // 飞牛：原画 + 飞牛影视服务器转码档位
-                    FnTvQualityRows(tv, cur.path, qualityRowsNow.firstOrNull()?.option?.detail?.takeIf { !tv.transcoding(cur.path) }) { t -> panel = null; switchQuality(t) }
+                    FnTvQualityRows(tv, cur.path, qualityRowsNow.firstOrNull()?.option?.detail?.takeIf { !tv.transcoding(cur.path) }) { t -> panel = null; PlayPrefs.fnQualityLast = t?.key.orEmpty(); switchQuality(t) }
                 } else if (qualityRowsNow.size > 1) {
                     val auto = !hasVideoOverride(player)
                     PanelRow("自动", "按网速自动切换", auto) { qualityAuto(player); panel = null }
