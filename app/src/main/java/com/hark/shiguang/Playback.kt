@@ -68,10 +68,7 @@ object MediaBadges {
             val w = maxOf(f.width, f.height)
             when { w >= 3200 || h >= 2000 -> out += "4K"; w >= 1800 || h >= 1000 -> out += "1080p"; w >= 1200 || h >= 700 -> out += "720p" }
             if (f.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION || f.codecs?.startsWith("dv") == true) out += "杜比视界" + (dvProfile(f)?.let { " P$it" } ?: "")
-            when (f.colorInfo?.colorTransfer) {
-                MC.COLOR_TRANSFER_ST2084 -> out += "HDR10"
-                MC.COLOR_TRANSFER_HLG -> out += "HLG"
-            }
+            hdrBadge(f.colorInfo?.colorTransfer ?: Format.NO_VALUE)?.let { out += it }
         }
         a?.let { f ->
             out += when (f.sampleMimeType) {
@@ -92,6 +89,29 @@ object MediaBadges {
         }
         return out.filter { it.isNotBlank() }
     }
+
+    /**
+     * 用户 2026-10-24 要求继续优化：视频色彩传输特性（Format.colorInfo.colorTransfer）→ 动态范围。
+     * 只有 PQ（ST 2084，HDR10 / HDR10+ / 杜比视界 P8 基础层）和 HLG 是 HDR；SDR（BT.709 / 601）、sRGB、Gamma 2.2、
+     * 线性和文件没标注（NO_VALUE）都按 SDR。以前的 when 只写了两个 HDR 分支，其余靠默认落空（lint SwitchIntDef），
+     * 这里把每个取值都写明，详细信息面板也用它显示「动态范围」。
+     */
+    @androidx.annotation.OptIn(UnstableApi::class)   // C.COLOR_TRANSFER_*
+    fun dynamicRange(colorTransfer: Int): String = when (colorTransfer) {
+        MC.COLOR_TRANSFER_ST2084 -> HDR10
+        MC.COLOR_TRANSFER_HLG -> HLG
+        MC.COLOR_TRANSFER_SDR, MC.COLOR_TRANSFER_SRGB, MC.COLOR_TRANSFER_GAMMA_2_2, MC.COLOR_TRANSFER_LINEAR, Format.NO_VALUE -> SDR
+        else -> SDR   // 以后 media3 新增的取值：没确认是 HDR 之前按 SDR，不乱打 HDR 角标
+    }
+
+    fun isHdr(colorTransfer: Int): Boolean = dynamicRange(colorTransfer) != SDR
+
+    /** HDR 角标（"HDR10" / "HLG"），SDR 为 null。 */
+    fun hdrBadge(colorTransfer: Int): String? = dynamicRange(colorTransfer).takeIf { it != SDR }
+
+    const val HDR10 = "HDR10"
+    const val HLG = "HLG"
+    const val SDR = "SDR"
 
     private fun channels(c: Int) = when (c) { 6 -> "5.1"; 8 -> "7.1"; else -> "${c}ch" }
 

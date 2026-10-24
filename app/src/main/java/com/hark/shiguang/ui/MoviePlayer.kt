@@ -932,6 +932,11 @@ private fun ColumnScope.PlayerInfo(player: ExoPlayer, lib: MovieLib, q: QItem, t
     InfoRow("编码", vf?.let { f -> TrackNames.videoCodecName(f.sampleMimeType)?.let { c -> MediaBadges.dvProfile(f)?.let { "$c · 杜比视界 P$it" } ?: c } } ?: dash)
     InfoRow("分辨率", vf?.takeIf { it.width > 0 && it.height > 0 }?.let { "${it.width}×${it.height}" } ?: dash)
     InfoRow("帧率", vf?.let { TrackNames.frameRateName(it.frameRate) } ?: dash)
+    // 用户 2026-10-24 要求继续优化：动态范围（PQ / HLG 为 HDR，其余按 SDR；见 MediaBadges.dynamicRange）
+    InfoRow("动态范围", vf?.let { f ->
+        val r = MediaBadges.dynamicRange(f.colorInfo?.colorTransfer ?: androidx.media3.common.Format.NO_VALUE)
+        when (r) { MediaBadges.HDR10 -> "HDR10（PQ）"; MediaBadges.HLG -> "HLG"; else -> "SDR" }
+    } ?: dash)
     val vbr = vf?.let { f -> listOf(f.averageBitrate, f.bitrate, f.peakBitrate).firstOrNull { it > 0 } }
     val dur = player.duration.takeIf { it > 0 && it != MC.TIME_UNSET } ?: (q.file.duration * 1000L)
     InfoRow("码率", vbr?.let { TrackNames.bitrateName(it.toLong()) }
