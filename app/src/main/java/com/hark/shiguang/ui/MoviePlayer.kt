@@ -266,7 +266,8 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         if (extIdx >= 0) return // played elsewhere: no position to save
         val id = player.currentMediaItem?.mediaId ?: return
         val d = player.duration
-        if (d > 0 && d != MC.TIME_UNSET) lib.setProgress(id, player.currentPosition, d)
+        // 还没执行的合并跳转也算（拖完进度条 0.35 秒内就退出，以前记的是拖之前的位置）
+        if (d > 0 && d != MC.TIME_UNSET) lib.setProgress(id, seekGate.position(), d)
         if (isShow) lib.setLastEpisode(showId, id)   // 1.1.0: 记住这部剧看到第几集（位置在上面的文件进度里）
     }
 
@@ -314,12 +315,16 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                     subPick = { list -> FnTvParse.pickSubtitle(list, embeddedSubLang(q)) })
             }
             tv.busy = false
+            // 用户 2026-10-24 要求继续优化：切换期间原来的流还在播、用户也可能又拖了进度 —— 接上「现在」的位置，
+            // 不再跳回点清晰度那一刻（以前会倒回去重播切换花掉的几秒，期间的快进也丢了）
             res.onSuccess { u ->
                 if (player.currentMediaItemIndex != i) { tv.stop(); return@onSuccess }
-                error = null; reload(i, q, u, true, pos); hint = "已切换到 ${t.label}（飞牛影视转码）"
+                error = null; reload(i, q, u, true, seekGate.position().coerceAtLeast(0)); hint = "已切换到 ${t.label}（飞牛影视转码）"
             }.onFailure { e ->
+                // 播放器已关 / 换集 / 切回原画时会话已作废（FnTvSessions），什么都不用做
+                if (e is kotlinx.coroutines.CancellationException) return@onFailure
                 FnTvQuality.log("switch failed: ${e.message}")
-                if (wasHls && player.currentMediaItemIndex == i) reload(i, q, urls[q.path].orEmpty(), false, pos)
+                if (wasHls && player.currentMediaItemIndex == i) reload(i, q, urls[q.path].orEmpty(), false, seekGate.position().coerceAtLeast(0))
                 hint = "转码没有开始：${e.message ?: "未知错误"}，" + if (wasHls) "已回到原画" else "继续播放原画"
             }
         }
@@ -416,7 +421,12 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
             }
         }
         player.addListener(l)
-        onDispose { save(); tv.stop(); player.removeListener(l); seekGate.release(); player.release() }
+        // 用户 2026-10-24 要求继续优化：先结束转码会话（发 media.quit），存进度出异常也不影响它和播放器释放
+        onDispose {
+            tv.stop()
+            runCatching { save() }.onFailure { Diag.log("PLAY", "save on close failed: ${it.javaClass.simpleName}") }
+            player.removeListener(l); seekGate.release(); player.release()
+        }
     }
     // 用户 2026-10-24 反馈：快进闪退 / 卡顿 —— 播放链路分段写 [PLAYER] 诊断日志（解码器、卡顿、下载错误、内存、跳转）
     DisposableEffect(player) {

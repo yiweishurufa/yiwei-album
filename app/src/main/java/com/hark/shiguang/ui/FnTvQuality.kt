@@ -11,10 +11,40 @@ import com.hark.shiguang.data.FnTv
 import com.hark.shiguang.data.FnTvStream
 import com.hark.shiguang.data.FnTvTier
 import com.hark.shiguang.data.FnTvUnavailable
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/**
+ * 用户 2026-10-24 要求继续优化（回看飞牛转码 6c4271f）：服务器转码会话的「谁该 quit」账本，纯逻辑（见 FnTvSessionsTest）。
+ *
+ * 以前的漏洞：切清晰度时 play/play 还在路上（几百毫秒到几秒），用户就退出播放器 / 换集 / 切回原画 → stop() 时
+ * 还不知道新会话的 play_link，等它回来时协程已随界面取消，结果被丢掉，服务器上的转码会话没人发 media.quit，
+ * 只能等飞牛自己超时回收（期间 NAS 白白转码）。现在每次开会话拿一张票，stop() 让票作废；
+ * 会话开好时票已作废，调用方必须立刻 quit 刚拿到的 link。
+ */
+internal class FnTvSessions {
+    private var epoch = 0
+    /** play_link of the session that is running now (the one stop() must quit). */
+    var link: String? = null
+        private set
+
+    /** A new session is about to be opened: returns its ticket and the running link to quit first (if any). */
+    fun begin(): Pair<Int, String?> { val old = link; link = null; return ++epoch to old }
+
+    /** The session of [ticket] opened with [newLink]. false = it was stopped meanwhile: quit [newLink] now. */
+    fun opened(ticket: Int, newLink: String): Boolean {
+        if (ticket != epoch) return false
+        link = newLink; return true
+    }
+
+    /** Ends everything: an in-flight open becomes stale; returns the running link to quit (if any). */
+    fun stop(): String? { epoch++; val old = link; link = null; return old }
+}
 
 /**
  * 用户 2026-10-23 反馈（清晰度）：飞牛来源的「原画 + 飞牛影视转码档位」。只管状态（查到的档位、当前转码会话），
@@ -42,7 +72,7 @@ internal class FnTvQuality {
     var activePath: String? = null
         private set
     private var url: String? = null
-    private var link: String? = null
+    private val sessions = FnTvSessions()
     /** Streams the running transcode carries, reused when only the tier changes. */
     private var audio: FnTvStream? = null
     private var subtitle: FnTvStream? = null
@@ -69,21 +99,29 @@ internal class FnTvQuality {
         val keep = activePath == path
         val a = if (keep && audio != null) audio else audioPick(i.audio)
         val s = if (keep) subtitle else subPick(i.subs)
-        link?.let { quitAsync(it) }
-        link = null; url = null; activePath = null; tier = null
-        val (u, l) = FnTv.play(i, t, startSec, a, s)
-        url = u; link = l; activePath = path; tier = t; audio = a; subtitle = s; pendingReadyLog = true
+        val (ticket, old) = sessions.begin()
+        old?.let { quitAsync(it) }
+        url = null; activePath = null; tier = null
+        // 不随界面取消：服务器可能已经开了会话，必须拿到 play_link 才能 quit 它
+        val (u, l) = withContext(NonCancellable) { FnTv.play(i, t, startSec, a, s) }
+        if (!sessions.opened(ticket, l)) {
+            log("session opened after stop: quit")
+            quitAsync(l)
+            throw CancellationException("清晰度切换已取消")
+        }
+        url = u; activePath = path; tier = t; audio = a; subtitle = s; pendingReadyLog = true
         return u
     }
 
     /** Back to the original file: ends the session. */
     fun stop() {
-        link?.let { quitAsync(it) }
-        link = null; url = null; activePath = null; tier = null; audio = null; subtitle = null
+        sessions.stop()?.let { quitAsync(it) }
+        url = null; activePath = null; tier = null; audio = null; subtitle = null
     }
 
     private fun quitAsync(l: String) {
-        // the player screen may be gone already: run outside its composition scope
+        // the player screen may be gone already: run outside its composition scope.
+        // 进程被系统直接杀掉（划掉后台）时这里来不及发出，只能靠飞牛服务器的空闲超时回收。
         bg.launch { FnTv.quit(l) }
     }
 
