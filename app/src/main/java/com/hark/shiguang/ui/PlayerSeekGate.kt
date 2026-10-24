@@ -23,6 +23,11 @@ class PlayerSeekGate(private val player: Player) {
     private val main = Handler(Looper.getMainLooper())
     private var released = false
     private val check = Runnable { tick() }
+    /** 用户 2026-10-24 要求继续优化：一暂停（任何入口：按钮、双击、PiP、耳机）就把还没执行的跳转立刻执行。 */
+    private val pauseListener = object : Player.Listener {
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) { if (!playWhenReady) flushNow("pause") }
+    }
+    init { player.addListener(pauseListener) }
 
     /** 当前位置；有还没执行的跳转时返回它的目标（继续快进时在它上面累加）。 */
     fun position(): Long = co.pendingPosition(player.currentMediaItemIndex) ?: player.currentPosition
@@ -31,8 +36,9 @@ class PlayerSeekGate(private val player: Player) {
     fun seekTo(positionMs: Long, from: String) {
         if (released) return
         val idx = player.currentMediaItemIndex
-        val s = co.request(idx, positionMs, SystemClock.uptimeMillis())
-        if (s != null) apply(s, from) else schedule()
+        // 暂停中（playWhenReady = false）立刻跳：没有边播边 flush 的风险，进度条和画面马上到位
+        val s = co.request(idx, positionMs, SystemClock.uptimeMillis(), immediate = !player.playWhenReady)
+        if (s != null) { main.removeCallbacks(check); apply(s, from) } else schedule()
     }
 
     /** 快进 / 快退 [deltaMs]（按钮用）。 */
@@ -45,7 +51,13 @@ class PlayerSeekGate(private val player: Player) {
     fun cancel() { co.clear(); main.removeCallbacks(check) }
 
     /** 播放器释放前调用：之后的请求全部忽略，不会在释放后的播放器上 seek。 */
-    fun release() { released = true; cancel() }
+    fun release() { released = true; cancel(); player.removeListener(pauseListener) }
+
+    private fun flushNow(from: String) {
+        if (released) return
+        main.removeCallbacks(check)
+        co.flush(SystemClock.uptimeMillis(), player.currentMediaItemIndex)?.let { apply(it, from) }
+    }
 
     private fun schedule() {
         main.removeCallbacks(check)

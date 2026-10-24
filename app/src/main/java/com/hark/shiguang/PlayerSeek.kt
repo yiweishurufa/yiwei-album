@@ -10,6 +10,10 @@ package com.hark.shiguang
  * 这里把一串跳转合并成一次：空闲时第一下立刻跳（单击不会变慢）；之后 [quietMs] 内的连续请求只记最后的目标，
  * 停手 [quietMs] 后跳一次；一直不停手时最多每 [maxHoldMs] 跳一次，画面不会长时间不动。
  * 纯逻辑、时间由调用方传入（见 PlayerSeekTest）；真正调用播放器的是 ui/PlayerSeekGate。
+ *
+ * 用户 2026-10-24 要求继续优化：暂停时连点快进，进度条要等停手 0.35 秒才动（PlayerView 暂停时只在播放器真正跳转后
+ * 才刷新进度）。暂停时解码器不在连续出帧，没有「边播边 flush」的风险，所以暂停时 [request] 带 immediate = true：
+ * 每一下都立刻跳（顺带把之前没执行的目标一起冲掉），画面和进度条马上到位。
  */
 class SeekCoalescer(val quietMs: Long = QUIET_MS, val maxHoldMs: Long = MAX_HOLD_MS) {
     /** 一次真正要执行的跳转：第 [index] 个媒体项的 [positionMs]，合并了 [merged] 次请求。 */
@@ -28,10 +32,15 @@ class SeekCoalescer(val quietMs: Long = QUIET_MS, val maxHoldMs: Long = MAX_HOLD
     fun pendingPosition(index: Int): Long? = if (hasPending && pendingIndex == index) pendingPos else null
 
     /**
-     * 新的跳转请求。返回非 null = 现在就跳（空闲时的第一下）；null = 已记下，等 [due] 再跳。
+     * 新的跳转请求。返回非 null = 现在就跳（空闲时的第一下，或 [immediate] 暂停中）；null = 已记下，等 [due] 再跳。
      */
-    fun request(index: Int, positionMs: Long, now: Long): Seek? {
+    fun request(index: Int, positionMs: Long, now: Long, immediate: Boolean = false): Seek? {
         val pos = positionMs.coerceAtLeast(0L)
+        if (immediate) {
+            val merged = if (hasPending && pendingIndex == index) pendingCount + 1 else 1
+            clear(); lastAppliedAt = now
+            return Seek(index, pos, merged)
+        }
         if (!hasPending && now - lastAppliedAt >= quietMs) {
             lastAppliedAt = now
             return Seek(index, pos, 1)

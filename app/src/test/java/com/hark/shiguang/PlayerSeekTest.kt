@@ -76,4 +76,30 @@ class PlayerSeekTest {
         assertEquals(3_600_000L, SeekCoalescer.step(3_590_000, 15_000, 3_600_000))
         assertEquals(3_605_000L, SeekCoalescer.step(3_590_000, 15_000, 0))   // 时长未知只夹下限
     }
+
+    // 用户 2026-10-24 要求继续优化：暂停时连点快进，每一下都立刻跳
+    @Test fun `暂停时连点快进每一下都立刻跳，不等 0_35 秒`() {
+        val c = co()
+        assertEquals(SeekCoalescer.Seek(0, 15_000, 1), c.request(0, 15_000, 0, immediate = true))
+        assertEquals(SeekCoalescer.Seek(0, 30_000, 1), c.request(0, 30_000, 100, immediate = true))
+        assertEquals(SeekCoalescer.Seek(0, 45_000, 1), c.request(0, 45_000, 200, immediate = true))
+        assertFalse(c.hasPending)
+        assertNull(c.nextCheckAt())
+    }
+
+    @Test fun `播放中攒下的目标，暂停后再点一下时一起冲掉，只跳最新的`() {
+        val c = co()
+        assertNotNull(c.request(0, 15_000, 0))
+        assertNull(c.request(0, 30_000, 100))             // 播放中：记下
+        assertEquals(SeekCoalescer.Seek(0, 45_000, 2), c.request(0, 45_000, 200, immediate = true))
+        assertFalse(c.hasPending)
+        assertNull(c.due(1_000, 0))                       // 不会再补跳一次旧目标
+    }
+
+    @Test fun `暂停立刻跳之后恢复播放，下一下仍按合并规则`() {
+        val c = co()
+        assertNotNull(c.request(0, 15_000, 0, immediate = true))
+        assertNull(c.request(0, 30_000, 100))             // 恢复播放后 350ms 内：合并
+        assertEquals(SeekCoalescer.Seek(0, 30_000, 1), c.due(450, 0))
+    }
 }
