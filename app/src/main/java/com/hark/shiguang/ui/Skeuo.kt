@@ -21,6 +21,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -47,6 +51,7 @@ import androidx.compose.ui.unit.dp
  * RoundIcon / 底部导航 / 顶栏胶囊 / 分段控件 / 输入框），效果自动铺开。设置 → 外观 →「界面风格」可切回简洁（扁平）。
  *
  * 性能：阴影只用 Modifier.shadow（RenderNode 硬件阴影，不做大半径模糊）+ 一次渐变 + 一条描边；
+ * Android 8.0/8.1（API 26/27）硬件阴影不认自定义颜色、一律纯黑偏重，改画几层半透明暖色轮廓（见 [skeuoShadow]）；
  * 照片网格不加阴影；纸面颗粒是一张 96×96 的小图平铺成 Shader，只画在页面底色上。
  */
 object Skeuo {
@@ -96,6 +101,46 @@ object Elevation {
     val photo = 2.dp
 }
 
+/**
+ * 用户 2026-10-24 要求继续优化：拟物阴影。API 28+ 用硬件阴影（ambient / spot 自定义暖色）；API 26/27 系统忽略阴影颜色，
+ * 硬件阴影是纯黑、显得很重，改为在形状后面画 [SkeuoShadow.LAYERS] 层逐渐外扩、逐层变淡的半透明轮廓（同样的暖棕色调，
+ * 略向下偏移），观感接近 28+ 的柔和阴影。轮廓按尺寸缓存（drawWithCache），滚动时不重复创建。
+ */
+internal fun Modifier.skeuoShadow(elevation: Dp, shape: Shape): Modifier =
+    if (SkeuoShadow.nativeColors(android.os.Build.VERSION.SDK_INT)) shadow(elevation, shape, clip = false, ambientColor = Skeuo.ambient, spotColor = Skeuo.spot)
+    else {
+        val tint = Skeuo.spot
+        drawWithCache {
+            val layers = SkeuoShadow.layers(elevation.toPx(), tint.alpha)
+            val outlines = layers.map { l -> shape.createOutline(Size(size.width + 2 * l.spread, size.height + 2 * l.spread), layoutDirection, this) }
+            onDrawBehind {
+                layers.forEachIndexed { i, l ->
+                    translate(-l.spread, -l.spread + l.dy) { drawOutline(outlines[i], tint.copy(alpha = l.alpha)) }
+                }
+            }
+        }
+    }
+
+/** API 26/27 绘制阴影的参数（纯计算，便于单测）。 */
+internal object SkeuoShadow {
+    const val LAYERS = 4
+    /** 系统从 API 28 起才支持硬件阴影的自定义颜色。 */
+    fun nativeColors(sdk: Int): Boolean = sdk >= 28
+    /** 一层轮廓：向外扩 [spread] px、向下偏 [dy] px、透明度 [alpha]。 */
+    data class Layer(val spread: Float, val dy: Float, val alpha: Float)
+    /**
+     * 层由内到外：外扩到 0.9 × 高度，越外越淡（外层透明度约为内层的 0.4），各层叠加后贴边处最深、外缘最淡；
+     * 每层透明度 = 基础透明度 / 层数 × 衰减，整体比硬件纯黑阴影轻。高度 ≤ 0 或基础透明度 ≤ 0 时不画。
+     */
+    fun layers(elevationPx: Float, baseAlpha: Float): List<Layer> {
+        if (elevationPx <= 0f || baseAlpha <= 0f) return emptyList()
+        return (1..LAYERS).map { i ->
+            val f = i / LAYERS.toFloat()
+            Layer(spread = elevationPx * 0.9f * f, dy = elevationPx * 0.45f, alpha = (baseAlpha * (1f - 0.6f * f) / LAYERS).coerceIn(0f, 1f))
+        }
+    }
+}
+
 /** 页面底色：拟物时 = 渐变 + 纸面颗粒；简洁时 = 纯色 C.Bg。所有页面根节点用它代替 background(C.Bg)。 */
 fun Modifier.appBackground(): Modifier =
     if (!Skeuo.on) background(C.Bg) else background(Skeuo.pageBrush).background(Skeuo.noise)
@@ -106,14 +151,14 @@ fun Modifier.appBackground(): Modifier =
  */
 fun Modifier.skeuoCard(shape: Shape = RoundedCornerShape(C.Card), elevation: Dp = Elevation.card, color: Color = C.Surface): Modifier =
     if (!Skeuo.on) clip(shape).background(color)
-    else shadow(elevation, shape, clip = false, ambientColor = Skeuo.ambient, spotColor = Skeuo.spot)
+    else skeuoShadow(elevation, shape)
         .clip(shape).background(Skeuo.surfaceBrush(color))
         .border(0.8.dp, Brush.verticalGradient(listOf(Skeuo.highlight, Color.Transparent, Skeuo.edge.copy(alpha = Skeuo.edge.alpha * 0.5f))), shape)
 
 /** 有照片封面的卡片（人物 / 地点 / 回忆 / 旅行）：只加一层轻阴影，不改表面，照片保持干净。 */
 fun Modifier.skeuoPhoto(shape: Shape = RoundedCornerShape(C.Card)): Modifier =
     if (!Skeuo.on) clip(shape).background(C.Surface)
-    else shadow(Elevation.photo, shape, clip = false, ambientColor = Skeuo.ambient, spotColor = Skeuo.spot).clip(shape).background(C.Surface)
+    else skeuoShadow(Elevation.photo, shape).clip(shape).background(C.Surface)
 
 /** 内凹槽：开关轨道、输入框、搜索框、分段控件底。上沿暗、下沿亮。 */
 fun Modifier.skeuoInset(shape: Shape = RoundedCornerShape(Radius.m), color: Color = C.Surface2): Modifier =
@@ -127,7 +172,7 @@ fun Modifier.skeuoInset(shape: Shape = RoundedCornerShape(Radius.m), color: Colo
  */
 fun Modifier.skeuoPressed(pressed: Boolean, shape: Shape, base: Color, elevation: Dp = if (pressed) Elevation.pressed else Elevation.raised): Modifier =
     if (!Skeuo.on) clip(shape).background(base)
-    else shadow(elevation, shape, clip = false, ambientColor = Skeuo.ambient, spotColor = Skeuo.spot)
+    else skeuoShadow(elevation, shape)
         .clip(shape).background(Skeuo.raisedBrush(base, pressed))
         .border(0.8.dp, Brush.verticalGradient(if (pressed) listOf(Skeuo.edge, Color.Transparent) else listOf(Color.White.copy(alpha = if (C.P.dark) 0.16f else 0.55f), Color.Transparent)), shape)
 
