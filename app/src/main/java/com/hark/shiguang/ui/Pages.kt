@@ -257,13 +257,25 @@ private fun mediaLabel(k: String) = when (k) {
 
 // ============================================================ duplicates
 
+/** 飞牛「重复照片」已加载的分组（进程内，按 NAS 账号，5 分钟内有效：覆盖「看大图再返回」，隔久了重新进来仍会刷新）。 */
+private object FnRepeatCache {
+    private const val TTL_MS = 5 * 60_000L
+    private var key = ""; private var at = 0L; private var data: Pair<List<RepeatGroup>, Int>? = null
+    fun get(acct: String) = data?.takeIf { key == acct && System.currentTimeMillis() - at < TTL_MS }
+    fun put(acct: String, groups: List<RepeatGroup>, total: Int) { key = acct; at = System.currentTimeMillis(); data = if (groups.isEmpty()) null else groups to total }
+}
+
 @Composable
 fun DuplicatesScreen() {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    val groups = remember { mutableStateListOf<RepeatGroup>() }
-    var total by remember { mutableIntStateOf(0) }
-    var loading by remember { mutableStateOf(true) }
+    // 用户 2026-10-24 要求继续优化：从大图返回时用进程内缓存直接显示已加载的分组，列表滚动位置（LazyColumn 自带的
+    // rememberSaveable 状态，由 MainActivity 的 SaveableStateHolder 保存）能落回原处，不再重新从第一页加载。
+    val acct = NasAccounts.currentId
+    val cached = remember(acct) { FnRepeatCache.get(acct) }
+    val groups = remember { mutableStateListOf<RepeatGroup>().apply { cached?.let { addAll(it.first) } } }
+    var total by remember { mutableIntStateOf(cached?.second ?: 0) }
+    var loading by remember { mutableStateOf(cached == null) }
     var err by remember { mutableStateOf<String?>(null) }
     var confirmAll by remember { mutableStateOf(false) }
     suspend fun load(reset: Boolean) {
@@ -272,7 +284,8 @@ fun DuplicatesScreen() {
         runCatching { NasX.repeatGroups(groups.size, 30) }.onSuccess { groups.addAll(it.groups); total = it.count }.onFailure { err = it.message }
         loading = false
     }
-    LaunchedEffect(Unit) { load(true) }
+    LaunchedEffect(Unit) { if (cached == null) load(true) }
+    DisposableEffect(acct) { onDispose { FnRepeatCache.put(acct, groups.toList(), total) } }
     Page("重复照片", if (total > 0) "$total 组" else "", actions = {
         // 1.0.2: no scan button here; 飞牛's repeat check is started together with the AI tab's 整理 (see DiscoverTab)
         RoundIcon(Icons.Rounded.Refresh) { scope.launch { load(true) } }

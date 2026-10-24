@@ -143,17 +143,22 @@ fun HomeScreen() {
     }
     LaunchedEffect(HomeState.switching) { if (HomeState.switching) { delay(550); HomeState.switching = false } }
     val wide = isWide()
+    val tabStates = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
     Row(Modifier.fillMaxSize().appBackground()) {
     if (wide) SideRail()
     Box(Modifier.weight(1f).fillMaxHeight()) {
         if (HomeState.switching && HomeState.tab != 4) Column { TopSwitch(); SkeletonGrid(4, 20.dp) }
-        else when (HomeState.tab) {
-            0 -> if (HomeState.photoFilter == 2) VideosTab(dav, inPhotos = true) else if (dav) DavPhotosTab() else PhotosTab()
-            1 -> VideosTab(dav)   // only reachable for one frame before openTab() maps it; kept as a safe fallback
-            2 -> AlbumsTab(dav)
-            3 -> if (dav) DavDiscoverTab() else DiscoverTab()
-            5 -> MoviesTab()
-            else -> SettingsScreen()
+        // 用户 2026-10-24 要求继续优化：切底部 tab 时各 tab 的 rememberSaveable 状态（设置页滚动、发现页展开的卡片）
+        // 也按 tab 保存，切回来还在。照片网格 / 发现页列表的滚动另有 ScrollMem 按账号保存。
+        else tabStates.SaveableStateProvider(homeTabKey(HomeState.tab, HomeState.photoFilter == 2, HomeState.source)) {
+            when (HomeState.tab) {
+                0 -> if (HomeState.photoFilter == 2) VideosTab(dav, inPhotos = true) else if (dav) DavPhotosTab() else PhotosTab()
+                1 -> VideosTab(dav)   // only reachable for one frame before openTab() maps it; kept as a safe fallback
+                2 -> AlbumsTab(dav)
+                3 -> if (dav) DavDiscoverTab() else DiscoverTab()
+                5 -> MoviesTab()
+                else -> SettingsScreen()
+            }
         }
         // 1.0.3 #4: music mini bar sits above the bottom navigation (at the bottom on wide screens)
         Column(Modifier.align(Alignment.BottomCenter)) {
@@ -177,6 +182,10 @@ fun HomeScreen() {
         }
     }
 }
+
+/** 首页各 tab 的状态 key：tab + 照片页「视频」筛选 + 来源（飞牛 / WebDAV 的页面结构不同，不互相恢复）。 */
+internal fun homeTabKey(tab: Int, videosInPhotos: Boolean, source: String): String =
+    "tab$tab" + (if (tab == 0 && videosInPhotos) "v" else "") + "-" + source
 
 private fun onTabTap(i: Int, sel: Boolean) {
     val now = System.currentTimeMillis()

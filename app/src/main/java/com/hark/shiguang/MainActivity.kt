@@ -67,9 +67,28 @@ object Nav {
     val stack = mutableStateListOf<Route>()
     /** Set when the last saved top route could not be restored (its args are gone): UI falls back to Home and says so. */
     var restoredFallback by mutableStateOf(false)
-    fun push(r: Route) { stack.add(r); save() }
-    fun pop() { if (stack.size > 1) stack.removeAt(stack.lastIndex); save() }
-    fun reset(r: Route) { stack.clear(); stack.add(r); save() }
+    /**
+     * 用户 2026-10-24 要求继续优化：每个栈条目一个稳定的 key（与 [stack] 一一对应），页面切走（打开大图 / 播放器）时
+     * 用它把页面的 rememberSaveable 状态（分段、勾选、滚动位置）存进 SaveableStateHolder，返回时原样恢复。
+     * key 带页面类型名：进程被杀重建后计数从头开始，同位置同类型的页面恢复旧状态是期望行为，不同类型绝不会串。
+     */
+    private val keys = ArrayList<String>()
+    private var nextKey = 0L
+    /** 条目出栈时通知 UI 丢掉它保存的状态（MainActivity 里接到 SaveableStateHolder.removeState）。 */
+    var onRemoved: ((String) -> Unit)? = null
+    /** 栈顶条目的 key；栈空时为空串。 */
+    fun topKey(): String = keys.lastOrNull() ?: ""
+    private fun newKey(r: Route) = "${nextKey++}:${r::class.java.simpleName}"
+    fun push(r: Route) { keys.add(newKey(r)); stack.add(r); save() }
+    fun pop() {
+        if (stack.size > 1) { stack.removeAt(stack.lastIndex); keys.removeLastOrNull()?.let { onRemoved?.invoke(it) } }
+        save()
+    }
+    fun reset(r: Route) {
+        val old = keys.toList(); keys.clear(); keys.add(newKey(r))
+        stack.clear(); stack.add(r); save()
+        old.forEach { onRemoved?.invoke(it) }
+    }
 
     /**
      * B24: only restorable top-level routes are persisted (Home/tab + a simple Route type). Anything with
@@ -128,6 +147,15 @@ object Nav {
         if (r != Route.Home) push(r)
         return true
     }
+}
+
+/**
+ * AnimatedContent 的目标：按栈条目 key 判等（不比较 Route 本身，Viewer 带整份照片列表，比较很贵；
+ * 同一条目重入时 AnimatedContent 复用正在退出的那份内容，不会出现同一 key 被组合两次）。
+ */
+class NavEntry(val route: Route, val key: String) {
+    override fun equals(other: Any?) = other is NavEntry && other.key == key
+    override fun hashCode() = key.hashCode()
 }
 
 /** 系统重建或从最近任务重开时带来的启动 intent 是旧的，不应再执行其中的分享 / 深链动作。 */
@@ -195,16 +223,27 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 val top = Nav.stack.lastOrNull() ?: Route.Login
+                // 用户 2026-10-24 要求继续优化：页面被大图 / 播放器盖住时会离开组合，以前 rememberSaveable 状态随之丢失
+                // （「重复与相似」切到「相似」看大图回来跳回「重复」、勾选没了；设置子页面滚动回顶）。
+                // 每个栈条目包一层 SaveableStateProvider，离开时保存、返回时恢复；出栈时丢掉。只存小状态（id、下标），不存照片列表。
+                val pageStates = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
+                DisposableEffect(pageStates) {
+                    Nav.onRemoved = { k -> pageStates.removeState(k) }
+                    onDispose { Nav.onRemoved = null }
+                }
+                val entry = NavEntry(top, Nav.topKey())
                 BackHandler(enabled = Nav.stack.size > 1) { Nav.pop() }
                 // Home always stays composed underneath so scroll position survives.
                 val home = Nav.stack.firstOrNull() == Route.Home
                 if (home) HomeScreen()
                 AnimatedContent(
-                    targetState = top,
+                    targetState = entry,
                     transitionSpec = { (fadeIn(tween(220)) + scaleIn(tween(220), initialScale = 0.97f)) togetherWith fadeOut(tween(160)) },
                     label = "nav",
-                ) { r ->
+                ) { e ->
+                    val r = e.route
                     if (r == Route.Home) return@AnimatedContent
+                    pageStates.SaveableStateProvider(e.key) {
                     Surface(color = if (r is Route.Viewer || r is Route.MoviePlay || (r is Route.X && r.screen.dark)) Color.Black else C.Bg, modifier = Modifier.fillMaxSize()) {
                         when (r) {
                             Route.Login -> LoginScreen()
@@ -238,6 +277,7 @@ class MainActivity : ComponentActivity() {
                             is Route.X -> ExtHost(r.screen)
                             Route.Home -> {}
                         }
+                    }
                     }
                 }
                 AppOverlays() // 1.0.9: crash report + update dialogs

@@ -46,13 +46,22 @@ object Quality {
 /**
  * 用户 2026-10-23：发现页「重复照片」「相似照片」合并成一个入口「重复与相似」，进来后用分段切换。
  * 两种列表各自计算、各自保存勾选（key(kind) 让切换时重新建状态，不会把重复的勾选带到相似里）。
+ *
+ * 用户 2026-10-24 要求继续优化：以前切到「相似」点进大图再返回，会跳回「重复」、勾选和滚动位置都没了。
+ * 现在分段（rememberSaveable）、两边各自的勾选改动、各自的滚动位置都提到这一层保存；页面被大图盖住时由
+ * MainActivity 的 SaveableStateHolder 存下，返回时恢复。勾选只存「用户手动改过的照片 key」，不存整份分组。
  */
 @Composable
 fun DavGroupsScreen(r: Route.DavGroups) {
-    if (r.kind != "dup" && r.kind != "sim") { DavGroupsBody(r) {}; return }
+    if (r.kind != "dup" && r.kind != "sim") { DavGroupsBody(r, rememberSelOverrides(), androidx.compose.foundation.lazy.rememberLazyListState()) {}; return }
     var kind by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(r.kind) }
+    val dupSel = rememberSelOverrides()
+    val simSel = rememberSelOverrides()
+    val dupList = androidx.compose.foundation.lazy.rememberLazyListState()
+    val simList = androidx.compose.foundation.lazy.rememberLazyListState()
     key(kind) {
-        DavGroupsBody(r.copy(title = "重复与相似", kind = kind)) {
+        val isDup = kind == "dup"
+        DavGroupsBody(r.copy(title = "重复与相似", kind = kind), if (isDup) dupSel else simSel, if (isDup) dupList else simList) {
             Box(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                 Segmented(listOf("重复", "相似"), if (kind == "dup") 0 else 1) { kind = if (it == 0) "dup" else "sim" }
             }
@@ -60,18 +69,49 @@ fun DavGroupsScreen(r: Route.DavGroups) {
     }
 }
 
+/**
+ * 用户手动改过的勾选：照片 key → 是否删除。默认勾选规则（除推荐保留外都勾上）不存，只存改动，
+ * 所以写进 Bundle 的只是少量 key 字符串；超过 [SelOverrides.MAX_SAVED] 条只保存前面这些（防 TransactionTooLarge）。
+ */
+@Composable
+private fun rememberSelOverrides(): MutableMap<String, Boolean> =
+    androidx.compose.runtime.saveable.rememberSaveable(saver = SelOverrides.saver) { mutableStateMapOf() }
+
+internal object SelOverrides {
+    const val MAX_SAVED = 1000
+    /** "1key" = 要删除，"0key" = 保留。纯函数，便于单测。 */
+    fun encode(m: Map<String, Boolean>): ArrayList<String> =
+        m.entries.asSequence().take(MAX_SAVED).mapTo(ArrayList()) { (if (it.value) "1" else "0") + it.key }
+    fun decode(l: List<String>): Map<String, Boolean> =
+        l.filter { it.length > 1 && (it[0] == '1' || it[0] == '0') }.associate { it.substring(1) to (it[0] == '1') }
+    val saver = androidx.compose.runtime.saveable.Saver<androidx.compose.runtime.snapshots.SnapshotStateMap<String, Boolean>, ArrayList<String>>(
+        save = { encode(it) },
+        restore = { l -> mutableStateMapOf<String, Boolean>().apply { putAll(decode(l)) } },
+    )
+}
+
+/** 进程内缓存上次算好的分组：从大图返回时直接显示、滚动位置能立刻落到原处，不再先转圈重算。 */
+private object DavGroupsCache {
+    val map = HashMap<String, List<List<Photo>>>()
+}
+
 /** 重复 / 相似: each group on its own, best one marked 「推荐保留」, the rest pre-selected for deletion. */
 @Composable
-private fun DavGroupsBody(r: Route.DavGroups, header: @Composable () -> Unit) {
+private fun DavGroupsBody(r: Route.DavGroups, overrides: MutableMap<String, Boolean>, listState: androidx.compose.foundation.lazy.LazyListState, header: @Composable () -> Unit) {
     val ctx = LocalContext.current
     val lib = Dav.lib(r.accountId)
     val dup = r.kind == "dup"
     fun compute() = if (dup) lib.duplicates() else lib.similar()
+    val cacheKey = r.accountId + "/" + r.kind
     // 1.0.2: this page never scans by itself. Detection (headMd5 / dHash) is part of the AI tab's 整理 (本地分析);
     // here we only show what that analysis has found so far, and refresh when it adds more.
-    var ready by remember { mutableStateOf(false) }
-    val groups = remember { mutableStateListOf<List<Photo>>() }
-    val del = remember { mutableStateMapOf<String, Boolean>() }
+    val cached = remember(cacheKey) { DavGroupsCache.map[cacheKey] }
+    var ready by remember { mutableStateOf(cached != null) }
+    val groups = remember { mutableStateListOf<List<Photo>>().apply { cached?.let { addAll(it) } } }
+    val del = remember {
+        mutableStateMapOf<String, Boolean>().apply { cached?.forEach { gg -> val b = Quality.best(gg); gg.forEach { p -> (overrides[p.key] ?: if (p !== b) true else null)?.let { put(p.key, it) } } } }
+    }
+    fun setDel(key: String, v: Boolean) { del[key] = v; overrides[key] = v }
     val v = lib.metaVersion
     LaunchedEffect(r) { lib.ensure() }
     LaunchedEffect(r, v, lib.photos.size) {
@@ -79,7 +119,8 @@ private fun DavGroupsBody(r: Route.DavGroups, header: @Composable () -> Unit) {
         val g = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { runCatching { compute() }.getOrNull() } ?: return@LaunchedEffect
         val keepSel = del.toMap()
         groups.clear(); groups.addAll(g)
-        del.clear(); g.forEach { gg -> val b = Quality.best(gg); gg.forEach { if (it !== b) del[it.key] = keepSel[it.key] ?: true } }
+        DavGroupsCache.map[cacheKey] = g
+        del.clear(); g.forEach { gg -> val b = Quality.best(gg); gg.forEach { if (it !== b) del[it.key] = overrides[it.key] ?: keepSel[it.key] ?: true else if (overrides[it.key] == true) del[it.key] = true } }
         ready = true
     }
     val imgs = lib.imagesCount()
@@ -121,7 +162,8 @@ private fun DavGroupsBody(r: Route.DavGroups, header: @Composable () -> Unit) {
             runCatching { Ops.delete(verified) }.onSuccess {
                 val keys = verified.map { it.key }.toSet()
                 lib.photos.removeAll { it.key in keys }
-                after(); toast(ctx, "已删除 ${verified.size} 张")
+                keys.forEach { overrides.remove(it) }
+                after(); DavGroupsCache.map[cacheKey] = groups.toList(); toast(ctx, "已删除 ${verified.size} 张")
             }.onFailure { toast(ctx, it.message ?: "删除失败") }
             busy = false
         }
@@ -144,7 +186,7 @@ private fun DavGroupsBody(r: Route.DavGroups, header: @Composable () -> Unit) {
                 StateMessage(if (dup) LI.copy() else LI.layers(), if (pending) "还没分析完" else "没有${if (dup) "重复" else "相似"}照片",
                     if (pending) "检测随「发现」页的整理一起进行，完成后结果会显示在这里" else "有新照片时会在 AI 整理里自动检测")
             }
-            else LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 16.dp)) {
+            else LazyColumn(Modifier.weight(1f), state = listState, contentPadding = PaddingValues(bottom = 16.dp)) {
                 itemsIndexed(groups, key = { _, g -> g.first().key }) { gi, g ->
                     val best = Quality.best(g)
                     Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().skeuoCard().padding(12.dp)) {
@@ -161,7 +203,7 @@ private fun DavGroupsBody(r: Route.DavGroups, header: @Composable () -> Unit) {
                                         NetImage(p.thumbM, Modifier.fillMaxSize())
                                         if (p === best) Text("推荐保留", color = Color.White, fontSize = 11.sp, modifier = Modifier.align(Alignment.BottomStart).background(C.Green.copy(alpha = 0.9f), RoundedCornerShape(topEnd = 8.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
                                         Box(Modifier.align(Alignment.TopEnd).padding(6.dp).size(24.dp).clip(CircleShape).background(if (sel) C.Danger else Color(0x66000000)).border(1.5.dp, Color.White, CircleShape)
-                                            .clickable { del[p.key] = !sel }, contentAlignment = Alignment.Center) {
+                                            .clickable { setDel(p.key, !sel) }, contentAlignment = Alignment.Center) {
                                             if (sel) Icon(Icons.Rounded.Check, null, tint = Color.White, modifier = Modifier.size(16.dp))
                                         }
                                     }
