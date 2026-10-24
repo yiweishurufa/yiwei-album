@@ -317,7 +317,9 @@ internal fun DavDiscoverTab() {
         item { ZoneHeader("工具") }
         item {
             // 用户 2026-10-23：一大批照片正在后台整理、而通知 / 电池优化没设置时，提示一次
-            BgGuidePrompt.Host(need = (lib.analyzing || fl.running || AiRunner.running) && (imgs - analyzedN).coerceAtLeast(faceTodo) >= BgGuidePrompt.MIN_PENDING)
+            // 用户 2026-10-24 要求排查：首页在其他页面下面一直保持组合，只在用户正看着首页时才弹，不会盖在大图 / 播放器 / 设置页上
+            BgGuidePrompt.Host(need = Nav.stack.lastOrNull() == Route.Home &&
+                (lib.analyzing || fl.running || AiRunner.running) && (imgs - analyzedN).coerceAtLeast(faceTodo) >= BgGuidePrompt.MIN_PENDING)
             GroupCard {
                 ToolRow(LI.swap(), "传输队列", if (Transfers.active > 0) "${Transfers.active} 个进行中" else null) { Nav.push(Route.Transfers) }
             }
