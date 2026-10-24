@@ -337,3 +337,8 @@ Android 原生（Kotlin + Jetpack Compose）飞牛 fnOS 相册客户端，名字
 
 ## 2026-10-20
 - 修复：投屏「停止投屏」不再断掉 VLC 播放的音乐（`CastProxy.stopCast()`）。本地编译通过。
+
+## 2026-10-24 迭代第 1 轮（第 1 批）· 1.2.1
+- #51 播放器第一次进入显示一次手势教学浮层；#52 续播时顶部提示「已从 mm:ss 继续播放」；#68 播放器 ⋯ → 定时关闭（15/30/60 分钟、剧集本集播完后停）；#84 影视播放器拔耳机自动暂停。
+- 代码：PlayerHints.kt（纯函数，PlayerHintsTest）、ui/MoviePlayer.kt、Playback.kt（PlayPrefs.gestureTipSeen）。
+- 清单与进度：docs/iteration/。均未真机验证。
