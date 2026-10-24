@@ -11,7 +11,8 @@
         android:layout_height="match_parent"
         android:scaleType="centerCrop"
         android:contentDescription="回忆" />
-    <View
+    <!-- 用户 2026-10-24 要求排查：RemoteViews 在 Android 12 以前不支持普通 View，桌面会显示「无法加载小部件」；遮罩改用 FrameLayout -->
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="@drawable/widget_scrim" />
