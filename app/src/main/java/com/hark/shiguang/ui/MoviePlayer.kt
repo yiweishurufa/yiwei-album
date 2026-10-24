@@ -235,6 +235,8 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
             if (startExternal) playWhenReady = false else { prepare(); playWhenReady = true }
         }
     }
+    // 用户 2026-10-24 反馈：连续快进闪退 / 卡顿 —— 同一集内的跳转（横滑、快进快退按钮、进度条）合并成一次
+    val seekGate = remember(player) { PlayerSeekGate(player) }
     /** Hands queue item [i] to another app (auth goes through the loopback proxy, see ExternalPlayer). */
     fun openExternal(i: Int) {
         val q = queue.getOrNull(i) ?: return
@@ -261,6 +263,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                     val prev = queue.getOrNull(player.currentMediaItemIndex - 1)
                     prev?.let { p -> lib.progressOf(p.path)?.let { lib.setProgress(p.path, it.dur, it.dur) } }
                 }
+                seekGate.cancel()   // a seek still waiting belongs to the previous episode
                 if (isShow) mediaItem?.mediaId?.let { lib.setLastEpisode(showId, it) }
                 // a new episode: the countdown starts fresh, and a cancel only applied to the previous one
                 nextIn = null
@@ -332,7 +335,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
             }
         }
         player.addListener(l)
-        onDispose { save(); player.removeListener(l); player.release() }
+        onDispose { save(); player.removeListener(l); seekGate.release(); player.release() }
     }
     LaunchedEffect(player) { var n = 0; while (true) { delay(1_000); if (player.isPlaying && ++n % 5 == 0) save()
         // skip intro / outro (per show, set from the ⋯ menu); each only once per episode so seeking back works
@@ -411,7 +414,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
             override fun onSeekStart(): Boolean {
                 dur = player.duration
                 if (dur <= 0 || dur == MC.TIME_UNSET || !player.isCurrentMediaItemSeekable) return false
-                seekFrom = player.currentPosition; seekTo = seekFrom
+                seekFrom = seekGate.position(); seekTo = seekFrom   // continues from a merged target not applied yet
                 onSeekMove(0f, 1)
                 return true
             }
@@ -421,7 +424,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                 seekFrac = (seekTo.toFloat() / dur).coerceIn(0f, 1f)
             }
             override fun onSeekEnd(commit: Boolean) {
-                if (commit && seekTo != seekFrom) player.seekTo(seekTo)   // only on release, like 腾讯视频
+                if (commit && seekTo != seekFrom) seekGate.seekTo(seekTo, "swipe")   // only on release, like 腾讯视频
                 seekPreview = null
             }
             override fun onVerticalStart(brightness: Boolean) {
@@ -546,7 +549,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(factory = {
             val pv = PlayerView(it).apply {
-                this.player = player
+                this.player = seekGate.forUi   // 快进 / 快退 / 进度条经过合并（PlayerSeekGate）
                 useController = true
                 // 用户 2026-10-23 反馈：音轨 / 字幕在顶栏自己的面板里选（去重、显示 mkv 标题），不用 media3 自带的 CC 和齿轮
                 setShowSubtitleButton(false)
