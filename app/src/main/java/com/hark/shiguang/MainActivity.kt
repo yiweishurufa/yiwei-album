@@ -130,6 +130,10 @@ object Nav {
     }
 }
 
+/** 系统重建或从最近任务重开时带来的启动 intent 是旧的，不应再执行其中的分享 / 深链动作。 */
+internal fun isStaleLaunchIntent(restored: Boolean, flags: Int): Boolean =
+    restored || (flags and android.content.Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0
+
 class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: android.content.Intent) { super.onNewIntent(intent); handleShare(intent) }
 
@@ -168,7 +172,10 @@ class MainActivity : ComponentActivity() {
             if (Nav.stack.lastOrNull() == Route.Home && savedTop.isNotEmpty() && savedTop != "home") Nav.restore(savedTop)
         }
         if (Store.lockOn && android.os.Build.VERSION.SDK_INT >= 28 && savedInstanceState == null) AppLock.locked = true
-        handleShare(intent)
+        // 用户 2026-10-24 要求排查：进程被杀后系统重建（savedInstanceState != null），或从最近任务重新打开分享进来的任务时，
+        // 系统会把当初那条「分享 / 深链」intent 原样再发一次，以前会再弹一次上传页（可能重复上传、URI 授权已失效），
+        // 或者把恢复好的页面重置回首页。这两种情况都不再处理旧 intent。
+        if (!isStaleLaunchIntent(savedInstanceState != null, intent?.flags ?: 0)) handleShare(intent)
         lifecycleScope.launch { runCatching { com.hark.shiguang.data.Endpoint.autoSelect() } }
         BackupScheduler.schedule(this)
         BgRun.maybeAskNotifications(this) // 1.0.1: Android 13+ notification permission for the scan / AI progress notification
