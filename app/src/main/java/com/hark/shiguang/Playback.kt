@@ -211,6 +211,9 @@ object PlayPrefs {
     /** 1.1.0 影音设置「自动播放下一集」（全局，默认开）：剧集播完后倒数 5 秒自动播下一集。 */
     var autoNext: Boolean get() = Store.getStr("play.autoNext", "1") == "1"; set(v) = Store.putStr("play.autoNext", if (v) "1" else "0")
 
+    /** 迭代 #51：播放器手势教学是否已经看过（只在第一次进播放器时显示一次）。 */
+    var gestureTipSeen: Boolean get() = Store.getStr("play.gestureTip", "0") == "1"; set(v) = Store.putStr("play.gestureTip", if (v) "1" else "0")
+
     /** 用户 2026-10-23 反馈（清晰度）：影音设置「记住飞牛清晰度」（全局，默认关 = 每次从原画开始）。 */
     var fnQualityRemember: Boolean get() = Store.getStr("play.fnQRemember", "0") == "1"; set(v) = Store.putStr("play.fnQRemember", if (v) "1" else "0")
     /** Last 清晰度 picked on a 飞牛 source: FnTvTier.key ("1080|5000000"), "" = 原画. */

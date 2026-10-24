@@ -10,6 +10,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -237,7 +238,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         // 1.0.9: FFmpeg audio decoders first (DTS / TrueHD / AC3 / EAC3 play on every phone), fall back to other decoders
         // when one fails to start (Dolby Vision → HEVC on non-DV devices).
         val renderers = ffmpegRenderersFactory(ctx)
-        ExoPlayer.Builder(ctx, renderers).setLoadControl(load).setMediaSourceFactory(DefaultMediaSourceFactory(resolving)).build().apply {
+        ExoPlayer.Builder(ctx, renderers).setHandleAudioBecomingNoisy(true).setLoadControl(load).setMediaSourceFactory(DefaultMediaSourceFactory(resolving)).build().apply {
             val items = queue.map { q -> itemFor(q, urls[q.path].orEmpty(), subOffset) }
             setMediaItems(items, start, lib.progressOf(queue[start].path)?.takeIf { !it.watched && it.pos > 5_000 }?.pos ?: 0L)
             val a = PlayPrefs.audioLang(showId); val sl = PlayPrefs.subLang(showId)
@@ -251,6 +252,13 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
             if (startExternal) playWhenReady = false else { prepare(); playWhenReady = true }
         }
     }
+    // 迭代 #52 续播提示：从上次位置接着播时顶部提示一次（hint 6 秒后自动消失）；#51 第一次进播放器显示手势教学
+    val resumeAt = remember(queue) { lib.progressOf(queue[start].path)?.takeIf { !it.watched }?.pos ?: 0L }
+    var gestureTip by remember { mutableStateOf(!PlayPrefs.gestureTipSeen) }
+    LaunchedEffect(Unit) {
+        PlayerHints.resume(resumeAt)?.let { hint = it }
+    }
+    LaunchedEffect(gestureTip) { if (gestureTip) { PlayPrefs.gestureTipSeen = true; delay(6_000); gestureTip = false } }
     // 用户 2026-10-24 反馈：连续快进闪退 / 卡顿 —— 同一集内的跳转（横滑、快进快退按钮、进度条）合并成一次
     val seekGate = remember(player) { PlayerSeekGate(player) }
     /** Hands queue item [i] to another app (auth goes through the loopback proxy, see ExternalPlayer). */
@@ -466,6 +474,25 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     fun cancelNext() {
         nextCancelledFor = player.currentMediaItem?.mediaId.orEmpty(); nextIn = null
         player.pauseAtEndOfMediaItems = true   // stay at the end of this episode instead of moving on
+    }
+    // 迭代 #68 定时关闭：N 分钟后暂停 / 本集播完后停（⋯ → 定时关闭）；只在本次播放里有效，不记住
+    var sleepMin by remember { mutableIntStateOf(0) }
+    var sleepEndFor by remember { mutableStateOf<String?>(null) }   // 「本集播完后停」对哪一集有效；换集后自动失效
+    val sleepEnd = sleepEndFor != null && sleepEndFor == curPath
+    var sleepDialog by remember { mutableStateOf(false) }
+    fun setSleep(minutes: Int, endOfEpisode: Boolean) {
+        sleepMin = minutes; sleepEndFor = if (endOfEpisode) curPath else null
+        if (endOfEpisode) cancelNext()   // 停在本集结尾，不倒数连播
+        else { nextCancelledFor = ""; player.pauseAtEndOfMediaItems = queue.size > 1 && !autoNext }
+        hint = if (minutes > 0 || endOfEpisode) "定时关闭：${PlayerHints.sleepLabel(minutes, endOfEpisode)}暂停" else "已取消定时关闭"
+    }
+    LaunchedEffect(curPath) {   // 换集后「本集播完后停」失效，恢复原来的连播设置
+        if (sleepEndFor != null && sleepEndFor != curPath) { sleepEndFor = null; nextCancelledFor = ""; player.pauseAtEndOfMediaItems = queue.size > 1 && !autoNext }
+    }
+    LaunchedEffect(sleepMin) {
+        if (sleepMin <= 0) return@LaunchedEffect
+        delay(sleepMin * 60_000L)
+        sleepMin = 0; save(); player.pause(); hint = "定时关闭：已暂停"
     }
     fun playNextNow() { nextIn = null; save(); player.seekToNextMediaItem(); player.play() }
     LaunchedEffect(hint) { if (hint != null) { delay(6_000); hint = null } }
@@ -697,6 +724,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                     IconButton(onClick = { moreMenu = true }) { Icon(Icons.Rounded.MoreVert, "更多", tint = Color.White) }
                     DropdownMenu(moreMenu, onDismissRequest = { moreMenu = false }) {
                         DropdownMenuItem(text = { Text("详细信息") }, onClick = { moreMenu = false; panel = PlayerPanel.INFO })
+                        DropdownMenuItem(text = { Text("定时关闭 · " + PlayerHints.sleepLabel(sleepMin, sleepEnd)) }, onClick = { moreMenu = false; sleepDialog = true })
                         DropdownMenuItem(text = { Text("播放设置") }, onClick = { moreMenu = false; menu = true })
                     }
                 }
@@ -705,6 +733,27 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         hint?.takeIf { !inPip }?.let { h ->
             Text(h, color = Color.White, fontSize = 13.sp, modifier = Modifier.align(Alignment.TopCenter).padding(top = 64.dp, start = 24.dp, end = 24.dp)
                 .background(Color(0xB3000000), androidx.compose.foundation.shape.RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 8.dp))
+        }
+        if (sleepDialog) AlertDialog(
+            onDismissRequest = { sleepDialog = false },
+            title = { Text("定时关闭") },
+            text = {
+                Column {
+                    PlayerHints.sleepChoices.forEach { m -> TextButton(onClick = { sleepDialog = false; setSleep(m, false) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("$m 分钟后暂停") } }
+                    if (isShow) TextButton(onClick = { sleepDialog = false; setSleep(0, true) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("本集播完后停止") }
+                    if (sleepMin > 0 || sleepEnd) TextButton(onClick = { sleepDialog = false; setSleep(0, false) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("关闭定时") }
+                }
+            },
+            confirmButton = { TextButton(onClick = { sleepDialog = false }) { Text("返回") } },
+        )
+        if (gestureTip && !inPip && error == null) {
+            Column(Modifier.align(Alignment.Center).clickable(indication = null, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) { gestureTip = false }
+                .background(Color(0xB3000000), androidx.compose.foundation.shape.RoundedCornerShape(14.dp)).padding(horizontal = 20.dp, vertical = 14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("手势小提示", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                PlayerHints.gestureLines.forEach { Text(it, color = Color(0xE6FFFFFF), fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp)) }
+                Text("点一下关闭，只显示这一次", color = Color(0x99FFFFFF), fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
+            }
         }
         nextIn?.takeIf { !inPip }?.let { n ->
             Row(Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 96.dp)
