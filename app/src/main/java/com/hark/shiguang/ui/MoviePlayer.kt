@@ -341,6 +341,14 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         player.addListener(l)
         onDispose { save(); player.removeListener(l); seekGate.release(); player.release() }
     }
+    // 用户 2026-10-24 反馈：快进闪退 / 卡顿 —— 播放链路分段写 [PLAYER] 诊断日志（解码器、卡顿、下载错误、内存、跳转）
+    DisposableEffect(player) {
+        val pd = PlayerDiag(ctx, bufferParams)
+        val f = queue[start].file
+        pd.start(if (lib.kind == "dav") "WebDAV" else "飞牛", NameParser.ext(f.name), f.size)
+        player.addAnalyticsListener(pd)
+        onDispose { player.removeAnalyticsListener(pd); pd.stop() }
+    }
     LaunchedEffect(player) { var n = 0; while (true) { delay(1_000); if (player.isPlaying && ++n % 5 == 0) save()
         // skip intro / outro (per show, set from the ⋯ menu); each only once per episode so seeking back works
         val id = player.currentMediaItem?.mediaId ?: continue
