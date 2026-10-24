@@ -110,7 +110,7 @@ class FaceLib(val accountId: String) {
         File(dir, "faces.json").writeText(JSONObject().put("scanned", JSONArray(scanned.toList())).put("names", nm).put("faces", fa).put("failed", fl).put("v", ALG).toString())
     }
 
-    fun rename(p: FacePerson, name: String) {
+    @Synchronized fun rename(p: FacePerson, name: String) {
         p.faces.forEach { names.remove(it.id) }
         if (name.isNotBlank()) names[p.key] = name.trim()
         save(); persons = persons.map { if (it.key == p.key) it.copy(name = name.trim()) else it }
@@ -123,8 +123,11 @@ class FaceLib(val accountId: String) {
      * 1) greedy pass in confidence order, 2) merge clusters whose centres are close (one person seen in
      * different light / ages was split before), 3) one refinement pass reassigning every face to its nearest centre.
      */
-    fun cluster(lib: DavLib) {
-        val byPath = lib.photos.associateBy { it.cloudPath }
+    @Synchronized fun cluster(lib: DavLib) {
+        // 用户 2026-10-24 要求排查：聚类会在后台线程跑（见 Faces.scanAll），照片列表取一个只读快照再遍历，
+        // 避免主线程同时增删照片时遍历 SnapshotStateList 抛 ConcurrentModificationException。
+        val photos = androidx.compose.runtime.snapshots.Snapshot.takeSnapshot().let { snap -> try { snap.enter { lib.photos.toList() } } finally { snap.dispose() } }
+        val byPath = photos.associateBy { it.cloudPath }
         val all = faces.values.flatten().filter { it.conf >= FaceConfig.conf && byPath.containsKey(it.path) }.sortedByDescending { it.conf }
         val thr = FaceConfig.diff
         var cents = ArrayList<FloatArray>(); var members = ArrayList<MutableList<FaceRec>>()
@@ -229,6 +232,11 @@ object Faces {
     /** 还需要做人脸识别的图片数（不含视频和被 AI 跳过的）。 */
     fun pending(lib: DavLib, fl: FaceLib): Int = lib.photos.count { !it.isVideo && it.cloudPath !in fl.scanned && !skipByAi(lib, it) }
 
+    /** start() 常在主线程（页面 LaunchedEffect）被调用：聚类挪到后台，不卡界面。用户 2026-10-24 要求排查。 */
+    private fun clusterInBackground(fl: FaceLib, lib: DavLib) {
+        scope.launch { runCatching { fl.cluster(lib) }.onFailure { Diag.e("FACE", it) } }
+    }
+
     /** Scans every photo not scanned yet, then clusters. [manual] ignores the Wi-Fi + charging rule. */
     fun start(c: Context, lib: DavLib, manual: Boolean) {
         if (jobs[lib.accountId]?.isActive == true) return
@@ -237,9 +245,9 @@ object Faces {
         if (!manual && !Analyzer.canScan(c)) {
             fl.status = if (left > 0) ScanPolicy.waitingText() else ""
             logOnce("skip start: wifi=${Net.isWifi(c)} charging=${Net.isCharging(c)} cell=${ScanPolicy.allowCellular} noCharge=${ScanPolicy.allowNoCharge}, $left photos left")
-            fl.cluster(lib); return
+            clusterInBackground(fl, lib); return
         }
-        if (left == 0) { fl.status = ""; logOnce("nothing new (${fl.scanned.size} scanned)"); fl.cluster(lib); return }
+        if (left == 0) { fl.status = ""; logOnce("nothing new (${fl.scanned.size} scanned)"); clusterInBackground(fl, lib); return }
         if (manual) fl.error = ""
         ScanService.ensure(c)
         jobs[lib.accountId] = scope.launch {
@@ -302,13 +310,15 @@ object Faces {
             fl.done += chunk.size
             if (fl.done % 48 < 12) {
                 Diag.log("FACE", "progress ${fl.done}/${fl.total}: $facesTotal faces, $noFaceTotal photos without face, $failedTotal failed (download/decode)")
-                fl.save(); withContext(Dispatchers.Main) { fl.cluster(lib) }
+                // 用户 2026-10-24 要求排查：聚类是 O(簇数²) 的合并循环，人脸多时要几百毫秒到几秒，
+                // 以前切到主线程跑，整理期间每 48 张卡一次界面（照片网格滚动卡顿、严重时 ANR）。改在后台算。
+                fl.save(); withContext(Dispatchers.Default) { fl.cluster(lib) }
             }
             ci++
         }
         Diag.log("FACE", "done ${fl.done}/${fl.total}: $facesTotal faces, $noFaceTotal photos without face, $failedTotal failed")
         fl.save()
-        withContext(Dispatchers.Main) { fl.cluster(lib) }
+        withContext(Dispatchers.Default) { fl.cluster(lib) }
     }
 
     private fun decode(bytes: ByteArray, max: Int): Bitmap? {

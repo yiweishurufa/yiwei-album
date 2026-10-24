@@ -185,7 +185,7 @@ class DavLib(val accountId: String) {
             set.forEach { fl.faces.remove(it); fl.scanned.remove(it); fl.failed.remove(it) }
             fl.save()
         }
-        withContext(Dispatchers.Main) { Faces.lib(accountId).cluster(this@DavLib) }
+        withContext(Dispatchers.Default) { Faces.lib(accountId).cluster(this@DavLib) }   // 用户 2026-10-24 要求排查：聚类不占主线程
         if (albums.orEmpty().any { a -> a.items.any { it in set } }) runCatching { editAlbums { l -> l.replaceAll { a -> a.copy(items = a.items - set, cover = if (a.cover in set) "" else a.cover) } } }
     }
 

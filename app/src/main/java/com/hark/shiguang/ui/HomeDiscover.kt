@@ -202,7 +202,9 @@ internal fun DavDiscoverTab() {
     val fl = remember(lib) { Faces.lib(lib.accountId) }
     // Only new photos are processed: both runners return at once when everything is already done.
     LaunchedEffect(lib) {
-        lib.ensure(); fl.cluster(lib)
+        lib.ensure()
+        // 用户 2026-10-24 要求排查：聚类放到后台，打开发现页不再卡一下
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { fl.cluster(lib) }
         // 1.0.9: AI labelling starts together with analysis and faces; it waits for the ScanPolicy conditions by itself
         if (!ScanPolicy.paused) ScanStarter.startAll(ctx, lib, manual = false)
     }
