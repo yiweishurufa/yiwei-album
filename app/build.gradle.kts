@@ -78,6 +78,8 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.3.1")
     implementation("androidx.media3:media3-ui:1.3.1")
     implementation("androidx.media3:media3-datasource-okhttp:1.3.1")
+    // 用户 2026-10-23 反馈（清晰度）：飞牛影视服务器转码输出 HLS（play_link …/preset.m3u8），版本必须与其它 media3 一致
+    implementation("androidx.media3:media3-exoplayer-hls:1.3.1")
     // 1.0.3 #4: 音乐播放器（后台播放、通知栏/锁屏/蓝牙控制），版本必须与其它 media3 一致
     implementation("androidx.media3:media3-session:1.3.1")
     // 1.0.9: FFmpeg audio decoders (DTS / TrueHD / AC3 / EAC3 …) for media3 1.3.1, built by Jellyfin
@@ -106,4 +108,6 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     // JVM 单元测试里 android.jar 的 XmlPullParser 只是桩，用 kxml2 提供真实实现（WebDAV PROPFIND 解析测试）
     testImplementation("net.sf.kxml:kxml2:2.3.0")
+    // JVM 单元测试里 android.jar 的 org.json 只是桩，用真实实现（飞牛影视转码档位解析测试）
+    testImplementation("org.json:json:20231013")
 }

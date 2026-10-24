@@ -51,6 +51,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import com.hark.shiguang.data.FnTvParse
+import com.hark.shiguang.data.FnTvTier
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
@@ -184,7 +187,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     var canExternal by remember { mutableStateOf(false) }
 
     /** External subtitles of [q], shifted by the show's subtitle delay when it is not 0. */
-    fun itemFor(q: QItem, url: String, offset: Long): MediaItem {
+    fun itemFor(q: QItem, url: String, offset: Long, hls: Boolean = false): MediaItem {
         val sc = subMap[q.path].orEmpty().mapIndexed { i, f0 ->
             val ext = f0.extension.lowercase()
             val f = if (offset == 0L) f0 else File(f0.parentFile, f0.nameWithoutExtension + ".off$offset.$ext").also { o ->
@@ -197,9 +200,17 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                 .setSelectionFlags(if (i == 0) MC.SELECTION_FLAG_DEFAULT else 0).build()
         }
         return MediaItem.Builder().setUri(url).setMediaId(q.path).setSubtitleConfigurations(sc)
+            .apply { if (hls) setMimeType(MimeTypes.APPLICATION_M3U8) }   // 飞牛影视转码是 HLS（play_link …/preset.m3u8）
             .setMediaMetadata(MediaMetadata.Builder().setTitle(q.title).build()).build()
     }
     val urls = remember(queue) { HashMap<String, String>(pre) }
+    // 用户 2026-10-23 反馈（清晰度）：飞牛来源可切到飞牛影视服务器转码（见 FnTvQuality）；WebDAV 只有原画
+    val isFn = lib.kind != "dav"
+    val tv = remember(queue) { FnTvQuality() }
+    val scope = rememberCoroutineScope()
+    var curPath by remember { mutableStateOf(queue[start].path) }
+    /** Url the player uses for [q]: its running transcode, else the original file. */
+    fun srcOf(q: QItem): String = tv.urlFor(q.path) ?: urls[q.path].orEmpty()
     // 1.1.0 剧集连播：倒数秒数（null = 不显示）、本集已取消连播的文件
     val isShow = item.kind != "movie"
     val autoNext = remember { PlayPrefs.autoNext }
@@ -212,6 +223,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         val resolving = ResolvingDataSource.Factory(DefaultDataSource.Factory(ctx, upstream)) { spec ->
             val url = spec.uri.toString()
             if (!url.startsWith("http")) return@Factory spec
+            com.hark.shiguang.data.FnTv.mediaHeaders(url)?.let { return@Factory spec.withAdditionalHeaders(it) }   // 转码 HLS 片段
             val h = fs.headers(url)
             if (lib.kind != "dav" || h.isEmpty()) return@Factory if (h.isEmpty()) spec else spec.withAdditionalHeaders(h)
             // 1.0.3: same logic as before, now in PlayHttp.resolve (shared with the music player)
@@ -258,10 +270,66 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         if (isShow) lib.setLastEpisode(showId, id)   // 1.1.0: 记住这部剧看到第几集（位置在上面的文件进度里）
     }
 
+    /** Language and index (among tracks of [type]) of the selected track. */
+    fun selectedTrack(type: Int): Pair<String?, Int?> {
+        var n = 0
+        player.currentTracks.groups.filter { it.type == type }.forEach { g ->
+            for (k in 0 until g.length) { if (g.isTrackSelected(k)) return g.getTrackFormat(k).language to n; n++ }
+        }
+        return null to null
+    }
+    /** Language of the selected subtitle when it is embedded in the file (external ones stay attached to the item anyway). */
+    fun embeddedSubLang(q: QItem): String? {
+        val ext = subMap[q.path].orEmpty().mapIndexed { i, f -> subLabel(q.file.subs.getOrNull(i)?.substringAfterLast('/') ?: f.name, q.file.name) }.toSet()
+        val sel = player.currentTracks.groups.firstOrNull { it.type == MC.TRACK_TYPE_TEXT && it.isSelected }
+            ?.let { g -> (0 until g.length).firstOrNull { g.isTrackSelected(it) }?.let { g.getTrackFormat(it) } } ?: return null
+        return if (sel.label in ext) null else sel.language
+    }
+    /** Puts queue item [i] on [url] at [pos]; play / pause stays as it was. */
+    fun reload(i: Int, q: QItem, url: String, hls: Boolean, pos: Long) {
+        seekGate.cancel()   // a merged seek still waiting belongs to the old source; [pos] already includes it
+        player.replaceMediaItem(i, itemFor(q, url, subOffset, hls)); player.seekTo(i, pos)
+        if (player.playbackState == Player.STATE_IDLE) player.prepare()
+    }
+    /**
+     * 清晰度 for the current item: null = 原画 (the original file), else a 飞牛影视 tier from the current position.
+     * A tier that fails to start leaves (or puts back) the original file and says why.
+     */
+    fun switchQuality(t: FnTvTier?, why: String? = null) {
+        val i = player.currentMediaItemIndex; val q = queue.getOrNull(i) ?: return
+        val pos = seekGate.position().coerceAtLeast(0)
+        val wasHls = tv.transcoding(q.path)
+        if (t == null) {
+            tv.stop()
+            if (wasHls) reload(i, q, urls[q.path].orEmpty(), false, pos)
+            why?.let { hint = it }
+            return
+        }
+        if (tv.busy || (wasHls && tv.tier == t)) return
+        tv.busy = true
+        scope.launch {
+            val res = runCatching {
+                tv.start(q.path, t, pos / 1000,
+                    audioPick = { list -> val (l, n) = selectedTrack(MC.TRACK_TYPE_AUDIO); FnTvParse.pickAudio(list, l, n) },
+                    subPick = { list -> FnTvParse.pickSubtitle(list, embeddedSubLang(q)) })
+            }
+            tv.busy = false
+            res.onSuccess { u ->
+                if (player.currentMediaItemIndex != i) { tv.stop(); return@onSuccess }
+                error = null; reload(i, q, u, true, pos); hint = "已切换到 ${t.label}（飞牛影视转码）"
+            }.onFailure { e ->
+                FnTvQuality.log("switch failed: ${e.message}")
+                if (wasHls && player.currentMediaItemIndex == i) reload(i, q, urls[q.path].orEmpty(), false, pos)
+                hint = "转码没有开始：${e.message ?: "未知错误"}，" + if (wasHls) "已回到原画" else "继续播放原画"
+            }
+        }
+    }
+
     DisposableEffect(player) {
         val l = object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 mediaItem?.mediaMetadata?.title?.let { title = it.toString() }
+                mediaItem?.mediaId?.let { curPath = it }
                 if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
                     // previous episode ran to the end
                     val prev = queue.getOrNull(player.currentMediaItemIndex - 1)
@@ -316,9 +384,18 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                     else if (manual && lang != null) PlayPrefs.setSubLang(showId, lang)
                 }
             }
+            override fun onPlaybackStateChanged(state: Int) {
+                // FNTV: one line per started transcode, to check on a real NAS that the HLS timeline is the whole film
+                if (state == Player.STATE_READY && tv.pendingReadyLog && tv.transcoding(player.currentMediaItem?.mediaId)) {
+                    tv.pendingReadyLog = false
+                    FnTvQuality.log("hls ready duration=${player.duration / 1000}s pos=${player.currentPosition / 1000}s")
+                }
+            }
             override fun onPlayerError(e: PlaybackException) {
                 Diag.log("PLAY", "error ${e.errorCodeName}: ${e.cause?.javaClass?.simpleName} ${e.cause?.message?.take(120)}")
                 if (extIdx >= 0) return
+                // 用户 2026-10-23 反馈（清晰度）：转码流放不了就自动回到原画，不弹错误框
+                if (tv.transcoding(player.currentMediaItem?.mediaId)) { switchQuality(null, "转码播放失败（${e.errorCodeName}），已回到原画"); return }
                 // B32: an IO failure means the cached redirect target is probably dead — drop it so the
                 // retry re-resolves instead of replaying the same stale signed url.
                 if (e.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS || e.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
@@ -339,7 +416,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
             }
         }
         player.addListener(l)
-        onDispose { save(); player.removeListener(l); seekGate.release(); player.release() }
+        onDispose { save(); tv.stop(); player.removeListener(l); seekGate.release(); player.release() }
     }
     // 用户 2026-10-24 反馈：快进闪退 / 卡顿 —— 播放链路分段写 [PLAYER] 诊断日志（解码器、卡顿、下载错误、内存、跳转）
     DisposableEffect(player) {
@@ -382,13 +459,25 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     }
     fun playNextNow() { nextIn = null; save(); player.seekToNextMediaItem(); player.play() }
     LaunchedEffect(hint) { if (hint != null) { delay(6_000); hint = null } }
+    // 用户 2026-10-23 反馈（清晰度）：每集各查一次飞牛影视的转码档位；离开的那集如果在转码，结束会话并换回原文件
+    LaunchedEffect(curPath) {
+        if (!isFn) return@LaunchedEffect
+        tv.activePath?.takeIf { it != curPath }?.let { old ->
+            tv.stop()
+            val idx = queue.indexOfFirst { it.path == old }
+            if (idx >= 0 && idx != player.currentMediaItemIndex) player.replaceMediaItem(idx, itemFor(queue[idx], urls[old].orEmpty(), subOffset))
+        }
+        val q = queue.firstOrNull { it.path == curPath } ?: return@LaunchedEffect
+        val ep = item.episodes.firstOrNull { it.path == q.path }
+        tv.lookup(q.path, q.file, listOf(item.title, NameParser.stem(q.file.name)), ep?.season, ep?.episode)
+    }
     fun applySubStyle() { playerView?.subtitleView?.let { sv -> sv.setApplyEmbeddedFontSizes(false); sv.setFractionalTextSize(PlayPrefs.subSize); sv.setBottomPaddingFraction(PlayPrefs.subBottom) } }
     fun setOffset(ms: Long) {
         subOffset = ms; PlayPrefs.setSubOffset(showId, ms)
         val i = player.currentMediaItemIndex; val q = queue.getOrNull(i) ?: return
         if (subMap[q.path].isNullOrEmpty()) { hint = "字幕延迟仅外挂字幕可用"; return }
         val pos = player.currentPosition
-        player.replaceMediaItem(i, itemFor(q, urls[q.path].orEmpty(), ms)); player.seekTo(i, pos)
+        player.replaceMediaItem(i, itemFor(q, srcOf(q), ms, tv.transcoding(q.path))); player.seekTo(i, pos)
     }
     BackHandler { if (extIdx < 0) save(); Nav.pop() }
     BackHandler(enabled = panel != null || moreMenu) { panel = null; moreMenu = false }   // a panel closes before the player does
@@ -553,6 +642,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     val textRows = remember(tracksNow) { trackRows(tracksNow, MC.TRACK_TYPE_TEXT) }
     val qualityRowsNow = remember(tracksNow) { qualityRows(tracksNow) }
     val qualityLabel = when {
+        isFn && tv.transcoding(curPath) -> tv.tier?.label ?: "转码"
         qualityRowsNow.size <= 1 -> "原画"
         hasVideoOverride(player) -> qualityRowsNow.firstOrNull { it.selected }?.option?.title ?: "清晰度"
         else -> "自动"
@@ -634,18 +724,22 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                 textRows.forEach { r -> PanelRow(r.option.title, r.option.detail, r.selected) { selectTrack(player, MC.TRACK_TYPE_TEXT, r.refs.first()); panel = null } }
             }
             PlayerPanel.QUALITY -> SidePanel("清晰度", { panel = null }) {
-                if (qualityRowsNow.size > 1) {
+                val cur = queue.getOrNull(player.currentMediaItemIndex)
+                if (isFn && cur != null) {
+                    // 飞牛：原画 + 飞牛影视服务器转码档位
+                    FnTvQualityRows(tv, cur.path, qualityRowsNow.firstOrNull()?.option?.detail?.takeIf { !tv.transcoding(cur.path) }) { t -> panel = null; switchQuality(t) }
+                } else if (qualityRowsNow.size > 1) {
                     val auto = !hasVideoOverride(player)
                     PanelRow("自动", "按网速自动切换", auto) { qualityAuto(player); panel = null }
                     qualityRowsNow.forEach { r -> PanelRow(r.option.title, r.option.detail, !auto && r.selected) { selectTrack(player, MC.TRACK_TYPE_VIDEO, r.refs.first()); panel = null } }
                 } else {
                     val r = qualityRowsNow.firstOrNull()
                     PanelRow("原画", r?.option?.detail, true) { panel = null }
-                    PanelNote(if (lib.kind == "dav") "WebDAV 直接播放原文件，只有原画一种清晰度。" else "飞牛暂未提供转码档位，播放的是原文件。")
+                    if (lib.kind == "dav") PanelNote("WebDAV 直接播放原文件，只有原画一种清晰度。")
                 }
             }
             PlayerPanel.INFO -> SidePanel("详细信息", { panel = null }) {
-                PlayerInfo(player, lib, queue.getOrNull(player.currentMediaItemIndex) ?: queue[start])
+                PlayerInfo(player, lib, queue.getOrNull(player.currentMediaItemIndex) ?: queue[start], tv.takeIf { isFn })
             }
             null -> Unit
         }
@@ -813,7 +907,7 @@ private fun BoxScope.GestureHud(seek: String?, seekFrac: Float, level: Pair<Stri
  */
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
-private fun ColumnScope.PlayerInfo(player: ExoPlayer, lib: MovieLib, q: QItem) {
+private fun ColumnScope.PlayerInfo(player: ExoPlayer, lib: MovieLib, q: QItem, tv: FnTvQuality?) {
     var tick by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) { while (true) { delay(1_000); tick++ } }
     if (tick < 0) return   // reading tick makes the panel recompose every second
@@ -844,5 +938,8 @@ private fun ColumnScope.PlayerInfo(player: ExoPlayer, lib: MovieLib, q: QItem) {
     InfoRow("声道", af?.channelCount?.takeIf { it > 0 }?.let { n -> when (n) { 1 -> "单声道"; 2 -> "立体声 2.0"; else -> "${TrackNames.channelName(n)} 环绕声" } } ?: dash)
     InfoRow("采样率", af?.let { TrackNames.sampleRateName(it.sampleRate) } ?: dash)
     InfoSection("播放")
+    // 用户 2026-10-23 反馈（清晰度）：标明原画还是飞牛影视转码（档位、码率）
+    val t = tv?.tier?.takeIf { tv.transcoding(q.path) }
+    InfoRow("清晰度", if (t == null) "原画 · 直接播放原文件" else listOf("转码", t.label, t.detail).filter { it.isNotEmpty() }.joinToString(" · ") + "（飞牛影视）")
     InfoRow("缓冲", "已缓冲 ${player.totalBufferedDuration / 1000} 秒" + player.bufferedPercentage.takeIf { it > 0 }?.let { " · 全片 $it%" }.orEmpty())
 }
