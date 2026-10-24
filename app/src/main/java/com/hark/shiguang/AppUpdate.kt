@@ -226,20 +226,31 @@ object AppUpdate {
         "04812323e88a940c72008ab5c5ba171ab8c094376d366627501b55ef3f0bc4c3",
     )
 
+    /**
+     * 用户 2026-10-24 要求排查：GET_SIGNING_CERTIFICATES / PackageInfo.signingInfo 是 Android 9（API 28）才有的。
+     * 以前在 Android 8.0 / 8.1 上直接调用会抛 NoSuchFieldError，被 runCatching 吞掉后返回 null，
+     * 而校验是「读不到签名 = 不一致」，于是 8.x 手机上应用内更新永远装不上。28 以下改用旧的 GET_SIGNATURES。
+     */
+    private fun signFlags(): Int =
+        if (android.os.Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES
+        else @Suppress("DEPRECATION") PackageManager.GET_SIGNATURES
+
+    private fun signers(info: android.content.pm.PackageInfo): Array<android.content.pm.Signature>? =
+        if (android.os.Build.VERSION.SDK_INT >= 28) info.signingInfo?.apkContentsSigners
+        else @Suppress("DEPRECATION") info.signatures
+
     /** SHA-256 of the first signer certificate of an APK file, or null when it cannot be read. */
     private fun apkSignerSha256(c: Context, apk: File): String? = runCatching {
-        @Suppress("DEPRECATION")
-        val info = c.packageManager.getPackageArchiveInfo(apk.path, PackageManager.GET_SIGNING_CERTIFICATES) ?: return@runCatching null
-        val certs = info.signingInfo?.apkContentsSigners ?: return@runCatching null
+        val info = c.packageManager.getPackageArchiveInfo(apk.path, signFlags()) ?: return@runCatching null
+        val certs = signers(info) ?: return@runCatching null
         if (certs.isEmpty()) return@runCatching null
         java.security.MessageDigest.getInstance("SHA-256").digest(certs[0].toByteArray()).joinToString("") { "%02x".format(it) }
     }.getOrNull()
 
     /** SHA-256 of the first signer certificate of the installed app, or null when it cannot be read. */
     private fun currentSignerSha256(c: Context): String? = runCatching {
-        @Suppress("DEPRECATION")
-        val info = c.packageManager.getPackageInfo(c.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
-        val certs = info.signingInfo?.apkContentsSigners ?: return@runCatching null
+        val info = c.packageManager.getPackageInfo(c.packageName, signFlags())
+        val certs = signers(info) ?: return@runCatching null
         if (certs.isEmpty()) return@runCatching null
         java.security.MessageDigest.getInstance("SHA-256").digest(certs[0].toByteArray()).joinToString("") { "%02x".format(it) }
     }.getOrNull()
