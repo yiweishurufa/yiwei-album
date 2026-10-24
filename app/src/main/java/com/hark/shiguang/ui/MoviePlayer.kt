@@ -206,6 +206,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     var nextIn by remember { mutableStateOf<Int?>(null) }
     var nextCancelledFor by remember { mutableStateOf("") }
 
+    val bufferParams = remember { PlayerBuffer.forHeap(Runtime.getRuntime().maxMemory()) }
     val player = remember(queue) {
         val upstream = OkHttpDataSource.Factory(PlayHttp.client)
         val resolving = ResolvingDataSource.Factory(DefaultDataSource.Factory(ctx, upstream)) { spec ->
@@ -217,7 +218,10 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
             val (final, fh) = PlayHttp.resolve(url, h, followRedirect = true)
             if (fh.isNotEmpty()) spec.withUri(Uri.parse(final)).withAdditionalHeaders(fh) else spec.withUri(Uri.parse(final))
         }
-        val load = DefaultLoadControl.Builder().setBufferDurationsMs(20_000, 60_000, 1_200, 2_500).build()
+        // 用户 2026-10-24 反馈：WebDAV 观看卡顿 —— 卡顿后多攒一些再播、字节上限按手机堆大小（见 PlayerBuffer）
+        val load = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(bufferParams.minMs, bufferParams.maxMs, bufferParams.playMs, bufferParams.rebufferMs)
+            .setTargetBufferBytes(bufferParams.targetBytes).setPrioritizeTimeOverSizeThresholds(false).build()
         // 1.0.9: FFmpeg audio decoders first (DTS / TrueHD / AC3 / EAC3 play on every phone), fall back to other decoders
         // when one fails to start (Dolby Vision → HEVC on non-DV devices).
         val renderers = ffmpegRenderersFactory(ctx)
