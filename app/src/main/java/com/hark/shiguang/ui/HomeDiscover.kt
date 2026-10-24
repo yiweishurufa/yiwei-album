@@ -47,6 +47,8 @@ import androidx.compose.ui.unit.sp
 import com.hark.shiguang.*
 import com.hark.shiguang.data.*
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
 
@@ -209,12 +211,14 @@ internal fun DavDiscoverTab() {
         if (!ScanPolicy.paused) ScanStarter.startAll(ctx, lib, manual = false)
     }
     val v = lib.metaVersion
-    val places = remember(v, lib.photos.size) { lib.places() }
-    val cats = remember(v, lib.photos.size) { lib.aiCategories() }
-    val analyzedN = remember(v, lib.photos.size) { lib.meta.values.count { it.done } }
-    val aiN = remember(v, lib.photos.size) { lib.aiDone() }
-    val imgs = lib.imagesCount()
-    val faceTodo = remember(fl.done, fl.running, lib.photos.size) { Faces.pending(lib, fl) }   // 不含 AI 已判定无人脸的
+    // 用户 2026-10-24 要求继续优化：统计挪到 Dispatchers.Default 计算（DiscoverCalc），主线程只拿结果，大图库整理时不掉帧
+    val stats = rememberDiscoverStats(lib, fl)
+    val places = stats.places
+    val cats = stats.cats
+    val analyzedN = stats.analyzedN
+    val aiN = stats.aiN
+    val imgs = stats.imgs
+    val faceTodo = stats.faceTodo   // 不含 AI 已判定无人脸的
     var menuPerson by remember { mutableStateOf<com.hark.shiguang.FacePerson?>(null) }
     var mergeFrom by remember { mutableStateOf<com.hark.shiguang.FacePerson?>(null) }
     var menuPlace by remember { mutableStateOf<Pair<String, List<Photo>>?>(null) }
@@ -226,10 +230,7 @@ internal fun DavDiscoverTab() {
 
         // ================= 回忆（用户 2026-10-23：回忆 / 整理 / 工具 三区）
         item { ZoneHeader("回忆") }
-        item {
-            val memories = remember(v, lib.photos.size) { OnThisDay.from(Hidden.visible(lib.photos.filter { !it.isVideo })) }
-            MemoriesRow(memories)
-        }
+        item { MemoriesRow(stats.memories) }
         item {
             RowHeader("人物", if (fl.persons.isNotEmpty()) "${fl.persons.size} 位" else "", "识别设置", onAction = { HomeState.showFaceCfg = true },
                 extra = if (fl.hiddenPersons.isNotEmpty()) ("已隐藏 ${fl.hiddenPersons.size}" to { Nav.push(Route.X(ExtScreen.HiddenPersons(lib.accountId))) }) else null)
@@ -246,7 +247,7 @@ internal fun DavDiscoverTab() {
                     }
                 }
             }
-            FaceStatusLine(lib, fl)   // 用户 2026-10-23 反馈 #7：人脸识别状态 / 原因 / 重试
+            FaceStatusLine(lib, fl, imgs, faceTodo)   // 用户 2026-10-23 反馈 #7：人脸识别状态 / 原因 / 重试
         }
         if (places.isNotEmpty()) {
             item { RowHeader("地点", "${places.size} 处", "地图") { Nav.push(Route.X(ExtScreen.Map(true))) } }
@@ -344,6 +345,37 @@ internal fun DavDiscoverTab() {
             "创建相册" to { menuPlace = null; makeDavAlbum(ctx, lib, pl.first, pl.second) },
         ))
     }
+}
+
+/** 上次算好的统计（进程内，按账号）：回到发现页先显示它，不会先空一下再跳出地点 / 分类（列表滚动位置也不会因此错位）。 */
+private object DiscoverStatsCache { val map = java.util.concurrent.ConcurrentHashMap<String, DiscoverStats>() }
+
+/** 两次重算之间至少隔这么久：整理时 metaVersion / 人脸进度每秒变好几次，合并成一次算（节流，不是防抖，不会一直等不到结果）。 */
+private const val DISCOVER_STATS_THROTTLE_MS = 1000L
+
+/**
+ * WebDAV 发现页统计：监听照片数、metaVersion、人脸进度、隐藏版本，变化后在 Dispatchers.Default 上用照片列表的
+ * 只读快照重算（[DiscoverCalc.compute]），结果通过 produceState 发布。conflate + 计算后小憩 = 节流。
+ */
+@Composable
+private fun rememberDiscoverStats(lib: DavLib, fl: com.hark.shiguang.FaceLib): DiscoverStats {
+    val state = produceState(DiscoverStatsCache.map[lib.accountId] ?: DiscoverStats(), lib, fl) {
+        snapshotFlow { listOf(lib.metaVersion, lib.photos.size, fl.done, if (fl.running) 1 else 0, Hidden.version) }
+            .distinctUntilChanged()
+            .conflate()
+            .collect {
+                val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                    runCatching {
+                        // SnapshotStateList 在后台线程读：进入一个只读快照，拿到一致的列表副本
+                        val photos = androidx.compose.runtime.snapshots.Snapshot.takeSnapshot().let { snap -> try { snap.enter { lib.photos.toList() } } finally { snap.dispose() } }
+                        DiscoverCalc.compute(photos, { Hidden.visible(it) }, { lib.meta[it] }, lib.meta.values, { it in fl.scanned })
+                    }.onFailure { Diag.e("DISCOVER", it) }.getOrNull()
+                }
+                if (r != null) { value = r; DiscoverStatsCache.map[lib.accountId] = r }
+                delay(DISCOVER_STATS_THROTTLE_MS)
+            }
+    }
+    return state.value
 }
 
 private fun makeDavAlbum(ctx: android.content.Context, lib: DavLib, name: String, photos: List<Photo>) {

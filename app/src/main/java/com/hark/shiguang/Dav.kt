@@ -396,9 +396,7 @@ class DavLib(val accountId: String) {
 
     // ---------------------------------------------------------------- groups for 发现
     /** B12: snapshot (photo, city) pairs — no meta[..]!! that can NPE when the meta was removed mid-group. */
-    fun places(): List<Pair<String, List<Photo>>> = Hidden.visible(photos).mapNotNull { p ->
-        meta[p.cloudPath]?.city?.takeIf { it.isNotEmpty() }?.let { p to it }
-    }.groupBy({ it.second }, { it.first }).toList().sortedByDescending { it.second.size }
+    fun places(): List<Pair<String, List<Photo>>> = DiscoverCalc.places(Hidden.visible(photos)) { meta[it] }
 
     /** B2 + B12: groups by head-MD5 + size (head-only match), snapshot — no meta[..]!!. Deletion must pass [fullSha256] secondary confirmation first. */
     fun duplicates(): List<List<Photo>> = photos.mapNotNull { p ->
@@ -446,9 +444,7 @@ class DavLib(val accountId: String) {
     fun visiblePhotos(): List<Photo> = MediaIsolation.davVisible(accountId, photos)
 
     /** B12: snapshot (photo, aiCat) pairs — no meta[..]!!. */
-    fun aiCategories(): List<Pair<String, List<Photo>>> = Hidden.visible(photos).mapNotNull { p ->
-        meta[p.cloudPath]?.aiCat?.takeIf { it.isNotEmpty() }?.let { p to it }
-    }.groupBy({ it.second }, { it.first }).toList().sortedByDescending { it.second.size }
+    fun aiCategories(): List<Pair<String, List<Photo>>> = DiscoverCalc.categories(Hidden.visible(photos)) { meta[it] }
 
     /**
      * [concepts]: every concept must be matched (AND), any synonym inside a concept counts (OR).
@@ -477,7 +473,7 @@ class DavLib(val accountId: String) {
         return pick.sortedWith(compareByDescending<Triple<Photo, Int, Int>> { it.second }.thenByDescending { it.third }).map { it.first } to exact.isNotEmpty()
     }
 
-    fun aiDone(): Int = photos.count { !it.isVideo && meta[it.cloudPath]?.aiCat?.isNotEmpty() == true }
+    fun aiDone(): Int = DiscoverCalc.aiDone(photos) { meta[it] }
 
     companion object { const val MANIFEST = "/.yiwei-albums.json"; const val RECENT_MONTHS = 3; const val MAX_ITEMS = 60000; /** H2: timeline refresh interval while scanning. */ const val SCAN_SHOW_MS = 5000L }
 }

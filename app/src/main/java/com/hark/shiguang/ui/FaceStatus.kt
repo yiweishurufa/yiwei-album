@@ -32,10 +32,9 @@ import com.hark.shiguang.ScanPolicy
  * 已经有人物且一切正常时不显示。
  */
 @Composable
-fun FaceStatusLine(lib: DavLib, fl: FaceLib) {
+fun FaceStatusLine(lib: DavLib, fl: FaceLib, imgs: Int, pending: Int) {
+    // 用户 2026-10-24 要求继续优化：照片数和待识别数由发现页在后台算好传进来，不再在主线程逐张数
     val ctx = LocalContext.current
-    val imgs = lib.imagesCount()
-    val pending = remember(fl.done, fl.running, lib.photos.size, lib.metaVersion, fl.scanned.size) { Faces.pending(lib, fl) }
     val handled = (imgs - pending).coerceIn(0, imgs)
     val faceCount = remember(fl.done, fl.running, fl.persons) { fl.faces.values.sumOf { it.size } }
     val progress = "已处理 $handled/$imgs 张"

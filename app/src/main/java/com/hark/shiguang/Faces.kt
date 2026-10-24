@@ -233,11 +233,10 @@ object Faces {
     fun modelPresent(c: Context): Boolean = runCatching { c.assets.openFd(MODEL).close(); true }.getOrDefault(false)
     private const val MODEL = "mobilefacenet.tflite"
 
-    private val SKIP_CATS = setOf("文档", "截图", "美食", "风景", "建筑", "植物", "交通")
-    /** AI 整理已判定「无人脸」或属于无人类别的照片，人脸识别跳过（省流量）。 */
-    fun skipByAi(lib: DavLib, p: Photo): Boolean = lib.meta[p.cloudPath]?.let { m -> m.aiFaces == 0 || m.aiCat in SKIP_CATS } ?: false
+    /** AI 整理已判定「无人脸」或属于无人类别的照片，人脸识别跳过（省流量）。规则在 [DiscoverCalc.skipFaceByAi]。 */
+    fun skipByAi(lib: DavLib, p: Photo): Boolean = DiscoverCalc.skipFaceByAi(lib.meta[p.cloudPath])
     /** 还需要做人脸识别的图片数（不含视频和被 AI 跳过的）。 */
-    fun pending(lib: DavLib, fl: FaceLib): Int = lib.photos.count { !it.isVideo && it.cloudPath !in fl.scanned && !skipByAi(lib, it) }
+    fun pending(lib: DavLib, fl: FaceLib): Int = DiscoverCalc.facePending(lib.photos, { lib.meta[it] }) { it in fl.scanned }
 
     /** start() 常在主线程（页面 LaunchedEffect）被调用：聚类挪到后台，不卡界面。用户 2026-10-24 要求排查。 */
     private fun clusterInBackground(fl: FaceLib, lib: DavLib) {
