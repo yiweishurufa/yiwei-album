@@ -225,6 +225,8 @@ object PlayPrefs {
     /** Subtitle text size as a fraction of the view height (media3 default 0.0533). */
     var subSize: Float get() = Store.getStr("play.subSize", "0.0533").toFloatOrNull() ?: 0.0533f; set(v) = Store.putStr("play.subSize", v.toString())
     /** Bottom padding fraction (media3 default 0.08). */
+    /** 迭代 #55：字幕样式 0 = 跟随系统（默认，行为不变） 1 = 白字黑描边 2 = 白字半透明黑底 3 = 黄字黑描边。 */
+    var subStyle: Int get() = (Store.getStr("play.subStyle", "0").toIntOrNull() ?: 0).coerceIn(0, 3); set(v) = Store.putStr("play.subStyle", v.toString())
     var subBottom: Float get() = Store.getStr("play.subBottom", "0.08").toFloatOrNull() ?: 0.08f; set(v) = Store.putStr("play.subBottom", v.toString())
 }
 

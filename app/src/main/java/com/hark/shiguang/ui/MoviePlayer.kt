@@ -511,7 +511,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         if (PlayPrefs.fnQualityRemember && player.currentMediaItem?.mediaId == q.path)
             tv.info(q.path)?.let { i -> FnTvParse.pickTier(i.tiers, PlayPrefs.fnQualityLast) }?.let { switchQuality(it) }
     }
-    fun applySubStyle() { playerView?.subtitleView?.let { sv -> sv.setApplyEmbeddedFontSizes(false); sv.setFractionalTextSize(PlayPrefs.subSize); sv.setBottomPaddingFraction(PlayPrefs.subBottom) } }
+    fun applySubStyle() { playerView?.subtitleView?.let { sv -> applySubLook(sv) } }
     fun setOffset(ms: Long) {
         subOffset = ms; PlayPrefs.setSubOffset(showId, ms)
         val i = player.currentMediaItemIndex; val q = queue.getOrNull(i) ?: return
@@ -702,7 +702,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                 setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { v -> controls = v == android.view.View.VISIBLE; hideBuiltInSettings(this) })
                 keepScreenOn = true
                 playerView = this
-                subtitleView?.let { sv -> sv.setApplyEmbeddedFontSizes(false); sv.setFractionalTextSize(PlayPrefs.subSize); sv.setBottomPaddingFraction(PlayPrefs.subBottom) }
+                subtitleView?.let { sv -> applySubLook(sv) }
             }
             PlayerGestureLayer(it, pv).apply {
                 layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
@@ -823,6 +823,19 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     }
 }
 
+/** 迭代 #55：字号 / 位置 / 样式一起应用到字幕视图。 */
+@androidx.annotation.OptIn(UnstableApi::class)
+private fun applySubLook(sv: androidx.media3.ui.SubtitleView) {
+    sv.setApplyEmbeddedFontSizes(false); sv.setFractionalTextSize(PlayPrefs.subSize); sv.setBottomPaddingFraction(PlayPrefs.subBottom)
+    val W = android.graphics.Color.WHITE; val B = android.graphics.Color.BLACK; val T = android.graphics.Color.TRANSPARENT
+    when (PlayPrefs.subStyle) {
+        1 -> sv.setStyle(androidx.media3.ui.CaptionStyleCompat(W, T, T, androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE, B, null))
+        2 -> sv.setStyle(androidx.media3.ui.CaptionStyleCompat(W, 0xA0000000.toInt(), T, androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_NONE, B, null))
+        3 -> sv.setStyle(androidx.media3.ui.CaptionStyleCompat(0xFFFFE066.toInt(), T, T, androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE, B, null))
+        else -> sv.setUserDefaultStyle()
+    }
+}
+
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 private fun PlayerMenu(player: ExoPlayer, showId: String, offset: Long, offsetEnabled: Boolean, onOffset: (Long) -> Unit, onStyle: () -> Unit, onDismiss: () -> Unit) {
@@ -830,6 +843,8 @@ private fun PlayerMenu(player: ExoPlayer, showId: String, offset: Long, offsetEn
     var outro by remember { mutableIntStateOf(PlayPrefs.outro(showId)) }
     var size by remember { mutableFloatStateOf(PlayPrefs.subSize) }
     var bottom by remember { mutableFloatStateOf(PlayPrefs.subBottom) }
+    var look by remember { mutableIntStateOf(PlayPrefs.subStyle) }
+    val looks = listOf("跟随系统", "白字描边", "黑底白字", "黄字描边")
     fun secs(s: Int) = if (s <= 0) "未设置" else "%d:%02d".format(s / 60, s % 60)
     AlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface, title = { Text("播放设置", color = C.Text) }, text = {
         Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
@@ -846,6 +861,7 @@ private fun PlayerMenu(player: ExoPlayer, showId: String, offset: Long, offsetEn
                 { size = (size + 0.005f).coerceAtMost(0.1f); PlayPrefs.subSize = size; onStyle() })
             Stepper("字幕位置", if (bottom <= 0.03f) "最低" else "抬高 ${(bottom * 100).toInt()}%", { bottom = (bottom - 0.02f).coerceAtLeast(0f); PlayPrefs.subBottom = bottom; onStyle() },
                 { bottom = (bottom + 0.02f).coerceAtMost(0.4f); PlayPrefs.subBottom = bottom; onStyle() })
+            Stepper("字幕样式", looks[look], { look = (look + 3) % 4; PlayPrefs.subStyle = look; onStyle() }, { look = (look + 1) % 4; PlayPrefs.subStyle = look; onStyle() })
             Text("音轨和字幕在顶栏「音轨」「字幕」里选，选过的语言本剧会记住。", color = C.Faint, fontSize = 11.sp, modifier = Modifier.padding(top = 10.dp))
         }
     }, confirmButton = { TextButton(onDismiss) { Text("完成", color = C.Accent) } })
