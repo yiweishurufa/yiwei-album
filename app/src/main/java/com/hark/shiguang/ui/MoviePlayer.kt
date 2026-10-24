@@ -715,7 +715,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                 verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { save(); Nav.pop() }) { Icon(LI.back(true), null, tint = Color.White) }
                 Text(title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                SpeedButton(player)
+                SpeedButton(player, showId)
                 TopTextButton(qualityLabel) { panel = PlayerPanel.QUALITY }
                 if (audioRows.size > 1) TopTextButton("音轨") { panel = PlayerPanel.AUDIO }
                 if (textRows.isNotEmpty()) TopTextButton("字幕") { panel = PlayerPanel.TEXT }
@@ -879,15 +879,20 @@ private fun readSub(f: File): String {
 }
 
 @Composable
-private fun SpeedButton(player: ExoPlayer) {
+private fun SpeedButton(player: ExoPlayer, showId: String) {
     var open by remember { mutableStateOf(false) }
     var speed by remember { mutableFloatStateOf(player.playbackParameters.speed) }
+    // 倍速按剧记忆：进入播放器时恢复上次为这部剧选的倍速
+    LaunchedEffect(showId) {
+        val saved = PlayPrefs.speed(showId)
+        if (saved > 0f && saved != speed) { speed = saved; player.setPlaybackSpeed(saved) }
+    }
     Box {
         TextButton(onClick = { open = true }) { Text(if (speed == 1f) "倍速" else "${fmtSpeed(speed)}×", color = Color.White, fontSize = 14.sp) }
         DropdownMenu(open, onDismissRequest = { open = false }) {
             listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f, 3f).forEach { s ->
                 DropdownMenuItem(text = { Text("${fmtSpeed(s)}×", fontWeight = if (s == speed) FontWeight.SemiBold else FontWeight.Normal) },
-                    onClick = { open = false; speed = s; player.setPlaybackSpeed(s) })
+                    onClick = { open = false; speed = s; player.setPlaybackSpeed(s); PlayPrefs.setSpeed(showId, s) })
             }
         }
     }

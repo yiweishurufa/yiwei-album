@@ -206,6 +206,9 @@ object PlayPrefs {
     fun setOutro(id: String, s: Int) = put(id) { it.put("out", s) }
     /** Subtitle delay in ms (positive = later), per show. */
     fun subOffset(id: String): Long = obj(id).optLong("off", 0L)
+    /** 该剧记住的倍速，0 = 未设置（用 1×）。 */
+    fun speed(id: String): Float = obj(id).optDouble("spd", 0.0).toFloat()
+    fun setSpeed(id: String, v: Float) = put(id) { it.put("spd", v.toDouble()) }
     fun setSubOffset(id: String, ms: Long) = put(id) { it.put("off", ms) }
 
     /** 1.1.0 影音设置「自动播放下一集」（全局，默认开）：剧集播完后倒数 5 秒自动播下一集。 */
