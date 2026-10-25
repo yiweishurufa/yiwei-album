@@ -47,7 +47,8 @@ class App : Application(), ImageLoaderFactory {
             .components { add(DavThumb.Factory()); add(VideoFrameDecoder.Factory()) }
             .memoryCache { MemoryCache.Builder(this).maxSizePercent(0.2).build() }
             // 1.0.8: 800 MB -> 300 MB. Grid thumbnails are tiny; what filled the cache were full-size originals from the viewer.
-            .diskCache { DiskCache.Builder().directory(cacheDir.resolve("thumbs")).maxSizeBytes(300L * 1024 * 1024).build() }
+            // #94: 上限可在 设置 → 清理缓存 → 缩略图缓存上限 里改，默认仍是 300 MB，重启 App 后生效
+            .diskCache { DiskCache.Builder().directory(cacheDir.resolve("thumbs")).maxSizeBytes(CacheLimit.bytes(Store.thumbCacheMb)).build() }
             .respectCacheHeaders(false)
             .crossfade(180)
             .build()
@@ -105,6 +106,7 @@ object Store {
     var user: String get() = str("user", ""); set(v) = setStr("user", v)
     var pass: String get() = str("pass", ""); set(v) = setStr("pass", v)
     var token: String get() = str("token", ""); set(v) = setStr("token", v)
+    var thumbCacheMb: Int get() = CacheLimit.normalize(sp.getInt("thumbCacheMb", CacheLimit.DEFAULT_MB)); set(v) = sp.edit().putInt("thumbCacheMb", CacheLimit.normalize(v)).apply()
     var columns: Int get() = sp.getInt("cols", 4); set(v) = sp.edit().putInt("cols", v).apply()
     var themeMode: String get() = str("themeMode", "DARK"); set(v) = setStr("themeMode", v)
     var accent: Int get() = sp.getInt("accent", 0); set(v) = sp.edit().putInt("accent", v).apply()

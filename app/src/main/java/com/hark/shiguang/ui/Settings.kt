@@ -53,6 +53,8 @@ fun SettingsScreen() {
     val davAcc = Dav.current
     var bgOpen by remember { mutableStateOf(false) }
     var helpOpen by remember { mutableStateOf(false) }
+    var limitOpen by remember { mutableStateOf(false) }
+    var limitMb by remember { mutableIntStateOf(Store.thumbCacheMb) }
     var davFolderSel by remember { mutableStateOf(Dav.lib()?.getSelectedDirs() ?: emptyList()) }
     var showDavFolders by remember { mutableStateOf(false) }
     // 第 4 批：平板/折叠屏——内容区最大宽度 720dp 居中，宽屏不再通栏拉伸。
@@ -153,6 +155,8 @@ fun SettingsScreen() {
                     Toast.makeText(ctx, "缓存已清理", Toast.LENGTH_SHORT).show()
                 }
             }
+            Div()
+            NavRow(LI.layers(), "缩略图缓存上限", value = CacheLimit.label(limitMb)) { limitOpen = true }
         }
 
         // ---- 通用
@@ -171,6 +175,8 @@ fun SettingsScreen() {
         // 1.1.0: 账号入口只保留顶部卡片（切换与管理 → 退出 / 移除都在账号页里）
     }
     }
+    if (limitOpen) ActionListDialog("缩略图缓存上限", sub = "超过上限会自动删掉最久没看的缩略图，重启 App 后生效", onDismiss = { limitOpen = false },
+        actions = CacheLimit.OPTIONS_MB.map { mb -> (CacheLimit.label(mb) + if (mb == limitMb) "  ✓" else "") to { Store.thumbCacheMb = mb; limitMb = mb; limitOpen = false } })
     if (bgOpen) BackgroundPolicyDialog { bgOpen = false }
     if (helpOpen) ActionListDialog("反馈与帮助", onDismiss = { helpOpen = false }, actions = listOf(
         "发邮件给开发者" to { helpOpen = false; Feedback.email(ctx) },
