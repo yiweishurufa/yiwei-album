@@ -480,9 +480,11 @@ fun SearchScreen() {
     val scope = rememberCoroutineScope()
     val fr = remember { FocusRequester() }
     val focus = LocalFocusManager.current
+    var history by remember { mutableStateOf(com.hark.shiguang.SearchHistory.load()) }
     fun run(q: String) {
         if (q.isBlank() && !AdvFilter.active) { SearchState.reset(); return }
         SearchState.query = q; focus.clearFocus()
+        if (q.isNotBlank()) { com.hark.shiguang.SearchHistory.add(q); history = com.hark.shiguang.SearchHistory.load() }
         scope.launch {
             SearchState.loading = true; SearchState.error = null; SearchState.ocrPaths = emptySet()
             runCatching {
@@ -556,6 +558,19 @@ fun SearchScreen() {
                 SearchState.loading -> SkeletonGrid(4, 0.dp)
                 SearchState.error != null -> StateMessage(Icons.Rounded.SearchOff, "搜索失败", SearchState.error.orEmpty())
                 res == null -> Column(Modifier.padding(18.dp)) {
+                    if (history.isNotEmpty()) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("最近搜索", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                            Text("清空", color = C.Sub, fontSize = 13.sp, modifier = Modifier.clickable { com.hark.shiguang.SearchHistory.clear(); history = emptyList() }.padding(6.dp))
+                        }
+                        history.forEach { h ->
+                            Row(Modifier.fillMaxWidth().clickable { run(h) }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Rounded.Search, null, tint = C.Faint, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(12.dp)); Text(h, fontSize = 15.sp)
+                            }
+                        }
+                        Spacer(Modifier.height(14.dp))
+                    }
                     Text("试试这样搜", style = MaterialTheme.typography.titleSmall)
                     Spacer(Modifier.height(12.dp))
                     listOf("海边的日落", "在吃火锅", "穿红衣服的小孩", "下雪的街道", "猫在睡觉", "生日蛋糕").forEach { s ->

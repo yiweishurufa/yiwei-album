@@ -29,3 +29,6 @@
 173 | - | NAS 删除已进回收站（设置里可恢复）；网盘/WebDAV 删除不可撤销；应用无全局 Snackbar，Toast 不能带按钮，收益低于改动风险
 1 | - | 已存在：Timeline.kt Scrubber 右侧可拖动滚动条 + 年月气泡（条目>200 时出现）
 61 | x | 影视播放器 ⋯ → 画面比例：适应(默认)/铺满裁切/拉伸，仅本次播放有效；PlayerHints.nextFit + 测试
+3 | - | 已存在：列数存 Store.columns，横屏由 adaptiveCols 自适应
+83 | - | 已存在：MoviePlayer 亮度只改窗口亮度，退出恢复
+29 | x | 搜索页「最近搜索」最多 10 条、可点、可「清空」；SearchHistory + 测试
