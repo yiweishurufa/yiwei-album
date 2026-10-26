@@ -25,4 +25,9 @@ class PlayerHintsTest {
         assertEquals("本集播完后", PlayerHints.sleepLabel(0, true))
         assertEquals("本集播完后", PlayerHints.sleepLabel(30, true))
     }
+
+    @Test fun fitCycles() {
+        assertEquals(1, PlayerHints.nextFit(0)); assertEquals(2, PlayerHints.nextFit(1)); assertEquals(0, PlayerHints.nextFit(2))
+        assertEquals("适应", PlayerHints.fitLabel(0))
+    }
 }

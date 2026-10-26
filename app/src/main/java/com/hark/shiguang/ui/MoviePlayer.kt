@@ -480,6 +480,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     var sleepEndFor by remember { mutableStateOf<String?>(null) }   // 「本集播完后停」对哪一集有效；换集后自动失效
     val sleepEnd = sleepEndFor != null && sleepEndFor == curPath
     var sleepDialog by remember { mutableStateOf(false) }
+    var fitMode by remember { mutableIntStateOf(0) }   // 迭代 #61 画面比例，仅本次播放有效
     fun setSleep(minutes: Int, endOfEpisode: Boolean) {
         sleepMin = minutes; sleepEndFor = if (endOfEpisode) curPath else null
         if (endOfEpisode) cancelNext()   // 停在本集结尾，不倒数连播
@@ -725,6 +726,11 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                     DropdownMenu(moreMenu, onDismissRequest = { moreMenu = false }) {
                         DropdownMenuItem(text = { Text("详细信息") }, onClick = { moreMenu = false; panel = PlayerPanel.INFO })
                         DropdownMenuItem(text = { Text("定时关闭 · " + PlayerHints.sleepLabel(sleepMin, sleepEnd)) }, onClick = { moreMenu = false; sleepDialog = true })
+                        DropdownMenuItem(text = { Text("画面比例 · " + PlayerHints.fitLabel(fitMode)) }, onClick = {
+                            moreMenu = false; fitMode = PlayerHints.nextFit(fitMode)
+                            playerView?.resizeMode = when (fitMode) { 1 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM; 2 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL; else -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT }
+                            hint = "画面比例：" + PlayerHints.fitLabel(fitMode)
+                        })
                         DropdownMenuItem(text = { Text("播放设置") }, onClick = { moreMenu = false; menu = true })
                     }
                 }

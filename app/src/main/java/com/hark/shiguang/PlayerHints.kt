@@ -6,6 +6,10 @@ package com.hark.shiguang
  * - 手势教学：第一次进播放器时显示一次，说明横滑 / 左右边上下滑 / 双击 / 长按。
  */
 object PlayerHints {
+    /** 迭代 #61 画面比例：0 适应（默认，留黑边）、1 铺满裁切、2 拉伸；每点一次切到下一档。 */
+    fun nextFit(cur: Int): Int = (cur.coerceIn(0, 2) + 1) % 3
+    fun fitLabel(mode: Int): String = when (mode) { 1 -> "铺满（裁切）"; 2 -> "拉伸"; else -> "适应" }
+
     /** 只有真的是接着看（> 5 秒，和起播逻辑一致）才提示。 */
     const val RESUME_MIN_MS = 5_000L
 
