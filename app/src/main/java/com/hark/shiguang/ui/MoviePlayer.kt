@@ -10,11 +10,14 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Cast
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -480,6 +483,8 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     var sleepEndFor by remember { mutableStateOf<String?>(null) }   // 「本集播完后停」对哪一集有效；换集后自动失效
     val sleepEnd = sleepEndFor != null && sleepEndFor == curPath
     var sleepDialog by remember { mutableStateOf(false) }
+    var locked by remember { mutableStateOf(false) }   // 迭代 #64 锁屏防误触，仅本次播放有效
+    var lockBtn by remember { mutableStateOf(false) }
     var fitMode by remember { mutableIntStateOf(0) }   // 迭代 #61 画面比例，仅本次播放有效
     fun setSleep(minutes: Int, endOfEpisode: Boolean) {
         sleepMin = minutes; sleepEndFor = if (endOfEpisode) curPath else null
@@ -521,6 +526,8 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         player.replaceMediaItem(i, itemFor(q, srcOf(q), ms, tv.transcoding(q.path))); player.seekTo(i, pos)
     }
     BackHandler { if (extIdx < 0) save(); Nav.pop() }
+    LaunchedEffect(lockBtn) { if (lockBtn) { delay(3_000); lockBtn = false } }
+    BackHandler(enabled = locked) { lockBtn = true }   // 锁定时返回键只提示解锁按钮
     BackHandler(enabled = panel != null || moreMenu) { panel = null; moreMenu = false }   // a panel closes before the player does
 
     // 用户 2026-10-23 反馈：手势（对标腾讯视频 / 爱奇艺），识别在 PlayerGestureLayer，动作在这里
@@ -731,6 +738,9 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                             playerView?.resizeMode = when (fitMode) { 1 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM; 2 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL; else -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT }
                             hint = "画面比例：" + PlayerHints.fitLabel(fitMode)
                         })
+                        DropdownMenuItem(text = { Text("锁定屏幕") }, onClick = {
+                            moreMenu = false; locked = true; playerView?.hideController(); hint = "已锁定，轻点屏幕可解锁"
+                        })
                         DropdownMenuItem(text = { Text("播放设置") }, onClick = { moreMenu = false; menu = true })
                     }
                 }
@@ -768,6 +778,16 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                 Text("下一集 $n 秒后播放", color = Color.White, fontSize = 14.sp)
                 TextButton(onClick = { cancelNext() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("取消", color = Color(0xCCFFFFFF)) }
                 TextButton(onClick = { playNextNow() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("立即播放", color = C.Accent) }
+            }
+        }
+        if (locked && !inPip) {
+            Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { lockBtn = true } }) {
+                if (lockBtn) Row(Modifier.align(Alignment.CenterStart).padding(start = 24.dp).clickable { locked = false; lockBtn = false; hint = "已解锁" }
+                    .background(Color(0xB3000000), androidx.compose.foundation.shape.RoundedCornerShape(24.dp)).padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.Lock, null, tint = Color.White)
+                    Text("  点此解锁", color = Color.White, fontSize = 14.sp)
+                }
             }
         }
         if (!inPip) GestureHud(seekPreview, seekFrac, levelHud, fast, flash)
