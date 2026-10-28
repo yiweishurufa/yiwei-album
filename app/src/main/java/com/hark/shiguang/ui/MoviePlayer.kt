@@ -486,6 +486,15 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     var locked by remember { mutableStateOf(false) }   // 迭代 #64 锁屏防误触，仅本次播放有效
     var lockBtn by remember { mutableStateOf(false) }
     var fitMode by remember { mutableIntStateOf(0) }   // 迭代 #61 画面比例，仅本次播放有效
+    var boostLevel by remember { mutableIntStateOf(0) }   // 迭代 #60 音量增强（0 关 / +3 / +6 / +9 dB），仅本次播放有效
+    val boostFx = remember(player) { VolumeBoostFx() }
+    DisposableEffect(player) {
+        val bl = object : Player.Listener {
+            override fun onAudioSessionIdChanged(audioSessionId: Int) { if (boostLevel > 0) boostFx.apply(audioSessionId, boostLevel) }
+        }
+        player.addListener(bl)
+        onDispose { player.removeListener(bl); boostFx.release() }
+    }
     fun setSleep(minutes: Int, endOfEpisode: Boolean) {
         sleepMin = minutes; sleepEndFor = if (endOfEpisode) curPath else null
         if (endOfEpisode) cancelNext()   // 停在本集结尾，不倒数连播
@@ -737,6 +746,14 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                             moreMenu = false; fitMode = PlayerHints.nextFit(fitMode)
                             playerView?.resizeMode = when (fitMode) { 1 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM; 2 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL; else -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT }
                             hint = "画面比例：" + PlayerHints.fitLabel(fitMode)
+                        })
+                        DropdownMenuItem(text = { Text("音量增强 · " + VolumeBoost.label(boostLevel)) }, onClick = {
+                            moreMenu = false
+                            val nl = VolumeBoost.next(boostLevel)
+                            if (boostFx.apply(player.audioSessionId, nl)) {
+                                boostLevel = nl
+                                hint = if (nl == 0) "音量增强：关" else "音量增强：${VolumeBoost.label(nl)}（声音过大失真就调低）"
+                            } else hint = "这台手机不支持音量增强"
                         })
                         DropdownMenuItem(text = { Text("锁定屏幕") }, onClick = {
                             moreMenu = false; locked = true; playerView?.hideController(); hint = "已锁定，轻点屏幕可解锁"
