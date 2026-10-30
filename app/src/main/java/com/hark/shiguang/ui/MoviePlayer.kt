@@ -485,6 +485,15 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     var sleepDialog by remember { mutableStateOf(false) }
     var locked by remember { mutableStateOf(false) }   // 迭代 #64 锁屏防误触，仅本次播放有效
     var lockBtn by remember { mutableStateOf(false) }
+    var showStats by remember { mutableStateOf(false) }   // 迭代 #74 播放状态浮窗，默认关，仅本次播放有效
+    var statsText by remember { mutableStateOf("") }
+    LaunchedEffect(showStats, player) {
+        while (showStats) {
+            val f = player.videoFormat
+            statsText = PlayerHints.stats(f?.width ?: 0, f?.height ?: 0, f?.frameRate ?: 0f, f?.bitrate?.takeIf { it > 0 } ?: f?.averageBitrate ?: 0, (player.bufferedPosition - player.currentPosition))
+            delay(1000)
+        }
+    }
     var fitMode by remember { mutableIntStateOf(0) }   // 迭代 #61 画面比例，仅本次播放有效
     var boostLevel by remember { mutableIntStateOf(0) }   // 迭代 #60 音量增强（0 关 / +3 / +6 / +9 dB），仅本次播放有效
     val boostFx = remember(player) { VolumeBoostFx() }
@@ -767,6 +776,8 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
             Text(h, color = Color.White, fontSize = 13.sp, modifier = Modifier.align(Alignment.TopCenter).padding(top = 64.dp, start = 24.dp, end = 24.dp)
                 .background(Color(0xB3000000), androidx.compose.foundation.shape.RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 8.dp))
         }
+        if (showStats && !inPip) Text(statsText, color = Color.White, fontSize = 11.sp, modifier = Modifier.align(Alignment.TopStart).padding(top = 64.dp, start = 12.dp)
+            .background(Color(0x99000000), androidx.compose.foundation.shape.RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 4.dp))
         if (sleepDialog) AlertDialog(
             onDismissRequest = { sleepDialog = false },
             title = { Text("定时关闭") },

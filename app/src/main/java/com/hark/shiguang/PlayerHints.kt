@@ -6,6 +6,16 @@ package com.hark.shiguang
  * - 手势教学：第一次进播放器时显示一次，说明横滑 / 左右边上下滑 / 双击 / 长按。
  */
 object PlayerHints {
+    /** 迭代 #74 播放状态浮窗文字：分辨率 / 帧率 / 视频码率 / 已缓冲秒数；拿不到的项直接省略。 */
+    fun stats(w: Int, h: Int, fps: Float, bitrate: Int, bufferedMs: Long): String {
+        val parts = ArrayList<String>()
+        if (w > 0 && h > 0) parts += "${w}×${h}"
+        if (fps > 0f) parts += (if (Math.abs(fps - Math.round(fps)) < 0.005f) "%d fps".format(Math.round(fps)) else "%.2f fps".format(fps))
+        if (bitrate > 0) parts += if (bitrate >= 1_000_000) "%.1f Mbps".format(bitrate / 1_000_000.0) else "${bitrate / 1000} kbps"
+        parts += "缓冲 ${(bufferedMs.coerceAtLeast(0) / 1000)} 秒"
+        return parts.joinToString(" · ")
+    }
+
     /** 迭代 #61 画面比例：0 适应（默认，留黑边）、1 铺满裁切、2 拉伸；每点一次切到下一档。 */
     fun nextFit(cur: Int): Int = (cur.coerceIn(0, 2) + 1) % 3
     fun fitLabel(mode: Int): String = when (mode) { 1 -> "铺满（裁切）"; 2 -> "拉伸"; else -> "适应" }
