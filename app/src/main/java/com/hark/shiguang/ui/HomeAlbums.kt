@@ -54,7 +54,7 @@ private fun n(v: Int) = NumberFormat.getIntegerInstance().format(v)
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun AlbumsTab(dav: Boolean) {
+internal fun AlbumsTab(dav: Boolean, onBack: (() -> Unit)? = null) {
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
     var err by remember { mutableStateOf<String?>(null) }
@@ -71,8 +71,15 @@ internal fun AlbumsTab(dav: Boolean) {
     LaunchedEffect(dav, lib) { if (dav) { lib?.ensure() } else if (HomeState.albums == null) load() }
     val grid = rememberMemGrid(if (dav) "dav-albums-${lib?.accountId}" else "fn-albums-${NasAccounts.currentId}")
     Column(Modifier.fillMaxSize()) {
-        TopSwitch { IconButton(onClick = { creating = true }) { Icon(LI.plus(), null, tint = C.Text) } }
-        PhotoModeSwitch()
+        // 用户口述 3：从「合集 → 相册 全部」进来时顶栏是返回 + 新建，不再显示来源切换和图库 | 合集
+        if (onBack != null) Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 4.dp, end = 12.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) { Icon(LI.back(), "返回合集", tint = C.Text) }
+            Spacer(Modifier.weight(1f))
+            IconButton(onClick = { creating = true }) { Icon(LI.plus(), "新建相册", tint = C.Text) }
+        } else {
+            TopSwitch { IconButton(onClick = { creating = true }) { Icon(LI.plus(), "新建相册", tint = C.Text) } }
+            PhotoModeSwitch()
+        }
         LazyVerticalGrid(
             GridCells.Adaptive(150.dp), state = grid, modifier = Modifier.weight(1f), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 120.dp + miniPlayerPad),
             horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(18.dp)

@@ -120,11 +120,14 @@ internal fun PhotoFilterChips() {
     }
 }
 
-/** 时间线 | 相册 inside the 照片 tab. 全面审查 C4：改用共用的 [Segmented]，拟物风格下和影音页的分段一致。 */
+/**
+ * 图库 | 合集 inside the 照片 tab（用户口述 3，参照飞牛官方相册；原「时间线 | 相册」，相册收进合集页）。
+ * 全面审查 C4：用共用的 [Segmented]，拟物风格下和影音页的分段一致。
+ */
 @Composable
 internal fun PhotoModeSwitch() {
     Box(Modifier.padding(start = 16.dp, top = 6.dp)) {
-        Segmented(listOf("时间线", "相册"), if (HomeState.tab == 2) 1 else 0) { HomeState.tab = if (it == 1) 2 else 0 }
+        Segmented(listOf("图库", "合集"), if (HomeState.tab == 2) 1 else 0) { HomeState.tab = if (it == 1) 2 else 0 }
     }
 }
 
@@ -153,7 +156,7 @@ fun HomeScreen() {
                 // 全面审查 C2：「视频」筛选并回时间线（月份标题、捏合缩放、列数都和全部 / 照片 / 实况一致）
                 0 -> if (dav) DavPhotosTab() else PhotosTab()
                 1 -> VideosTab(dav)   // only reachable for one frame before openTab() maps it; kept as a safe fallback
-                2 -> AlbumsTab(dav)
+                2 -> CollectionsTab(dav)   // 用户口述 3：「合集」页（相册、人物、地点、分类、媒体类型…）
                 3 -> if (dav) DavDiscoverTab() else DiscoverTab()
                 5 -> MoviesTab()
                 else -> SettingsScreen()
