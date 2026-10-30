@@ -52,6 +52,9 @@ import kotlinx.coroutines.withContext
 object MusicUi {
     var sub by mutableIntStateOf(Store.getStr("music.sub", "0").toIntOrNull() ?: 0)   // 0 歌曲 1 专辑 2 歌手 3 文件夹
     var query by mutableStateOf("")
+    // 全面审查 A8：歌曲排序 0 歌名 / 1 最近添加 / 2 歌手 / 3 时长，记在 Store
+    var sort by mutableIntStateOf(Store.getStr("music.sort", "0").toIntOrNull()?.coerceIn(0, 3) ?: 0)
+    val sorts = listOf("歌名", "最近添加", "歌手", "时长")
 }
 
 private val collator = java.text.Collator.getInstance(java.util.Locale.CHINA)
@@ -89,9 +92,9 @@ fun MusicTab() {
     val all = remember(v, lib.tracks.size) { lib.tracks.toList() }
     // H10: filtering, sorting and grouping run on Dispatchers.Default (only the open sub-page's groups); a newer
     // version cancels the older computation, so a scan's ~1/s updates never queue up on the main thread.
-    val view by produceState<MusicView?>(null, all, q, MusicUi.sub) {
-        val sub = MusicUi.sub
-        value = withContext(Dispatchers.Default) { buildMusicView(all, q, sub) }
+    val view by produceState<MusicView?>(null, all, q, MusicUi.sub, MusicUi.sort) {
+        val sub = MusicUi.sub; val sort = MusicUi.sort
+        value = withContext(Dispatchers.Default) { buildMusicView(all, q, sub, sort) }
     }
     val shown = view?.shown ?: emptyList()
     val albums = view?.albums ?: emptyList()
@@ -125,8 +128,10 @@ fun MusicTab() {
             }
         }
         item {
-            Row(Modifier.padding(start = 16.dp, top = 4.dp, bottom = 6.dp)) {
+            Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Segmented(listOf("歌曲 ${shown.size.takeIf { it > 0 } ?: ""}".trim(), "专辑", "歌手", "文件夹"), MusicUi.sub) { MusicUi.sub = it; Store.putStr("music.sub", "$it") }
+                Spacer(Modifier.weight(1f))
+                if (MusicUi.sub == 0) MusicSortMenu()
             }
         }
         if (shown.isEmpty()) {
@@ -156,11 +161,17 @@ data class MusicGroup(val kind: String, val key: String, val title: String, val 
 /** H10: what the 音乐 page shows, computed off the main thread. Groups are built only for the open sub-page. */
 class MusicView(val shown: List<Track>, val albums: List<MusicGroup>, val artists: List<MusicGroup>, val folders: List<MusicGroup>)
 
-private fun buildMusicView(all: List<Track>, q: String, sub: Int): MusicView {
+private fun buildMusicView(all: List<Track>, q: String, sub: Int, sort: Int = 0): MusicView {
     val col = java.text.Collator.getInstance(java.util.Locale.CHINA)   // own instance: Collator is not thread-safe
     fun <T> sortByKey(l: List<T>, s: (T) -> String): List<T> = l.map { col.getCollationKey(s(it)) to it }.sortedBy { it.first }.map { it.second }
     val base = if (q.isEmpty()) all else all.filter { t -> listOf(t.title, t.artist, t.album, t.albumArtist, t.name).any { it.contains(q, true) } }
-    val shown = sortByKey(base) { it.title.ifBlank { it.name } }
+    val byTitle = sortByKey(base) { it.title.ifBlank { it.name } }
+    val shown = when (sort) {
+        1 -> byTitle.sortedByDescending { it.mtime }
+        2 -> sortByKey(byTitle) { it.displayArtist }
+        3 -> byTitle.sortedByDescending { it.durationMs }
+        else -> byTitle
+    }
     val albums = if (sub != 1) emptyList() else sortByKey(shown.groupBy { it.albumKey }.map { (k, l) -> MusicGroup("album", k, l.first().displayAlbum, l.first().albumArtist.ifBlank { l.first().displayArtist }, l.firstNotNullOfOrNull { it.artPath }, l.size) }) { it.title }
     val artists = if (sub != 2) emptyList() else {
         val m = LinkedHashMap<String, MutableList<Track>>()
@@ -403,6 +414,7 @@ fun MusicNowPlayingScreen() {
                     Text("正在播放", color = C.Sub, fontSize = 12.sp)
                     if (t != null) Text(t.displayAlbum, color = C.Text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
+                SleepButton()
                 IconButton(onClick = { showLyrics = !showLyrics; Store.putStr("music.showLyrics", if (showLyrics) "1" else "") }) {
                     Text("词", color = if (showLyrics) C.Accent else C.Text, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                 }
@@ -602,4 +614,43 @@ fun MusicSettingsScreen() {
         }
     }
     if (confirmClear && lib != null) ConfirmDialog("清空音乐库？", "歌曲信息、封面和歌词会重新扫描，文件本身不受影响。", "清空", onDismiss = { confirmClear = false }) { confirmClear = false; MusicState.stop(); lib.clearCache() }
+}
+
+/** 全面审查 A3：正在播放页顶栏的定时关闭（和影视播放器同样的选项），开着时图标变色并显示剩余分钟。 */
+@Composable
+private fun SleepButton() {
+    var open by remember { mutableStateOf(false) }
+    var left by remember { mutableIntStateOf(0) }
+    LaunchedEffect(MusicState.sleepAt) { while (MusicState.sleepAt > 0) { left = (((MusicState.sleepAt - System.currentTimeMillis()) + 59_999) / 60_000).toInt().coerceAtLeast(0); delay(15_000) } }
+    val on = MusicState.sleepAt > 0 || MusicState.sleepAfterTrack != null
+    Box {
+        Row(Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(24.dp)).clickable { open = true }.padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.Bedtime, "定时关闭", tint = if (on) C.Accent else C.Text, modifier = Modifier.size(22.dp))
+            if (MusicState.sleepAt > 0) Text(" $left 分", color = C.Accent, fontSize = 12.sp)
+            else if (MusicState.sleepAfterTrack != null) Text(" 本首", color = C.Accent, fontSize = 12.sp)
+        }
+        DropdownMenu(open, onDismissRequest = { open = false }, modifier = Modifier.background(C.Surface)) {
+            PlayerHints.sleepChoices.forEach { m -> DropdownMenuItem(text = { Text("$m 分钟后暂停", color = C.Text) }, onClick = { open = false; MusicState.setSleep(m) }) }
+            DropdownMenuItem(text = { Text("本首播完后停止", color = C.Text) }, onClick = { open = false; MusicState.sleepAfterThisTrack() })
+            if (on) DropdownMenuItem(text = { Text("关闭定时", color = C.Danger) }, onClick = { open = false; MusicState.clearSleep() })
+        }
+    }
+}
+
+/** 全面审查 A8：歌曲排序菜单（和影视的排序菜单同一种样子）。 */
+@Composable
+private fun MusicSortMenu() {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Row(Modifier.heightIn(min = 40.dp).clip(RoundedCornerShape(10.dp)).clickable { open = true }.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(LI.sort(), null, tint = C.Sub, modifier = Modifier.size(17.dp))
+            Text(MusicUi.sorts[MusicUi.sort], color = C.Sub, fontSize = 13.sp, modifier = Modifier.padding(start = 4.dp))
+        }
+        DropdownMenu(open, onDismissRequest = { open = false }, modifier = Modifier.background(C.Surface)) {
+            MusicUi.sorts.forEachIndexed { i, s ->
+                DropdownMenuItem(text = { Text(s, color = C.Text, fontWeight = if (i == MusicUi.sort) FontWeight.SemiBold else FontWeight.Normal) },
+                    onClick = { open = false; MusicUi.sort = i; Store.putStr("music.sort", "$i") })
+            }
+        }
+    }
 }

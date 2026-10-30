@@ -67,6 +67,7 @@ fun ConnectionSettingsContent(onClose: () -> Unit) {
     var editWan by remember { mutableStateOf(false) }
     var testing by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
+    var loggingOut by remember { mutableStateOf(false) }   // 全面审查 B5：退出前确认，可顺带删本机缓存
     var speedLan by remember { mutableStateOf<Endpoint.Speed?>(null) }
     var speedWan by remember { mutableStateOf<Endpoint.Speed?>(null) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 30.dp)) {
@@ -135,13 +136,13 @@ fun ConnectionSettingsContent(onClose: () -> Unit) {
                 }
                 Spacer(Modifier.height(16.dp))
                 Card {
-                    NavRow(LI.close(), "退出这个账号", value = a.user, danger = true) {
-                        onClose(); Ops.logoutNas(a.id)
-                    }
+                    NavRow(LI.close(), "退出这个账号", value = a.user, danger = true) { loggingOut = true }
                 }
             }
     }
     val a = NasAccounts.current
+    if (a != null && loggingOut) RemoveSourceDialog("退出「${a.user}」？", "只从本机退出，不影响飞牛里的照片。", "退出", java.io.File(App.ctx.filesDir, "fn/${a.id}"),
+        onDismiss = { loggingOut = false }) { clear -> loggingOut = false; onClose(); Ops.logoutNas(a.id, clearDisk = clear) }
     if (a != null && renaming) InputDialog("重命名账号", a.title, "比如：家里的飞牛", "保存", onDismiss = { renaming = false }) { v ->
         renaming = false; NasAccounts.update(a.copy(name = v.trim()))
     }

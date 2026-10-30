@@ -53,6 +53,8 @@ sealed class Route {
     data object AdvancedSettings : Route()
     data class Upload(val uris: List<android.net.Uri>) : Route()
     data class MovieDetail(val sourceKey: String, val itemId: String) : Route()
+    /** 全面审查 A9：库里某位演员的作品。 */
+    data class MovieActor(val sourceKey: String, val name: String) : Route()
     /** [fromStart] 全面审查 A1：详情页「从头播放」，不接着上次的进度。 */
     data class MoviePlay(val sourceKey: String, val itemId: String, val path: String, val fromStart: Boolean = false) : Route()
     data object MovieLibrarySettings : Route()
@@ -278,6 +280,7 @@ class MainActivity : ComponentActivity() {
                             is Route.Upload -> UploadScreen(r)
                             is Route.MovieDetail -> MovieDetailScreen(r)
                             is Route.MoviePlay -> MoviePlayerScreen(r)
+                            is Route.MovieActor -> MovieActorScreen(r.sourceKey, r.name)
                             Route.MovieLibrarySettings -> MovieLibrarySettingsScreen()
                             Route.MediaSettings -> MediaSettingsScreen()
                             Route.MusicSettings -> MusicSettingsScreen()

@@ -569,8 +569,11 @@ fun DavAccountsScreen() {
         if (Dav.accounts.size == 1 || Dav.current == null) Dav.select(saved.id)
     }
     removing?.let { a ->
-        ConfirmDialog("移除「${a.title}」？", "只从本机移除，不影响 WebDAV 里的文件。", "移除", onDismiss = { removing = null }) {
+        RemoveSourceDialog("移除「${a.title}」？", "只从本机移除，不影响 WebDAV 里的文件。", "移除", java.io.File(App.ctx.filesDir, "dav/${a.id}"), onDismiss = { removing = null }) { clear ->
+            // 全面审查 B5：默认同时删本机索引、海报和封面（Dav.forget 的 clearDisk 以前没人传）
+            Movies.forget("dav:${a.id}"); Music.forget("dav:${a.id}")
             CloudAccounts.remove(a.id); Dav.forget(a.id); removing = null; accounts = Dav.accounts
+            if (clear) Ops.launch { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { java.io.File(App.ctx.filesDir, "dav/${a.id}").deleteRecursively() } } }
         }
     }
 }

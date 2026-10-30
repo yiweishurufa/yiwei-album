@@ -138,7 +138,8 @@ fun MovieDetailScreen(r: Route.MovieDetail) {
                 item {
                     LazyRow(Modifier.offset(y = (-66).dp), contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         items(m.cast) { c ->
-                            Column(Modifier.width(72.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            // 全面审查 A9：点演员，看库里还有他 / 她的哪些作品
+                            Column(Modifier.width(72.dp).clip(RoundedCornerShape(8.dp)).clickable { Nav.push(Route.MovieActor(lib.sourceKey, c.name)) }, horizontalAlignment = Alignment.CenterHorizontally) {
                                 Box(Modifier.size(64.dp).clip(CircleShape).background(C.Surface2), contentAlignment = Alignment.Center) {
                                     if (c.img != null) NetImage(posterModel(c.img), Modifier.fillMaxSize()) else Text(c.name.take(1), color = C.Sub, fontSize = 20.sp)
                                 }

@@ -276,12 +276,13 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         ExternalPlayer.open(ctx, u, if (u.startsWith("http")) fs.headers(u) else emptyMap(), q.file.name, audio = false)?.let { toast(ctx, it) }
     }
 
-    fun save() {
+    /** [quiet] 全面审查 B2：播放中每 5 秒的定时保存只更新内存、在后台合并写盘，不让下面的影音页整库重排。 */
+    fun save(quiet: Boolean = false) {
         if (extIdx >= 0) return // played elsewhere: no position to save
         val id = player.currentMediaItem?.mediaId ?: return
         val d = player.duration
         // 还没执行的合并跳转也算（拖完进度条 0.35 秒内就退出，以前记的是拖之前的位置）
-        if (d > 0 && d != MC.TIME_UNSET) lib.setProgress(id, seekGate.position(), d)
+        if (d > 0 && d != MC.TIME_UNSET) lib.setProgress(id, seekGate.position(), d, notify = !quiet)
         if (isShow) lib.setLastEpisode(showId, id)   // 1.1.0: 记住这部剧看到第几集（位置在上面的文件进度里）
     }
 
@@ -450,7 +451,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         player.addAnalyticsListener(pd)
         onDispose { player.removeAnalyticsListener(pd); pd.stop() }
     }
-    LaunchedEffect(player) { var n = 0; while (true) { delay(1_000); if (player.isPlaying && ++n % 5 == 0) save()
+    LaunchedEffect(player) { var n = 0; while (true) { delay(1_000); if (player.isPlaying && ++n % 5 == 0) save(quiet = true)
         // skip intro / outro (per show, set from the ⋯ menu); each only once per episode so seeking back works
         val id = player.currentMediaItem?.mediaId ?: continue
         val intro = PlayPrefs.intro(showId) * 1000L; val outro = PlayPrefs.outro(showId) * 1000L

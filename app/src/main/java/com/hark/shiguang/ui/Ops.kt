@@ -154,10 +154,13 @@ object Ops {
      * drift: one fell back to the WebDAV home, the other to Login). Removes the account, clears
      * per-account state, and lands on Login — or the WebDAV home when DAV accounts remain.
      */
-    fun logoutNas(id: String? = null) {
+    fun logoutNas(id: String? = null, clearDisk: Boolean = false) {
         val target = id ?: com.hark.shiguang.NasAccounts.current?.id ?: return
         HomeState.forget(target)
         com.hark.shiguang.NasAccounts.remove(target)
+        // 全面审查 B5：顺带删掉这个账号在本机的索引、人脸、影视海报、音乐封面
+        com.hark.shiguang.Movies.forget("fn:$target"); com.hark.shiguang.Music.forget("fn:$target")
+        if (clearDisk) launch { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { java.io.File(App.ctx.filesDir, "fn/$target").deleteRecursively() } } }
         HomeState.clear()
         if (com.hark.shiguang.NasAccounts.current == null) {
             Store.clear()
@@ -332,6 +335,30 @@ fun DavAlbumPicker(lib: com.hark.shiguang.DavLib, onDismiss: () -> Unit, onPick:
 
 fun openPerson(p: com.hark.shiguang.data.Person) {
     Nav.push(Route.Collection(p.name.ifEmpty { "未命名" }, "${p.count} 张照片", PhotoSource(pageSize = 100) { o, l -> Repo.personPhotos(p.id, o, l) }))
+}
+
+/**
+ * 全面审查 B5：移除来源（WebDAV 账户 / 退出飞牛）时可以顺带删掉本机为它存的索引、人脸、影视海报、音乐封面和歌词。
+ * [dir] 是这个来源在 filesDir 下的目录；默认勾选。
+ */
+@Composable
+fun RemoveSourceDialog(title: String, msg: String, okText: String, dir: java.io.File, onDismiss: () -> Unit, onOk: (clearDisk: Boolean) -> Unit) {
+    var clear by remember { mutableStateOf(true) }
+    val size by produceState(-1L, dir) { value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { dir.walkBottomUp().filter { it.isFile }.sumOf { it.length() } }.getOrDefault(0L) } }
+    AlertDialog(
+        onDismissRequest = onDismiss, containerColor = C.Surface,
+        title = { Text(title, color = C.Text) },
+        text = { Column {
+            if (msg.isNotEmpty()) Text(msg, color = C.Sub)
+            Row(Modifier.padding(top = 12.dp).fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { clear = !clear }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = clear, onCheckedChange = { clear = it })
+                Text("同时删除本机缓存的索引、海报和封面" + when { size < 0 -> "（正在计算…）"; size == 0L -> ""; else -> "（约 ${android.text.format.Formatter.formatShortFileSize(App.ctx, size)}）" },
+                    color = C.Text, fontSize = 14.sp)
+            }
+        } },
+        confirmButton = { TextButton(onClick = { onOk(clear) }) { Text(okText, color = C.Danger) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消", color = C.Sub) } },
+    )
 }
 
 @Composable

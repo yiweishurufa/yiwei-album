@@ -92,20 +92,34 @@ class MovieLib(val sourceKey: String) {
     }
 
     fun progressOf(path: String): Progress? { version; return progress[path] }
-    fun setProgress(path: String, pos: Long, dur: Long) {
+    /**
+     * 全面审查 B2：写盘挪到 IO 线程并合并（2 秒内只写一次，格式不变）。[notify] = false 时不 version++
+     * （播放中的定时保存），退出 / 换集时的保存照常通知界面。
+     */
+    fun setProgress(path: String, pos: Long, dur: Long, notify: Boolean = true) {
         if (dur <= 0) return
-        progress[path] = Progress(pos, dur, System.currentTimeMillis()); saveProgress(); version++
+        progress[path] = Progress(pos, dur, System.currentTimeMillis())
+        // 退出 / 换集 / 切后台（notify）马上在后台写，免得进程随后被杀丢进度；播放中的定时保存攒 2 秒
+        saveProgressSoon(if (notify) 0L else 2_000L)
+        if (notify) version++
     }
-    fun clearProgress(path: String) { progress.remove(path); saveProgress(); version++ }
+    private var progressJob: Job? = null
+    @Synchronized private fun saveProgressSoon(delayMs: Long = 0L) {
+        progressJob?.cancel()
+        progressJob = scope.launch { if (delayMs > 0) delay(delayMs); saveProgressLocked() }
+    }
+    private val progressLock = Any()
+    private fun saveProgressLocked() { synchronized(progressLock) { saveProgress() } }
+    fun clearProgress(path: String) { progress.remove(path); saveProgressSoon(); version++ }
 
     /** 全面审查 A1：标为已看（一次写盘）。没播过的文件不知道时长，用 1/1 记成「看完」。 */
     fun markWatched(paths: List<String>) {
         val now = System.currentTimeMillis()
         paths.forEach { p -> val d = progress[p]?.dur?.takeIf { it > 0 } ?: 1L; progress[p] = Progress(d, d, now) }
-        saveProgress(); version++
+        saveProgressSoon(); version++
     }
     /** A1：标为未看 = 清掉这些文件的进度（一次写盘）。 */
-    fun markUnwatched(paths: List<String>) { paths.forEach { progress.remove(it) }; saveProgress(); version++ }
+    fun markUnwatched(paths: List<String>) { paths.forEach { progress.remove(it) }; saveProgressSoon(); version++ }
 
     /** A1：从「继续观看」移除。只记移除时间（Store，不动 progress.json）；之后再播放会重新出现。 */
     private val cwHideKey get() = "movies.cwHide.$sourceKey"

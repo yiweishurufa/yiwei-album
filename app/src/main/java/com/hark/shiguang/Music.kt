@@ -441,6 +441,8 @@ object Music {
     private val libs = HashMap<String, MusicLib>()
     fun lib(): MusicLib? = Movies.keyOf()?.let { lib(it) }
     fun lib(key: String): MusicLib = synchronized(libs) { libs.getOrPut(key) { MusicLib(key) } }.also { it.ensure() }
+    /** 全面审查 B5：移除来源时丢掉内存里的库（磁盘文件由调用方删）。 */
+    fun forget(key: String) { synchronized(libs) { libs.remove(key) } }
 
     private val SPLIT = Regex("\\s*(?:/|;|；|、|&|＆|,|，| feat\\.? | ft\\. | x )\\s*", RegexOption.IGNORE_CASE)
     fun splitArtists(s: String): List<String> = if (s.isBlank()) listOf("未知歌手") else s.split(SPLIT).map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { listOf(s.trim()) }

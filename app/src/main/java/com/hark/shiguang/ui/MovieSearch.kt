@@ -149,3 +149,17 @@ private fun SearchPoster(m: MovieItem, onClick: () -> Unit) {
         if (sub.isNotEmpty()) Text(sub, color = C.Sub, fontSize = 12.sp, maxLines = 1)
     }
 }
+
+/** 全面审查 A9：详情页点演员 → 库里有他 / 她参演的作品（按年份新到旧）。 */
+@Composable
+fun MovieActorScreen(sourceKey: String, name: String) {
+    val lib = remember(sourceKey) { Movies.lib(sourceKey) }
+    val works by remember(lib, name) { derivedStateOf { lib.version; lib.items.filter { m -> m.cast.any { it.name == name } }.sortedByDescending { it.year ?: 0 } } }
+    Page(name, if (lib.ready) "库里有 ${works.size} 部作品" else "") {
+        if (!lib.ready) { LibLoading(); return@Page }
+        LazyVerticalGrid(GridCells.Adaptive(104.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 40.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            items(works, key = { it.id }) { m -> PosterCard(m, lib) { Nav.push(Route.MovieDetail(sourceKey, m.id)) } }
+        }
+    }
+}

@@ -119,9 +119,24 @@ object MusicState {
         }, MoreExecutors.directExecutor())
     }
 
+    // 全面审查 A3：音乐定时关闭（15 / 30 / 60 分钟后暂停，或本首播完后停），只在这次运行有效
+    var sleepMin by mutableIntStateOf(0); private set
+    var sleepAt by mutableLongStateOf(0L); private set
+    var sleepAfterTrack by mutableStateOf<String?>(null); private set
+    private val sleepRun = Runnable { pause(); clearSleep(); toast("定时关闭：已暂停") }
+    fun setSleep(minutes: Int) {
+        clearSleep()
+        if (minutes > 0) { sleepMin = minutes; sleepAt = System.currentTimeMillis() + minutes * 60_000L; main.postDelayed(sleepRun, minutes * 60_000L) }
+    }
+    fun sleepAfterThisTrack() { clearSleep(); sleepAfterTrack = mediaId }
+    fun clearSleep() { main.removeCallbacks(sleepRun); sleepMin = 0; sleepAt = 0L; sleepAfterTrack = null }
+
     private fun sync() {
         val c = controller ?: return
-        mediaId = c.currentMediaItem?.mediaId
+        val newId = c.currentMediaItem?.mediaId
+        // 本首播完：切到下一首（或播放结束）时暂停
+        sleepAfterTrack?.let { s -> if (newId != s || c.playbackState == Player.STATE_ENDED) { sleepAfterTrack = null; c.pause(); toast("定时关闭：本首已播完，已暂停") } }
+        mediaId = newId
         isPlaying = c.isPlaying || (c.playWhenReady && c.playbackState == Player.STATE_BUFFERING)
         buffering = c.playbackState == Player.STATE_BUFFERING
         repeat = c.repeatMode; shuffle = c.shuffleModeEnabled
