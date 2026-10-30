@@ -120,15 +120,11 @@ internal fun PhotoFilterChips() {
     }
 }
 
-/** 时间线 | 相册 inside the 照片 tab. */
+/** 时间线 | 相册 inside the 照片 tab. 全面审查 C4：改用共用的 [Segmented]，拟物风格下和影音页的分段一致。 */
 @Composable
 internal fun PhotoModeSwitch() {
-    Row(Modifier.padding(start = 16.dp, top = 6.dp).clip(RoundedCornerShape(12.dp)).background(C.Surface).padding(3.dp)) {
-        listOf("时间线" to 0, "相册" to 2).forEach { (t, i) ->
-            val on = HomeState.tab == i
-            Text(t, color = if (on) C.Text else C.Sub, fontSize = 13.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
-                modifier = Modifier.clip(RoundedCornerShape(9.dp)).background(if (on) C.Surface2 else Color.Transparent).clickable { HomeState.tab = i }.padding(horizontal = 14.dp, vertical = 6.dp))
-        }
+    Box(Modifier.padding(start = 16.dp, top = 6.dp)) {
+        Segmented(listOf("时间线", "相册"), if (HomeState.tab == 2) 1 else 0) { HomeState.tab = if (it == 1) 2 else 0 }
     }
 }
 
@@ -149,12 +145,13 @@ fun HomeScreen() {
     Row(Modifier.fillMaxSize().appBackground()) {
     if (wide) SideRail()
     Box(Modifier.weight(1f).fillMaxHeight()) {
-        if (HomeState.switching && HomeState.tab != 4) Column { TopSwitch(); SkeletonGrid(4, 20.dp) }
+        if (HomeState.switching && HomeState.tab != 4) Column { TopSwitch(search = if (HomeState.tab == 5) SearchScope.None else SearchScope.Photos, showDate = HomeState.tab != 5); SkeletonGrid(4, 20.dp) }
         // 用户 2026-10-24 要求继续优化：切底部 tab 时各 tab 的 rememberSaveable 状态（设置页滚动、发现页展开的卡片）
         // 也按 tab 保存，切回来还在。照片网格 / 发现页列表的滚动另有 ScrollMem 按账号保存。
-        else tabStates.SaveableStateProvider(homeTabKey(HomeState.tab, HomeState.photoFilter == 2, HomeState.source)) {
+        else tabStates.SaveableStateProvider(homeTabKey(HomeState.tab, false, HomeState.source)) {
             when (HomeState.tab) {
-                0 -> if (HomeState.photoFilter == 2) VideosTab(dav, inPhotos = true) else if (dav) DavPhotosTab() else PhotosTab()
+                // 全面审查 C2：「视频」筛选并回时间线（月份标题、捏合缩放、列数都和全部 / 照片 / 实况一致）
+                0 -> if (dav) DavPhotosTab() else PhotosTab()
                 1 -> VideosTab(dav)   // only reachable for one frame before openTab() maps it; kept as a safe fallback
                 2 -> AlbumsTab(dav)
                 3 -> if (dav) DavDiscoverTab() else DiscoverTab()
@@ -264,9 +261,15 @@ fun switchSource(ctx: android.content.Context, s: Src) {
     toast(ctx, "已切换到 ${s.title}")
 }
 
-/** Source capsule (tap: dropdown of every 飞牛 / WebDAV account) + date filter + search, at the top of every home tab. */
+/** 审查 1/2/3/6：顶栏的放大镜搜什么。Photos = 照片搜索，Media = 影片搜索，None = 不显示（页内已有搜索框或与搜索无关）。 */
+enum class SearchScope { Photos, Media, None }
+
+/**
+ * Source capsule (tap: dropdown of every 飞牛 / WebDAV account) + date filter + search, at the top of every home tab.
+ * [showDate]「按日期筛选照片」只在照片 / 相册 / 发现保留；影音、音乐、设置不显示。
+ */
 @Composable
-fun TopSwitch(showSearch: Boolean = true, extra: @Composable RowScope.() -> Unit = {}) {
+fun TopSwitch(search: SearchScope = SearchScope.Photos, showDate: Boolean = true, extra: @Composable RowScope.() -> Unit = {}) {
     val ctx = LocalContext.current
     var open by remember { mutableStateOf(false) }
     val cur = currentSource()
@@ -305,8 +308,12 @@ fun TopSwitch(showSearch: Boolean = true, extra: @Composable RowScope.() -> Unit
         }
         Spacer(Modifier.weight(1f))
         extra()
-        IconButton(onClick = { HomeState.showDate = true }) { Icon(LI.calendar(), null, tint = C.Text, modifier = Modifier.size(22.dp)) }
-        if (showSearch) IconButton(onClick = { Nav.push(Route.Search) }) { Icon(LI.search(), null, tint = C.Text, modifier = Modifier.size(23.dp)) }
+        if (showDate) IconButton(onClick = { HomeState.showDate = true }) { Icon(LI.calendar(), "按日期查看照片", tint = C.Text, modifier = Modifier.size(22.dp)) }
+        when (search) {
+            SearchScope.Photos -> IconButton(onClick = { Nav.push(Route.Search) }) { Icon(LI.search(), "搜索照片", tint = C.Text, modifier = Modifier.size(23.dp)) }
+            SearchScope.Media -> IconButton(onClick = { Nav.push(Route.MovieSearch) }) { Icon(LI.search(), "搜索影片", tint = C.Text, modifier = Modifier.size(23.dp)) }
+            SearchScope.None -> Unit
+        }
     }
 }
 
@@ -359,6 +366,13 @@ private fun PhotosTab() {
     // 1.1.0: what the grid shows (全部 / 照片 / 实况); memories keep using stills
     val filter = HomeState.photoFilter
     val shown by remember(filter) { derivedStateOf { if (filter == 1) stills else { MediaIsolation.version; Hidden.visible(MediaIsolation.fnVisible(tl.photos.filter { HomeState.accepts(it, filter) })) } } }
+    // C2：飞牛时间线按月分页加载；筛「视频 / 实况」时它们可能很稀疏，自动往后翻，直到够一屏或翻完
+    LaunchedEffect(filter, tl) {
+        if (filter == 0) return@LaunchedEffect
+        snapshotFlow { Triple(shown.size, tl.loading, tl.done) }.collect { (n, loading, done) ->
+            if (n < 60 && !loading && !done && tl.photos.isNotEmpty()) tl.next()
+        }
+    }
     var memories by remember { mutableStateOf<List<MemoryGroup>>(emptyList()) }
     LaunchedEffect(tl.days) { memories = OnThisDay.loadFn(tl, NasAccounts.currentId) }
     LaunchedEffect(memories, stills.isNotEmpty()) { if (stills.isNotEmpty()) OnThisDay.feedWidget("fn:" + NasAccounts.currentId, memories) { stills } }
@@ -367,7 +381,7 @@ private fun PhotosTab() {
     val day = visibleDay(entries, grid, 1)
     val (mt, yt) = monthTitle(day)
     val (pc, vc) = tl.stats
-    val sub = listOf(yt, if (pc > 0) "${n(pc)} 张照片" else "").filter { it.isNotEmpty() }.joinToString(" · ")
+    val sub = listOf(yt, if (filter == 2) (if (vc > 0) "${n(vc)} 个视频" else "") else if (pc > 0) "${n(pc)} 张照片" else "").filter { it.isNotEmpty() }.joinToString(" · ")
     Box(Modifier.fillMaxSize()) {
         val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
         when {
@@ -392,7 +406,10 @@ private fun PhotosTab() {
                 PhotoGrid(
                     entries, cols, tl.loading, onEnd = { scope.launch { tl.next() } },
                     onOpen = { Nav.push(Route.Viewer(shown, it)) }, state = grid, top = 0.dp, bottom = 100.dp + miniPlayerPad,
-                    header = { Column { TopSwitch(); PhotoModeSwitch(); PhotoFilterChips(); BigTitle(mt, sub); MemoriesRow(memories) } },
+                    header = { Column { TopSwitch(); PhotoModeSwitch(); PhotoFilterChips(); BigTitle(mt, sub); MemoriesRow(memories)
+                        if (shown.isEmpty()) Text(if (tl.loading || !tl.done) "正在查找…" else if (filter == 2) "没有视频" else "没有实况照片",
+                            style = MaterialTheme.typography.bodySmall, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(vertical = 60.dp))
+                    } },
                     onPinch = ::pinch,
                     onHeaderClick = { h -> if (level == Level.MONTH) {
                         val first = entries.indexOf(h)
@@ -451,7 +468,8 @@ private fun DavPhotosTab() {
             lib.photos.isEmpty() && lib.scanning -> Column { TopSwitch(); SkeletonGrid(4, 20.dp) }
             lib.photos.isEmpty() && lib.error != null -> Column { TopSwitch(); Box(Modifier.weight(1f)) { ErrorState(lib.error, onRetry = { scope.launch { lib.scan() } }) } }
             shown.isEmpty() -> Column { TopSwitch(); PhotoModeSwitch(); PhotoFilterChips(); Box(Modifier.weight(1f)) {
-                if (filter == 3 && stills.isNotEmpty()) StateMessage(LI.photos(), "没有实况照片", "iPhone 实况（照片 + 同名 MOV）和安卓动态照片分析完后会出现在这里。")
+                if (filter == 2) StateMessage(LI.videos(), "没有视频", "")
+                else if (filter == 3 && stills.isNotEmpty()) StateMessage(LI.photos(), "没有实况照片", "iPhone 实况（照片 + 同名 MOV）和安卓动态照片分析完后会出现在这里。")
                 else StateMessage(LI.photos(), "没有找到照片", "把照片放进这个 WebDAV 后下拉刷新。", "重新扫描") { scope.launch { lib.scan(full = true) } } } }
             else -> {
                 PhotoGrid(entries, adaptiveCols(level.cols.coerceAtMost(7)), lib.scanning, onEnd = {}, onOpen = { Nav.push(Route.Viewer(shown, it)) }, state = grid, top = 0.dp, bottom = 100.dp + miniPlayerPad,

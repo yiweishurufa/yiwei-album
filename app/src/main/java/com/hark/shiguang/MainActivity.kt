@@ -29,6 +29,8 @@ sealed class Route {
     data object Home : Route()
     data class Collection(val title: String, val subtitle: String, val source: PhotoSource, val album: AlbumRef? = null) : Route()
     data object Search : Route()
+    /** 审查 1 / 用户口述 1：影音页的搜索（搜影片，不是照片）。 */
+    data object MovieSearch : Route()
     data class Viewer(val photos: List<Photo>, val start: Int, val slideshow: Boolean = false) : Route()
     data object Settings : Route()
     data object ConnectionSettings : Route()
@@ -113,6 +115,7 @@ object Nav {
             is Route.SmartSettings -> "smartSettings"
             is Route.AdvancedSettings -> "advSettings"
             is Route.Search -> "search"
+            is Route.MovieSearch -> "movieSearch"
             is Route.MusicSettings -> "musicSettings"
             is Route.MusicNowPlaying -> "musicNowPlaying"
             is Route.MovieLibrarySettings -> "movieLib"
@@ -139,6 +142,7 @@ object Nav {
             "smartSettings" -> Route.SmartSettings
             "advSettings" -> Route.AdvancedSettings
             "search" -> Route.Search
+            "movieSearch" -> Route.MovieSearch
             "musicSettings" -> Route.MusicSettings
             "musicNowPlaying" -> Route.MusicNowPlaying
             "movieLib" -> Route.MovieLibrarySettings
@@ -252,6 +256,7 @@ class MainActivity : ComponentActivity() {
                             Route.Login -> LoginScreen()
                             is Route.Collection -> CollectionScreen(r)
                             Route.Search -> SearchScreen()
+                            Route.MovieSearch -> MovieSearchScreen()
                             is Route.Viewer -> ViewerScreen(r.photos, r.start, r.slideshow)
                             Route.Settings -> SettingsScreen()
                             Route.ConnectionSettings -> ConnectionSettingsScreen()

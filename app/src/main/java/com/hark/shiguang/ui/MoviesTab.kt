@@ -53,7 +53,7 @@ private fun sorted(l: List<MovieItem>, s: Int): List<MovieItem> = when (s) {
 fun MoviesTab() {
     if (MoviesState.area == 1) { MusicTab(); return }
     val key = Movies.keyOf()
-    if (key == null) { Column { TopSwitch(); Box(Modifier.weight(1f)) { NoSourceState(LI.film(), "影视库跟着左上角的来源走") } }; return }
+    if (key == null) { Column { TopSwitch(SearchScope.None, showDate = false); Box(Modifier.weight(1f)) { NoSourceState(LI.film(), "影视库跟着左上角的来源走") } }; return }
     val lib = remember(key) { Movies.lib(key) }
     val grid = rememberMemGrid("movies-$key-${MoviesState.seg}")
     LaunchedEffect(key) {
@@ -70,17 +70,9 @@ fun MoviesTab() {
     // 第 4 批：平板/折叠屏——Adaptive 替代 Fixed(3)：手机上仍约 3 列（110dp 下限），平板自动变多列；通栏行用 maxLineSpan。
     LazyVerticalGrid(GridCells.Adaptive(110.dp), state = grid, modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = 120.dp + miniPlayerPad), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item(span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.bleed(14.dp)) { TopSwitch() } }
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Row(Modifier.padding(top = 6.dp, start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("影音", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = C.Text, letterSpacing = (-0.4).sp, modifier = Modifier.weight(1f))
-                if (lib.dirs.isNotEmpty()) {
-                    IconButton(onClick = { lib.scan(); ScanService.ensure(App.ctx) }, enabled = !lib.scanning) { Icon(LI.refresh(), "重新扫描影视", tint = if (lib.scanning) C.Faint else C.Text, modifier = Modifier.size(21.dp)) }
-                }
-                IconButton(onClick = { Nav.push(Route.MediaSettings) }) { Icon(LI.settings(), "影音设置", tint = C.Text, modifier = Modifier.size(22.dp)) }
-            }
+            Box(Modifier.bleed(14.dp)) { MediaHeader(SearchScope.Media, lib.scanning, lib.dirs.isNotEmpty(), "重新扫描影视") { lib.scan(); ScanService.ensure(App.ctx) } }
         }
-        item(span = { GridItemSpan(maxLineSpan) }) { Row(Modifier.padding(start = 2.dp)) { MediaAreaSwitch() } }
         if (!lib.ready) { items(9) { PosterSkeleton() }; return@LazyVerticalGrid }
         if (lib.dirs.isEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }) {
@@ -119,6 +111,23 @@ fun MoviesTab() {
                 }
             }
         } else items(shown, key = { it.id }) { m -> PosterCard(m) { Nav.push(Route.MovieDetail(key, m.id)) } }
+    }
+}
+
+/**
+ * 全面审查 C8：影音页（电影剧集 / 音乐）共用的头部——来源顶栏 + 「影音」大标题 + 刷新 / 设置 + 电影剧集 | 音乐 切换。
+ * 审查 2/3：影音不显示「按日期筛选照片」；[search] 电影剧集是搜影片，音乐页有页内搜索框所以不放。
+ */
+@Composable
+fun MediaHeader(search: SearchScope, scanning: Boolean, hasDirs: Boolean, scanLabel: String, onScan: () -> Unit) {
+    Column {
+        TopSwitch(search = search, showDate = false)
+        Row(Modifier.padding(top = 6.dp, start = 18.dp, end = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("影音", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = C.Text, letterSpacing = (-0.4).sp, modifier = Modifier.weight(1f))
+            if (hasDirs) IconButton(onClick = onScan, enabled = !scanning) { Icon(LI.refresh(), scanLabel, tint = if (scanning) C.Faint else C.Text, modifier = Modifier.size(21.dp)) }
+            IconButton(onClick = { Nav.push(Route.MediaSettings) }) { Icon(LI.settings(), "影音设置", tint = C.Text, modifier = Modifier.size(22.dp)) }
+        }
+        Row(Modifier.padding(start = 16.dp, top = 2.dp, bottom = 8.dp)) { MediaAreaSwitch() }
     }
 }
 

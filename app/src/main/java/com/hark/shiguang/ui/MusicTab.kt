@@ -77,7 +77,7 @@ private fun fmtCount(n: Int) = "$n 首"
 fun MusicTab() {
     val key = Movies.keyOf()
     val ctx = LocalContext.current
-    if (key == null) { Column { TopSwitch(); Box(Modifier.weight(1f)) { NoSourceState(Icons.Rounded.MusicNote, "音乐库跟着左上角的来源走") } }; return }
+    if (key == null) { Column { TopSwitch(SearchScope.None, showDate = false); Box(Modifier.weight(1f)) { NoSourceState(Icons.Rounded.MusicNote, "音乐库跟着左上角的来源走") } }; return }
     val lib = remember(key) { Music.lib(key) }
     LaunchedEffect(key) {
         lib.awaitReady()   // #2 / H4: the library loads on IO; decide about the quiet rescan once it is in
@@ -101,17 +101,7 @@ fun MusicTab() {
 
     val albumCols = adaptiveCols(2)
     LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 170.dp)) {
-        item { TopSwitch() }
-        item {
-            Row(Modifier.padding(top = 6.dp, start = 18.dp, end = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("影音", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = C.Text, letterSpacing = (-0.4).sp, modifier = Modifier.weight(1f))
-                if (lib.dirs.isNotEmpty()) IconButton(onClick = { lib.scan(); ScanService.ensure(App.ctx) }, enabled = !lib.scanning) {
-                    Icon(LI.refresh(), "重新扫描音乐", tint = if (lib.scanning) C.Faint else C.Text, modifier = Modifier.size(21.dp))
-                }
-                IconButton(onClick = { Nav.push(Route.MediaSettings) }) { Icon(LI.settings(), "影音设置", tint = C.Text, modifier = Modifier.size(22.dp)) }
-            }
-        }
-        item { Row(Modifier.padding(start = 16.dp, top = 2.dp, bottom = 8.dp)) { MediaAreaSwitch() } }
+        item { MediaHeader(SearchScope.None, lib.scanning, lib.dirs.isNotEmpty(), "重新扫描音乐") { lib.scan(); ScanService.ensure(App.ctx) } }
         if (!lib.ready) { item { Box(Modifier.fillMaxWidth().height(440.dp)) { LibLoading() } }; return@LazyColumn }
         if (lib.dirs.isEmpty()) {
             item {
