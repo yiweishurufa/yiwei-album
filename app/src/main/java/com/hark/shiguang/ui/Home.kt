@@ -144,6 +144,8 @@ fun HomeScreen() {
     LaunchedEffect(HomeState.switching) { if (HomeState.switching) { delay(550); HomeState.switching = false } }
     val wide = isWide()
     val tabStates = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
+    // 审查 8：在影音 / 发现 / 设置 tab 按返回，先回到照片，再按一次才退出（首页上面盖着别的页面时不拦截）
+    androidx.activity.compose.BackHandler(enabled = Nav.stack.size == 1 && HomeState.tab != 0 && HomeState.tab != 2 && !Selection.active) { HomeState.tab = 0 }
     Row(Modifier.fillMaxSize().appBackground()) {
     if (wide) SideRail()
     Box(Modifier.weight(1f).fillMaxHeight()) {
@@ -249,6 +251,8 @@ fun switchSource(ctx: android.content.Context, s: Src) {
     val cur = currentSource()
     if (cur?.kind == s.kind && cur.id == s.id) return
     Selection.clear(); SearchState.query = ""; SearchState.reset()
+    // 审查 7 / 10：高级搜索条件（相机型号、日期）和音乐搜索词都是按来源的，切换来源时清掉
+    AdvFilter.reset(); MusicUi.query = ""
     if (s.kind == "fn") {
         if (NasAccounts.currentId != s.id) { HomeState.stash(NasAccounts.currentId); NasAccounts.switchTo(s.id); HomeState.restore(s.id) }
         HomeState.useSource("fn")

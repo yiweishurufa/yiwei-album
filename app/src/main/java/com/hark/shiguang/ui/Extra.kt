@@ -24,12 +24,17 @@ import kotlinx.coroutines.launch
 object NasVideos {
     var src: PhotoSource? = null
     var forAccount = ""
+    /** 全面审查 B3：删除 / 隐藏后 +1，让「视频」页重新取一份。 */
+    var version by mutableIntStateOf(0)
+    fun reset() { src = null; version++ }
     fun get(): PhotoSource {
         val id = NasAccounts.currentId
         if (src == null || forAccount != id) {
             forAccount = id
             var cursor = 0
-            src = PhotoSource(pageSize = 60) { _, limit ->
+            src = PhotoSource(pageSize = 60) { offset, limit ->
+                // 全面审查 B3：refresh()（出错重试）从头翻，不能接着上次的游标，否则前面的视频会漏掉
+                if (offset == 0) cursor = 0
                 val out = ArrayList<Photo>(); var more = true; var guard = 0
                 while (out.size < limit && more && guard++ < 40) {
                     val (l, m) = Repo.photos(Repo.FAR_START, Repo.FAR_END, cursor, 500)
@@ -66,7 +71,7 @@ fun VideosTab(dav: Boolean, inPhotos: Boolean = false) {
             else PhotoGrid(entries, cols, lib.scanning, onEnd = {}, onOpen = { Nav.push(Route.Viewer(vids, it)) }, state = grid, bottom = 100.dp + miniPlayerPad,
                 header = { Column { Head(); Title("视频", "${vids.size} 个" + if (lib.scanning) " · 正在扫描…" else "") } })
         } else {
-            val src = remember(NasAccounts.currentId) { NasVideos.get() }
+            val src = remember(NasAccounts.currentId, NasVideos.version) { NasVideos.get() }
             LaunchedEffect(src) { if (!src.started) { src.started = true; src.next() } }
             val shown by remember(src) { derivedStateOf { MediaIsolation.version; Hidden.visible(MediaIsolation.fnVisible(src.photos.toList())) } }
             val entries by remember(src) { derivedStateOf { buildEntries(shown, true) } }
@@ -78,7 +83,7 @@ fun VideosTab(dav: Boolean, inPhotos: Boolean = false) {
                     header = { Column { Head(); Title("视频", "${shown.size}${if (src.more) "+" else ""} 个") } })
             }
         }
-        SelectionBar(Modifier.align(Alignment.BottomCenter), onChanged = {})
+        SelectionBar(Modifier.align(Alignment.BottomCenter), onChanged = { if (dav) Dav.lib()?.let { scope.launch { it.scan() } } else NasVideos.reset() })
     }
 }
 

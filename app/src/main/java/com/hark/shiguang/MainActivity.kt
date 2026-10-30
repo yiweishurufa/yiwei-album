@@ -81,10 +81,13 @@ object Nav {
     private fun newKey(r: Route) = "${nextKey++}:${r::class.java.simpleName}"
     fun push(r: Route) { keys.add(newKey(r)); stack.add(r); save() }
     fun pop() {
+        // 审查 5：离开页面时清掉多选（系统返回和左上角返回结果一致）
+        com.hark.shiguang.ui.Selection.clear()
         if (stack.size > 1) { stack.removeAt(stack.lastIndex); keys.removeLastOrNull()?.let { onRemoved?.invoke(it) } }
         save()
     }
     fun reset(r: Route) {
+        com.hark.shiguang.ui.Selection.clear()
         val old = keys.toList(); keys.clear(); keys.add(newKey(r))
         stack.clear(); stack.add(r); save()
         old.forEach { onRemoved?.invoke(it) }

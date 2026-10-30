@@ -153,7 +153,7 @@ fun SkeletonGrid(columns: Int, top: Dp) {
 }
 
 @Composable
-fun StateMessage(icon: ImageVector, title: String, sub: String, action: String? = null, onAction: (() -> Unit)? = null) {
+fun StateMessage(icon: ImageVector, title: String, sub: String, action: String? = null, action2: String? = null, onAction2: (() -> Unit)? = null, onAction: (() -> Unit)? = null) {
     Column(Modifier.fillMaxSize().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Box(Modifier.size(84.dp).clip(CircleShape).background(C.Accent.copy(alpha = 0.10f)), contentAlignment = Alignment.Center) {
             Icon(icon, null, tint = C.Accent, modifier = Modifier.size(36.dp))
@@ -166,8 +166,14 @@ fun StateMessage(icon: ImageVector, title: String, sub: String, action: String? 
             Spacer(Modifier.height(20.dp))
             GradientButton(action, Modifier.width(160.dp), onClick = onAction)
         }
+        if (action2 != null && onAction2 != null) TextButton(onClick = onAction2, modifier = Modifier.padding(top = 6.dp)) { Text(action2, color = C.Accent) }
     }
 }
+
+/** 审查 12：影音 / 音乐没有来源时，飞牛和 WebDAV 两种都能直接添加。 */
+@Composable
+fun NoSourceState(icon: ImageVector, sub: String) =
+    StateMessage(icon, "先添加一个来源", sub, "登录飞牛", action2 = "添加 WebDAV", onAction2 = { com.hark.shiguang.Nav.push(com.hark.shiguang.Route.DavAccounts) }) { com.hark.shiguang.Nav.push(com.hark.shiguang.Route.Login) }
 
 /**
  * 1.1.0 统一错误状态：按 [ErrorKind] 给出说人话的标题、原因和处理按钮（连不上 → 重试，密码错 → 修改账号，

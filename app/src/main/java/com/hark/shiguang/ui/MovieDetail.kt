@@ -314,7 +314,14 @@ fun MovieLibrarySettingsScreen() {
         if (!lib.ready) { LibLoading(); return@Page }   // never save folders over a library that is still loading
         if (picking) { FolderPicker(lib.fs, lib.kind, onDismiss = { picking = false }) { path, name ->
             picking = false
-            if (lib.dirs.none { it.path == path }) lib.saveDirs(lib.dirs + MovieDir(path, name, "auto"))
+            // 全面审查 B4：和音乐一样合并父子目录，选完直接开始扫描
+            val outer = lib.dirs.firstOrNull { MediaIsolation.isUnder(path, it.path) }
+            if (outer != null) toast(ctx, "已包含在「${outer.name}」里")
+            else {
+                val inner = lib.dirs.filter { MediaIsolation.isUnder(it.path, path) }
+                if (inner.isNotEmpty()) toast(ctx, "已合并 ${inner.size} 个子文件夹")
+                lib.saveDirs(lib.dirs - inner.toSet() + MovieDir(path, name, "auto")); lib.scan(); ScanService.ensure(ctx)
+            }
         }; return@Page }
         Column(Modifier.fillMaxSize().verticalScrollCompat().navigationBarsPadding().padding(bottom = 40.dp)) {
             Section("影视文件夹", info = "和相册的扫描目录分开设置。可以加多个，每个标成电影、剧集或自动识别。" +
@@ -323,7 +330,7 @@ fun MovieLibrarySettingsScreen() {
                 if (lib.dirs.isEmpty()) Text("还没有影视文件夹", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
                 lib.dirs.forEachIndexed { i, d ->
                     if (i > 0) Div()
-                    LibraryDirRow(d.name, d.path) { lib.saveDirs(lib.dirs - d) }
+                    LibraryDirRow(d.name, d.path) { lib.saveDirs(lib.dirs - d); if (lib.dirs.isNotEmpty()) { lib.scan(); ScanService.ensure(ctx) } }
                     Row(Modifier.padding(start = 32.dp, top = 8.dp, bottom = 12.dp)) {
                         Segmented(listOf("自动", "电影", "剧集"), listOf("auto", "movie", "tv").indexOf(d.kind).coerceAtLeast(0)) { k ->
                             lib.saveDirs(lib.dirs.map { if (it.path == d.path) it.copy(kind = listOf("auto", "movie", "tv")[k]) else it })

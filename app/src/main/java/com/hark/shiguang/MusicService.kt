@@ -153,6 +153,8 @@ object MusicState {
     fun seek(ms: Long) = with { it.seekTo(ms) }
     fun playAt(i: Int) = with { it.seekTo(i, 0); it.play() }
     fun remove(i: Int) = with { it.removeMediaItem(i) }
+    /** 全面审查 B9：播放列表拖动排序。 */
+    fun move(from: Int, to: Int) = with { if (from != to && to in 0 until it.mediaItemCount) it.moveMediaItem(from, to) }
     fun cycleRepeat() = with { it.repeatMode = when (it.repeatMode) { Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE; Player.REPEAT_MODE_ONE -> Player.REPEAT_MODE_OFF; else -> Player.REPEAT_MODE_ALL } }
     fun toggleShuffle() = with { it.shuffleModeEnabled = !it.shuffleModeEnabled }
     fun shuffleTo(b: Boolean) = with { it.shuffleModeEnabled = b }

@@ -241,7 +241,10 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         // 1.0.9: FFmpeg audio decoders first (DTS / TrueHD / AC3 / EAC3 play on every phone), fall back to other decoders
         // when one fails to start (Dolby Vision → HEVC on non-DV devices).
         val renderers = ffmpegRenderersFactory(ctx)
-        ExoPlayer.Builder(ctx, renderers).setHandleAudioBecomingNoisy(true).setLoadControl(load).setMediaSourceFactory(DefaultMediaSourceFactory(resolving)).build().apply {
+        // 全面审查 B1：申请音频焦点，来电或别的 App 放声音时自动暂停
+        ExoPlayer.Builder(ctx, renderers).setHandleAudioBecomingNoisy(true)
+            .setAudioAttributes(androidx.media3.common.AudioAttributes.Builder().setUsage(MC.USAGE_MEDIA).setContentType(MC.AUDIO_CONTENT_TYPE_MOVIE).build(), true)
+            .setLoadControl(load).setMediaSourceFactory(DefaultMediaSourceFactory(resolving)).build().apply {
             val items = queue.map { q -> itemFor(q, urls[q.path].orEmpty(), subOffset) }
             setMediaItems(items, start, lib.progressOf(queue[start].path)?.takeIf { !it.watched && it.pos > 5_000 }?.pos ?: 0L)
             val a = PlayPrefs.audioLang(showId); val sl = PlayPrefs.subLang(showId)

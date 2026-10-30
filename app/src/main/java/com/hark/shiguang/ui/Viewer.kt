@@ -199,12 +199,10 @@ fun ViewerScreen(photosIn: List<Photo>, start: Int, slideshowStart: Boolean = fa
 @Composable
 private fun MoreSheet(p: Photo, onInfo: () -> Unit, onDismiss: () -> Unit, onHidden: () -> Unit) {
     val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var albumPick by remember { mutableStateOf(false) }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = C.Surface, dragHandle = { BottomSheetDefaults.DragHandle(color = C.Faint) }) {
         Column(Modifier.padding(bottom = 30.dp)) {
             NavRow(Icons.Rounded.Info, "详情") { onInfo() }
-            NavRow(Icons.Rounded.PhotoAlbum, "加入相册") { albumPick = true }
+            // 全面审查 C1：「加入相册」只留底栏那一个
             if (!p.isCloud) NavRow(Icons.Rounded.ImageSearch, "找相似照片") { onDismiss(); Ops.openSimilar(p) }
             if (p.isLive) NavRow(Icons.Rounded.MotionPhotosOn, "保存实况视频部分") { onDismiss(); Ops.downloadLiveVideo(ctx, p) }
             if (!p.isVideo) NavRow(Icons.Rounded.Tune, "编辑") { onDismiss(); Nav.push(com.hark.shiguang.Route.X(ExtScreen.Edit(p))) }
@@ -214,7 +212,6 @@ private fun MoreSheet(p: Photo, onInfo: () -> Unit, onDismiss: () -> Unit, onHid
             }
         }
     }
-    if (albumPick) AddToAlbumFlow(p) { albumPick = false; onDismiss() }
 }
 
 /** 加入相册 for one photo: NAS albums for 飞牛 photos, virtual albums for WebDAV photos. */
@@ -373,18 +370,27 @@ fun VideoSurface(url: String, play: Boolean, loop: Boolean, controls: Boolean, m
             } else if (target != url) emptyMap() else com.hark.shiguang.ImageAuth.headersFor(url) ?: emptyMap()
         )
         val load = androidx.media3.exoplayer.DefaultLoadControl.Builder().setBufferDurationsMs(15_000, 50_000, 800, 1_500).build()
-        // B34: same FFmpeg-preferred renderers as the 影视 player (DTS / TrueHD / AC3 on every phone);
-        // the shared factory extraction is batch 3's job (D8) — this stays a local copy until then.
-        val renderers = androidx.media3.exoplayer.DefaultRenderersFactory(ctx)
-            .setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
-            .setEnableDecoderFallback(true)
+        // B34 / 全面审查 C5：与影视播放器共用 FFmpeg 优先的解码器配置（DTS / TrueHD / AC3 在每台手机都能放）
+        val renderers = com.hark.shiguang.ffmpegRenderersFactory(ctx)
         // DefaultDataSource: file:// (extracted Motion Photo MP4) locally, everything else through OkHttp
-        ExoPlayer.Builder(ctx, renderers).setLoadControl(load).setMediaSourceFactory(DefaultMediaSourceFactory(androidx.media3.datasource.DefaultDataSource.Factory(ctx, ds))).build().apply {
+        // 全面审查 B1：普通视频申请音频焦点（来电 / 别的 App 放声音时自动暂停），拔耳机暂停
+        ExoPlayer.Builder(ctx, renderers).setLoadControl(load).setMediaSourceFactory(DefaultMediaSourceFactory(androidx.media3.datasource.DefaultDataSource.Factory(ctx, ds)))
+            .setAudioAttributes(androidx.media3.common.AudioAttributes.Builder().setUsage(androidx.media3.common.C.USAGE_MEDIA)
+                .setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE).build(), /* 实况照片循环不抢焦点 */ controls)
+            .setHandleAudioBecomingNoisy(true).build().apply {
             setMediaItem(MediaItem.fromUri(target)); repeatMode = if (loop) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
             prepare(); playWhenReady = play
         }
     }
     DisposableEffect(player) { onDispose { player.release() } }
+    // 全面审查 B1：照片里的视频开始播时先停音乐；切到后台（ON_STOP）暂停，不再和音乐叠在一起响
+    LaunchedEffect(player) { if (play && controls) com.hark.shiguang.MusicState.pause() }
+    val owner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    DisposableEffect(owner, player) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP) player.pause() }
+        owner.lifecycle.addObserver(obs)
+        onDispose { owner.lifecycle.removeObserver(obs) }
+    }
     AndroidView(factory = {
         PlayerView(it).apply {
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)

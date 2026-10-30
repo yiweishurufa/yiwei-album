@@ -448,6 +448,8 @@ fun AlbumPicker(onDismiss: () -> Unit, onPick: (Album) -> Unit) {
 /** Bottom bar shown while multi-selecting: favourite / download / add to album / delete. */
 @Composable
 fun SelectionBar(modifier: Modifier = Modifier, onChanged: () -> Unit = {}) {
+    // 审查 4 / 5：多选时第一次返回只取消选择（首页不再直接退出 App，二级页也不会把选择带回上一页）
+    androidx.activity.compose.BackHandler(enabled = Selection.active) { Selection.clear() }
     if (!Selection.active) return
     val ctx = androidx.compose.ui.platform.LocalContext.current
     var albumPick by remember { mutableStateOf(false) }

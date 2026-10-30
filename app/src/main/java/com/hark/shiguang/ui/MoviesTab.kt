@@ -34,7 +34,8 @@ fun Modifier.bleed(h: androidx.compose.ui.unit.Dp) = this.layout { m, c ->
 }
 
 object MoviesState {
-    var seg by mutableIntStateOf(0)        // 0 电影, 1 剧集
+    // 审查 11：电影 / 剧集的选择也存下来，重启后保持
+    var seg by mutableIntStateOf(Store.getStr("movies.seg", "0").toIntOrNull() ?: 0)        // 0 电影, 1 剧集
     // 1.0.3 #4: 0 电影剧集, 1 音乐 (the switch under the 影音 title)
     var area by mutableIntStateOf(Store.getStr("movies.area", "0").toIntOrNull() ?: 0)
     var sort by mutableIntStateOf(Store.getStr("movies.sort", "0").toIntOrNull() ?: 0)
@@ -52,7 +53,7 @@ private fun sorted(l: List<MovieItem>, s: Int): List<MovieItem> = when (s) {
 fun MoviesTab() {
     if (MoviesState.area == 1) { MusicTab(); return }
     val key = Movies.keyOf()
-    if (key == null) { Column { TopSwitch(); Box(Modifier.weight(1f)) { StateMessage(LI.film(), "先添加一个来源", "影视库跟着左上角的来源走", "添加 WebDAV") { Nav.push(Route.DavAccounts) } } }; return }
+    if (key == null) { Column { TopSwitch(); Box(Modifier.weight(1f)) { NoSourceState(LI.film(), "影视库跟着左上角的来源走") } }; return }
     val lib = remember(key) { Movies.lib(key) }
     val grid = rememberMemGrid("movies-$key-${MoviesState.seg}")
     LaunchedEffect(key) {
@@ -91,7 +92,7 @@ fun MoviesTab() {
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
             Row(Modifier.padding(start = 2.dp, top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                Segmented(listOf("电影 ${counts.first.takeIf { it > 0 } ?: ""}".trim(), "剧集 ${counts.second.takeIf { it > 0 } ?: ""}".trim()), MoviesState.seg) { MoviesState.seg = it }
+                Segmented(listOf("电影 ${counts.first.takeIf { it > 0 } ?: ""}".trim(), "剧集 ${counts.second.takeIf { it > 0 } ?: ""}".trim()), MoviesState.seg) { MoviesState.seg = it; Store.putStr("movies.seg", "$it") }
                 Spacer(Modifier.weight(1f))
                 SortMenu()
             }
@@ -110,8 +111,12 @@ fun MoviesTab() {
         if (shown.isEmpty()) {
             if (lib.scanning) items(9) { PosterSkeleton() }
             else item(span = { GridItemSpan(maxLineSpan) }) {
-                Text(if (kind == "movie") "这些文件夹里还没找到电影。剧集文件夹可以在设置里标成「剧集」。" else "还没找到剧集。文件名里带 S01E02、第1集 这类写法就能认出来。",
-                    style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(vertical = 60.dp, horizontal = 24.dp))
+                Column(Modifier.fillMaxWidth().padding(vertical = 60.dp, horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(if (kind == "movie") "这些文件夹里还没找到电影。剧集文件夹可以在设置里标成「剧集」。" else "还没找到剧集。文件名里带 S01E02、第1集 这类写法就能认出来。",
+                        style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
+                    // 全面审查 B4：空状态给一个去设置文件夹类型的按钮
+                    TextButton(onClick = { Nav.push(Route.MovieLibrarySettings) }) { Text("设置文件夹类型", color = C.Accent) }
+                }
             }
         } else items(shown, key = { it.id }) { m -> PosterCard(m) { Nav.push(Route.MovieDetail(key, m.id)) } }
     }

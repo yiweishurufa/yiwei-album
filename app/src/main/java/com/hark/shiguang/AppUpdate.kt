@@ -267,7 +267,7 @@ object AppUpdate {
             UpdateRules.Signer.SAME -> return
             UpdateRules.Signer.TRUSTED_OTHER -> {
                 Diag.log("UPD", "apk signed by the other yiwei key (test <-> release), installer NOT launched")
-                throw SignatureMismatch("新版本换了签名（测试签名 ↔ 正式签名），系统不允许直接覆盖。请先在设置里「同步设置到其他手机」备份设置，卸载旧版后再用「浏览器下载」安装")
+                throw SignatureMismatch("新版本换了签名（测试签名 ↔ 正式签名），系统不允许直接覆盖。卸载旧版后再用「浏览器下载」安装（卸载会清掉本机设置和缓存，账号需要重新登录）")
             }
             UpdateRules.Signer.UNKNOWN -> {
                 Diag.log("UPD", "signature unknown (currentReadable=${want != null}, apkReadable=${got != null}), installer NOT launched")

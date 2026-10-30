@@ -260,8 +260,8 @@ object SubShift {
 
 /**
  * Shared player construction. The three ExoPlayer sites keep their own DataSource / load-control /
- * audio-attribute setup (lifecycles differ), but the FFmpeg-first renderer config is identical in the
- * movie and music players — the photo viewer intentionally stays on the default renderers (no FFmpeg).
+ * audio-attribute setup (lifecycles differ), but the FFmpeg-first renderer config is shared by the
+ * movie player, the music player and the photo viewer's video surface (全面审查 C5).
  */
 @androidx.annotation.OptIn(UnstableApi::class)   // DefaultRenderersFactory 的扩展解码器 / 解码器回退设置
 fun ffmpegRenderersFactory(ctx: Context): DefaultRenderersFactory =

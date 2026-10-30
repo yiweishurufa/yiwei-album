@@ -1,0 +1,334 @@
+# 用户口述：下一版需求（2026-10-30 起，用户说完后统一排进下一版）
+
+## 实现进度（1.3.x，每批推送后更新；[x] 完成 / [~] 部分 / [-] 跳过）
+### 第 1 批 小修（1.3.0 / 26）
+- [x] B1 大图视频切后台暂停、开始播时停音乐、申请音频焦点；影视播放器也申请音频焦点
+- [x] B3 「视频」筛选多选删除 / 隐藏后列表刷新；出错重试从头翻
+- [x] B4 添加影视文件夹后合并父子目录并自动扫描；移除后也重扫；空状态加「设置文件夹类型」按钮
+- [~] B9 播放列表：删除按钮 48dp、「清空」先确认、右侧拖动手柄排序（拖动为第一版，未真机验证手感）
+- [x] B10 迷你播放条暂停时不再每 0.5 秒刷新
+- [x] B11 音乐专辑列数随屏宽（手机 2 列，平板 / 横屏更多）
+- [x] C1 大图 ⋯ 面板去掉重复的「加入相册」
+- [x] C5 大图视频改用共用的 ffmpegRenderersFactory，注释更正
+- [x] 审查 4 / 5 多选时返回键先取消选择；离开页面统一清选择
+- [x] 审查 7 / 10 切换来源时清高级搜索条件和音乐搜索词
+- [x] 审查 8 影音 / 发现 / 设置 tab 按返回先回照片（用户同意做）
+- [-] 审查 9 照片筛选带入搜索：用户指示暂不做
+- [x] 审查 11 电影 / 剧集选择重启后保留
+- [x] 审查 12 无来源时影音 / 音乐空状态给「登录飞牛」+「添加 WebDAV」
+- [-] 10-23 局域网搜索飞牛：已在 e45540f / 5e545dc 修好，跳过
+- [-] 10-23 人脸识别：已在 1b4743c / 5f4d6f0 / c352edd 修好，跳过
+- [-] 10-23 快进闪退 / 卡顿：已在 7f50cfe / b3e2bcf / 94017a4 / 7496e71 处理，跳过
+- [-] 10-23 接口代理 / 图片代理自动、后台运行设置默认隐藏、回忆短片删除、同步设置删除：代码里已完成，跳过（顺手把更新失败提示里残留的「同步设置到其他手机」字样删掉）
+
+1. 影音界面的搜索应搜索电影/影视，而不是照片。
+
+   - 用户给的参考样式（2026-10-30 22:18，截图 refs/movie-search-ref.webp，飞牛影视风格），影音搜索页做成这样：
+     - 顶部：返回键 + 搜索框，占位文字「输入影片名称搜索」
+     - 下方多行横向可滑动筛选条，每行左侧是高亮的「全部/最新更新/类型/地区/年份」：
+       - 分类：全部、电视剧、电影、动漫、综艺、演唱会、纪录片
+       - 排序：最新更新、最新上映、影片评分
+       - 类型：剧情、喜剧、动作、爱情、惊悚、犯罪、悬疑…
+       - 地区：中国大陆、中国香港、中国台湾、新加坡、欧美…
+       - 年份：2020年代、2026、2025、2024、2023、2022…
+     - 结果为三列海报网格：左上角类型角标（电视剧/电影），右下角评分，海报下片名，副标题剧集显示「共 N 季」、电影显示上映日期
+     - 选项从影视库元数据动态生成（只显示库里实际有的类型/地区/年份），没有数据的行隐藏
+
+2. 影视播放器界面改成用户参考样式（2026-10-30 22:18，截图 refs/player-ref.webp，飞牛影视风格，横屏）：
+   - 顶部左：返回键 + 标题「剧名 第N集 集标题」；顶部右：设置（齿轮）按钮
+   - 左侧竖排：旋转屏幕按钮、画面比例/全屏切换按钮
+   - 右侧中部：锁定屏幕按钮（已有锁屏功能，挪到这里直接点）
+   - 进度条一行：左当前时间 00:01:42，右总时长 00:45:26
+   - 底部一行：左「1.0x」倍速、「原画」清晰度；中间 上一集 / 后退10秒 / 播放暂停 / 前进10秒 / 下一集；右边 音轨、字幕、选集列表
+   - 常用功能从 ⋯ 菜单搬到外面直接点；已有的倍速记忆、字幕样式、画面比例、音量增强、状态浮窗等功能保留，放到设置（齿轮）面板
+
+3. 用户发来飞牛官方相册「合集」页截图作参考（2026-10-30 22:20；截图含证件照，未保存，仅记录结构）：
+   - 底部：左「筛选」圆按钮，中间胶囊 tab「图库 / 合集」，右「搜索」圆按钮
+   - 合集页分区，每区标题右侧有折叠按钮：
+     - 资料记录 >：横滑卡片（证件、身份证、证书、转账记录…，按 AI 识别的文档类别自动归类）
+     - 标签：空状态卡片「为照片添加标签后，相关内容会按标签整理并显示在这里。」
+     - 媒体类型：两列圆角按钮——视频、实况/动态照片、动图、RAW、全景照片、360°照片视频、屏幕截图
+   - 推测上方还有人物、地点、相册等分区（截图未包含）
+
+## 审查发现（2026-10-30 只读代码审查，基于 2166454 / 1.2.9；未改代码、未编译、未真机验证）
+
+路径前缀省略：`app/src/main/java/com/hark/shiguang/`。按严重程度排序。
+
+### 高
+
+1. **影音页点搜索，搜的是照片**（已确认，对应用户口述第 1 条）
+   - 现象：在「影音 → 电影剧集」点右上角放大镜，打开的是「用一句话描述你要找的照片」，结果是照片。影视库本身没有任何按片名找片的入口。
+   - 位置：`ui/MoviesTab.kt:72` 直接用默认参数 `TopSwitch()`；`ui/Home.kt:265` `TopSwitch(showSearch = true)` 是所有首页 tab 共用的顶栏，`ui/Home.kt:305` 搜索按钮写死 `Nav.push(Route.Search)`；`Route.Search` → `ui/Screens.kt:479` `SearchScreen()`，`:497-525` 只调 `Dav.aiSearch / OcrRunner.search / Repo.search`，全是照片；占位文字 `:540`、示例 `:575`、空状态 `:582` 也都是照片。
+   - 修法：给 `TopSwitch` 加作用域参数（如 `search: SearchScope? = SearchScope.Photos`，`showDate: Boolean = true`），影音页传 `SearchScope.Media`。影视搜索最小做法：仿照音乐 `SearchBox`（`ui/MusicTab.kt:180`）在影音页加一个就地过滤框，在 `ui/MoviesTab.kt:65` 的 `shown` 上按 `title`/原名/年份过滤，电影和剧集都搜；或新增 `Route.MediaSearch` 页面。搜索历史另用 key（`SearchHistory.kt:11` 现在只有一个 `search.history`），别和照片历史混在一起。
+   - 改动：中
+
+2. **影音页、音乐页、设置页的日历按钮打开的是「按日期筛选照片」**
+   - 现象：在影音页点日历图标，弹出「按日期筛选」，选完跳到一组照片，和电影/音乐无关。
+   - 位置：`ui/Home.kt:304` 日历按钮无条件显示 → `HomeState.showDate` → `ui/Home.kt:170` `DateFilterDialog` → `ui/Extra.kt:96-140` `openDate()` 推照片 `Route.Collection`。影音 `ui/MoviesTab.kt:55,72`、音乐 `ui/MusicTab.kt:77,100` 都带着它。
+   - 修法：与第 1 条同一处改：`TopSwitch(showDate = false)` 用在影音、音乐、设置；只在照片/相册/发现保留。
+   - 改动：小
+
+3. **音乐页有两个搜索，一个搜歌、一个搜照片**
+   - 现象：在「影音 → 音乐」，页面中间的搜索框能搜歌名，右上角的放大镜却跳去搜照片，两个入口长得一样，目标不同。
+   - 位置：`ui/MusicTab.kt:100` `TopSwitch()`（默认带照片搜索）；`ui/MusicTab.kt:125` `SearchBox()`（搜歌，`:180-192`）。
+   - 修法：音乐页 `TopSwitch(showSearch = false, showDate = false)`，只保留页内搜索框；或者顶栏放大镜改成聚焦页内搜索框。
+   - 改动：小
+
+4. **首页多选时按系统返回键，直接退出 App**
+   - 现象：在照片时间线长按进入多选，想按返回键取消选择，结果整个 App 退到桌面（选择也丢了）。
+   - 位置：唯一的全局返回处理 `MainActivity.kt:235` `BackHandler(enabled = Nav.stack.size > 1)`，首页栈只有 1 层所以不拦截；首页没有任何 `Selection.active` 的 BackHandler（全仓 grep `BackHandler` 只有 MainActivity、MovieDetail、MoviePlayer、MusicTab 播放页）。多选入口 `ui/Timeline.kt:200`，选择栏 `ui/Ops.kt:450`。
+   - 修法：在 `SelectionBar`（`ui/Ops.kt:450`）里加 `BackHandler(enabled = Selection.active) { Selection.clear() }`，所有用到选择栏的页面一次修好。
+   - 改动：小
+
+### 中
+
+5. **二级页面多选时用系统返回/手势返回，选择状态带回上一页**
+   - 现象：在相册/人物等页面多选了几张，用手势返回，回到首页后仍处于多选状态（底部 tab 栏被隐藏，因为 `BottomBar` 在 `Selection.active` 时直接 return），点照片变成勾选而不是打开；而点左上角返回按钮却会清掉选择——两种返回结果不一致。
+   - 位置：`ui/Pages.kt:50` 顶栏返回 `Selection.clear(); Nav.pop()`；系统返回 `MainActivity.kt:235` 只 `Nav.pop()`；`ui/Ext.kt:61` 人物页顶栏返回也不清选择（该页有选择栏 `ui/Ext.kt:173`）；`ui/Home.kt:216` 多选时隐藏底栏。`Selection` 是全局单例 `ui/Timeline.kt:53`。
+   - 修法：第 4 条的 `BackHandler` 先吃掉第一次返回（清选择）；另外在 `Nav.pop()`/`Nav.reset()` 里统一 `Selection.clear()`，`ui/Ext.kt:61` 也改成清选择。
+   - 改动：小
+
+6. **设置页顶栏也有照片搜索和照片日期筛选**
+   - 现象：在「设置」tab 顶部能看到放大镜和日历，点了跳去搜照片/按日期看照片，和设置毫无关系。
+   - 位置：`ui/Settings.kt:64` `else TopSwitch()`。
+   - 修法：`TopSwitch(showSearch = false, showDate = false)`，设置页顶栏只保留来源切换（或干脆只留「设置」大标题，来源卡片下面已有）。
+   - 改动：小
+
+7. **高级搜索的筛选条件离开搜索页后一直残留，切换来源也不清**
+   - 现象：上次搜索时设了「相机 = 某型号 / 日期范围」，下次再进搜索（甚至换了一个 WebDAV/飞牛账号）这些条件仍生效，常常导致「没有找到相关照片」。好在顶部有筛选 chip 能看到。
+   - 位置：`ui/AdvSearch.kt:32-41` `AdvFilter` 全局单例、只在 `:171`「重置」和 `ui/Screens.kt:553`「清除」时清空；`ui/Home.kt:251` `switchSource()` 只清 `SearchState`，不清 `AdvFilter`。
+   - 修法：`switchSource()` 里加 `AdvFilter.reset()`（相机型号等是按来源的数据）；是否在「取消」离开搜索页时也清，交给用户定（建议保留同一来源内的筛选）。
+   - 改动：小
+
+8. **在照片以外的 tab（影音/发现/设置）按返回键直接退出，不先回到照片**
+   - 现象：在影音/发现/设置 tab 按返回，App 直接退出；多数安卓 App 会先回到第一个 tab。
+   - 位置：`MainActivity.kt:235` 首页不拦截返回；`ui/Home.kt:190` `onTabTap` 只改 `HomeState.tab`。
+   - 修法：首页加 `BackHandler(enabled = HomeState.tab != 0 && HomeState.tab != 2) { HomeState.tab = 0 }`。属于约定俗成而非错误，建议做但可讨论。
+   - 改动：小
+
+### 低
+
+9. **照片页的「全部/照片/视频/实况」筛选和搜索页的类型筛选是两套，互不继承**
+   - 现象：照片页选了「视频」，点放大镜搜索，结果里照片视频混在一起；搜索页里另有一套「全部/照片/视频/实况/截图」。
+   - 位置：`ui/Home.kt:111` `PhotoFilterChips` → `HomeState.photoFilter`（`ui/Screens.kt:180-183`）；`ui/AdvSearch.kt:33,38` `AdvFilter.type`。
+   - 修法：从照片页进入搜索时把 `photoFilter` 映射成 `AdvFilter.type` 的初值（0→0, 1→1, 2→2, 3→3）。是否算「预期」需要用户确认。
+   - 改动：小
+
+10. **切换来源后音乐搜索框里的字还在**
+    - 现象：在 A 账号音乐里搜过「周杰伦」，切到 B 账号，音乐列表仍按「周杰伦」过滤，可能显示「没有找到」。
+    - 位置：`ui/MusicTab.kt:51` `MusicUi.query` 全局；`ui/Home.kt:251` `switchSource()` 不清它。
+    - 修法：`switchSource()` 里 `MusicUi.query = ""`（若第 1 条加了影视搜索框，同理清掉）。
+    - 改动：小
+
+11. **影音页「电影 / 剧集」选择重启后不保留，而同页的「电影剧集/音乐」和排序都会保留**
+    - 位置：`ui/MoviesTab.kt:37` `seg` 只在内存；`:39-40` `area`、`sort` 存了 `Store`。
+    - 修法：`seg` 同样存 `Store`（如 `movies.seg`），在 `:94` 回调里写入。
+    - 改动：小
+
+12. **没有任何来源时，影音/音乐空状态只给「添加 WebDAV」按钮**
+    - 现象：文案说「影视库跟着左上角的来源走」，但飞牛用户没有登录飞牛的入口按钮。
+    - 位置：`ui/MoviesTab.kt:55`、`ui/MusicTab.kt:77`（`Movies.keyOf()` 在 `Movies.kt:416` 同时支持 fn 和 dav）。
+    - 修法：给两个按钮「登录飞牛」(`Route.Login`) /「添加 WebDAV」，或一个按钮弹来源选择。
+    - 改动：小
+
+### 不确定（需真机或用户确认）
+
+13. **被系统杀进程后重开，只回到「照片」tab**：`MainActivity.kt:120` `nav.tab` 只在 `push/pop/reset` 时保存，切底部 tab 不触发保存；`MainActivity.kt:196` 只有栈顶不是 home 时才 `restore`，所以停在影音 tab 被杀后重开回到照片。是否需要恢复 tab 由用户决定。
+14. **「照片每行」放在「外观」组而不是「照片与整理」**：`ui/Settings.kt:100-104`。属于分组口味问题，列在这里备查。
+
+## 全面审查（2026-10-30）
+
+只读审查，基于 2166454 / 1.2.9；未改代码、未编译、未真机验证。路径前缀省略 `app/src/main/java/com/hark/shiguang/`。
+上面「审查发现」1–14 和用户口述（影音搜索页、播放器布局）不再重复列；与 round-01-02-200.md 重叠的标「重复 #N」，部分重叠的标「相关 #N」。每组按价值排序。
+
+### A. 可以新增的功能
+
+A1. **影视：标为已看 / 未看、从头播放、从「继续观看」移除**（新）
+   - 现象：看了几分钟就不想看的片会一直挂在「继续观看」；剧集没法把已看过的集标成看完；有进度时详情页只有「继续播放」，想从头看得先拖进度条。
+   - 位置：`ui/MovieDetail.kt:89-101` 主按钮只有继续/播放；`ui/MovieDetail.kt:206` `EpisodeRow` 只有单击；`ui/MoviesTab.kt:254` `ContinueCard` 只有单击；`Movies.kt:99` `clearProgress()` 全仓没有调用（死代码）。
+   - 做法：有进度时主按钮旁加「从头播放」；`EpisodeRow` / `ContinueCard` / `PosterCard` 改 `combinedClickable`，长按菜单：标为已看（`setProgress(path, dur, dur)`）/ 标为未看（`clearProgress`）/ 从继续观看移除；剧集加「标记本季已看」。
+   - 改动：小–中
+
+A2. **音乐：「我喜欢」和「最近播放」**（新）
+   - 现象：常听的歌每次都得搜；没有收藏，也看不到最近听过什么。
+   - 位置：全仓无收藏 / 歌单 / 最近播放相关代码；歌曲菜单 `ui/MusicTab.kt:261-268`；分段 `ui/MusicTab.kt:143`。
+   - 做法：每个来源存 `favorites.json`（track id 集合）和 `recent.json`（最近 100 首，在切歌时记）；正在播放页和长按菜单加心形；歌曲页顶部放「我喜欢 / 最近播放」两张卡片或加一个分段。自建歌单放第二阶段（大）。
+   - 改动：中
+
+A3. **音乐：定时关闭**（新；#68 只做了影视）
+   - 现象：睡前听歌没法定时停，影视播放器却有。
+   - 位置：影视已有 `ui/MoviePlayer.kt:518`；`ui/MusicTab.kt`、`Music*.kt` 里没有任何定时代码。
+   - 做法：正在播放页顶栏加计时图标：15 / 30 / 60 分钟 / 本首播完后停止，复用 `PlayerHints.sleepLabel`；计时放 `MusicState`，迷你条上显示剩余时间。
+   - 改动：小
+
+A4. **WebDAV 照片也能收藏**（相关 #12：#12 只覆盖飞牛，已标「已存在」）
+   - 现象：用 WebDAV 来源时，大图底部和多选栏都没有心形，相册页也没有「收藏」。
+   - 位置：`ui/Viewer.kt:161` `if (!p.isCloud)` 才显示收藏；`ui/Ops.kt:466` `if (anyNas)`；`ui/HomeAlbums.kt:117` 收藏入口只读飞牛 `Repo`。
+   - 做法：WebDAV 索引加 collected 标记（或每账号 favorites 文件），大图 / 多选栏都显示心形，相册页加「收藏」虚拟相册。
+   - 改动：中
+
+A5. **海报墙直接显示观看状态**（新）
+   - 现象：在影音页看不出哪部电影看过、剧集看到第几集，得一部部点进去。
+   - 位置：`ui/MoviesTab.kt:221-238` `PosterCard` 只显示评分和「未匹配」。
+   - 做法：电影看完显示「已看」角标、看了一半显示底部细进度条；剧集显示「看到 S1E3」或「N 集未看」。数据已在 `lib.progressOf` / `resumeShow` 里。
+   - 改动：小
+
+A6. **影视：收藏 / 想看**（新）
+   - 现象：想留着以后看的片没地方标记。
+   - 位置：`MovieModel.kt:51-78` `MovieItem` 没有这类字段。
+   - 做法：每来源存 `favorites.json`（item id），详情页加心形，影音页加「收藏」行；也可以做成用户口述第 1 条筛选页里「分类」的一项。
+   - 改动：小–中
+
+A7. **WebDAV 来源的手机备份**（相关 #111：飞牛已有，WebDAV 没有）
+   - 现象：设置里只有飞牛来源能看到「手机备份」，WebDAV 用户没有。
+   - 位置：`ui/Settings.kt:111-112` WebDAV 时这一行换成「照片文件夹」；`Backup.kt:22` 判断 `Store.token`（飞牛）；`cloud/WebDavSource.kt:225` 已经有 `upload()`。
+   - 做法：备份任务按来源选上传端，WebDAV 时上传到用户选的目录（按年 / 月分文件夹）。
+   - 改动：中–大
+
+A8. **音乐歌曲排序**（新）
+   - 现象：歌曲只能按歌名排，找不到「刚加进来的歌」。
+   - 位置：`ui/MusicTab.kt:168` `buildMusicView` 写死按标题排序。
+   - 做法：复用影视的 `SortMenu`（`ui/MoviesTab.kt:134`）：歌名 / 最近添加 / 歌手 / 时长，存 `Store`。
+   - 改动：小
+
+A9. **点演员，看库里还有他的哪些作品**（新）
+   - 现象：详情页的演员头像点了没反应。
+   - 位置：`ui/MovieDetail.kt:127-136` 演员行没有点击；`Cast` 数据已在库里。
+   - 做法：点头像打开一个列表页，筛 `lib.items` 里 `cast` 含该名字的作品，复用 `PosterCard`。
+   - 改动：小
+
+A10. **影视离线下载**（新；功能缺失已确认，用户是否需要属推测）
+   - 现象：出门没网或流量贵时，没法提前把剧下到手机。
+   - 位置：影视相关代码里没有下载（`ui/MoviePlayer.kt` 只有播放地址解析），`Ops.download` 只处理照片。
+   - 做法：详情页 / 剧集长按「下载」，复用传输队列（`Transfers.kt`），下载后的文件优先本地播放。先问用户要不要。
+   - 改动：大
+
+### B. 可以优化的地方
+
+B1. **大图里的视频：切到后台还在放，和音乐同时响；影视播放器也不申请音频焦点**（新，高）
+   - 现象：在照片里点开一段视频，按 Home 键声音还在；正在听歌时点开视频，两个声音叠在一起。
+   - 位置：`ui/Viewer.kt:354-391` `VideoSurface` 没有生命周期监听（影视播放器有：`ui/MoviePlayer.kt:673-679` ON_STOP 时暂停），也没调 `MusicState.pause()`（影视有：`ui/MoviePlayer.kt:99`）；`ui/Viewer.kt:382` 和 `ui/MoviePlayer.kt:244` 两处 `ExoPlayer.Builder` 都没 `setAudioAttributes(..., handleAudioFocus = true)`，所以来电或别的 App 放歌时视频不会自动停（这个影响属推测，需真机确认）。
+   - 做法：`VideoSurface` 加 `LifecycleEventObserver`（ON_STOP 暂停）；`play` 时先 `MusicState.pause()`；两处 Builder 都加 `setAudioAttributes(USAGE_MEDIA / CONTENT_TYPE_MOVIE, true)`。
+   - 改动：小
+
+B2. **看片时每 5 秒在主线程写一次整份进度文件，还会让盖在下面的影音页整库重新排序**（新，中）
+   - 现象：库大时播放偶尔掉帧、发热（推测）；代码上能确认是主线程 IO 和重复计算。
+   - 位置：`ui/MoviePlayer.kt:450` 每 5 秒 `save()` → `Movies.kt:95-98` `setProgress` 同步 `writeText` 整份 `progress.json`，然后 `version++`；`MainActivity.kt:237-238` 首页一直在页面下面组合着；`ui/MoviesTab.kt:65-67` 以 `version` 为 key 重算排序（Collator 排全库）、继续观看和计数。
+   - 做法：`saveProgress` 放到 IO 线程并做防抖（2 秒内只写一次）；播放中只更新内存里的进度，退出 / 切集时才 `version++`；或者把 `version` 拆成「库版本」和「进度版本」，海报列表只看前者。
+   - 改动：中
+
+B3. **照片页「视频」筛选：多选删除后列表不变；出错重试会漏掉前面的视频**（新，中）
+   - 现象：在「视频」里多选删除，删掉的还显示着；加载出错后点「重试」，前面已经翻过的视频不再出现。
+   - 位置：`ui/Extra.kt:81` `SelectionBar(onChanged = {})`；`ui/Extra.kt:13-25` `NasVideos` 的 `cursor` 是闭包变量，`refresh()`（`ui/Extra.kt:72` 重试）不会让它归零。
+   - 做法：短期：`onChanged` 里 `NasVideos.src = null` 重建、`cursor` 跟着 refresh 归零；长期见 C2（并回时间线）。
+   - 改动：小
+
+B4. **添加影视文件夹后不会自动扫描，也不合并父子目录**（新）
+   - 现象：选好影视文件夹回到影音页，什么都没有，得自己点刷新；同时选了父目录和子目录会重复扫描。音乐那边选完就开始扫。
+   - 位置：`ui/MovieDetail.kt:317` 只 `saveDirs`；音乐的做法 `ui/MusicTab.kt:551-557`（合并父子目录 + `lib.scan()` + `ScanService.ensure`）。另外 `ui/MoviesTab.kt:113` 「没找到电影 / 剧集」只有一句文字，没有去设置的按钮。
+   - 做法：照搬音乐的合并和自动扫描；移除文件夹后也触发一次扫描（推测：现在移除后旧条目会留到下次扫描）；空状态加「去设置文件夹类型」按钮。
+   - 改动：小
+
+B5. **移除账号后，本机的索引、海报、封面一直占着空间**（新）
+   - 现象：删掉一个 WebDAV 或退出飞牛后，手机上这个账号的照片索引、人脸、影视海报、音乐封面都还在，「清理缓存」也清不掉。
+   - 位置：`ui/Pages.kt:573` 调 `Dav.forget(a.id)` 没传 `clearDisk`（`Dav.kt:497-504` 有这个参数，但没有地方传 true）；飞牛 `ui/Ops.kt:160` → `NasAccounts.remove`（`NasAccounts.kt:69-83`）不删 `filesDir/fn/<id>`，也不调 `Movies.forget`。
+   - 做法：移除确认框加一项「同时删除本机缓存的索引、海报和封面（约 X MB）」，默认勾选；飞牛退出同样处理。
+   - 改动：小–中
+
+B6. **操作失败的提示直接显示原始错误文字**（相关 #183：整页错误已统一，toast 还没有）
+   - 现象：加相册、删除、重命名失败时，可能弹出英文或技术性文字（如 timeout、Unable to resolve host）。
+   - 位置：全仓 41 处 `toast(ctx, it.message ?: "…")`（如 `ui/Viewer.kt:228`、`ui/HomeAlbums.kt:147`、`ui/DavGroups.kt:167`）；`ErrorKinds.kt` 的分类只有 `ui/Components.kt:178` `ErrorState` 在用。
+   - 做法：加 `friendlyError(e)`，按 `ErrorKind.of()` 给一句中文原因，原文写进 `Diag.log`；41 处统一换掉。
+   - 改动：小
+
+B7. **下拉刷新只有 WebDAV 照片页有**（重复 #176）
+   - 位置：唯一实现 `ui/Home.kt:424`；飞牛照片 `PhotosTab`（`ui/Home.kt:342`）、视频筛选、影音、音乐都没有。
+   - 改动：小
+
+B8. **WebDAV 时间线不能捏合到「年」，缩放层级也不记忆**（新）
+   - 现象：飞牛来源可以捏合到「按年」并且下次打开保持；WebDAV 最多到「月」，重开又回到默认。
+   - 位置：`ui/Home.kt:434` 限 `1..4` 且 `level` 不存；飞牛 `ui/Home.kt:349-351` 允许 `0..4` 并存 `Store.timelineLevel`。
+   - 做法：WebDAV 也用 `YearGrid`（按 `lib.photos` 分年），层级按来源存。
+   - 改动：小
+
+B9. **音乐播放列表：删除按钮太小、「清空」一点就没、不能拖动排序**（新）
+   - 位置：`ui/MusicTab.kt:529` 删除图标 18dp 直接可点；`ui/MusicTab.kt:518`「清空」直接 `MusicState.stop()`，没有确认也不能撤销；播放器已支持移动（`MusicPlayer.kt:146` `handleMoveMediaItems`），但界面没有入口。
+   - 做法：删除改成 48dp 的 `IconButton`；清空加确认；长按拖动排序。
+   - 改动：小
+
+B10. **迷你播放条暂停时仍每 0.5 秒刷新**（新）
+   - 位置：`ui/MusicTab.kt:354` `while (true)` 不看 `isPlaying`；首页一直在组合（`MainActivity.kt:238`），看片、看大图时也在跑。
+   - 做法：没在播放时读一次位置就停（`if (!MusicState.isPlaying) return@LaunchedEffect`）。
+   - 改动：小
+
+B11. **音乐专辑固定两列，平板上封面特别大**（新）
+   - 位置：`ui/MusicTab.kt:147` `albums.chunked(2)`；影视已经用 `GridCells.Adaptive(110.dp)`（`ui/MoviesTab.kt:70`）。
+   - 做法：改成 `adaptiveCols(2)` 分组，或换成 `LazyVerticalGrid(Adaptive(150.dp))`。
+   - 改动：小
+
+B12. **图标按钮的点击区域和读屏标签**（部分重复 #187）
+   - 位置：33 个 `IconButton` 里有 18 个 `contentDescription = null`；吸顶栏的搜索图标 `ui/Home.kt:337` 是 22dp 的 `Icon(...).clickable`，不好点也没有标签。
+   - 做法：吸顶栏改 `IconButton` + 标签；其余补上 contentDescription。
+   - 改动：小
+
+### C. 可以合并 / 精简的地方
+
+C1. **大图里「加入相册」出现两次**（新；思路同 #142）
+   - 位置：底栏 `ui/Viewer.kt:170`，⋯ 面板 `ui/Viewer.kt:207`。
+   - 做法：删掉 ⋯ 面板里的那一行；底栏留一个。
+   - 改动：小
+
+C2. **「视频」筛选并回照片时间线**（新；同时修好 B3）
+   - 现象：在「全部 / 照片 / 实况」之间切换都是同一个时间线，切到「视频」却换了一个页面：大标题变成「视频」、没有月份标题、不能捏合、最多 4 列。
+   - 位置：`ui/Home.kt:155` `photoFilter == 2` 时改用 `VideosTab`（`ui/Extra.kt:30`）；`HomeState.accepts(it, 2)` 已经能筛视频（`ui/Home.kt:357`）；飞牛的 `NasVideos`（`ui/Extra.kt:7-26`）每页最多翻 40×500 张重新拉，而时间线已经带了 `isVideo`。
+   - 做法：飞牛 / WebDAV 都直接用 `PhotosTab` / `DavPhotosTab` 加 filter 2；`NasVideos` 去掉（或只在时间线没加载完时补齐）。
+   - 改动：中
+
+C3. **发现页的人物、地点卡片在飞牛和 WebDAV 下是两套实现，大小还不一样**（相关 #135）
+   - 位置：人物：飞牛 `ui/HomeDiscover.kt:108-111`（头像 68dp、宽 72、不显示张数）对比 WebDAV `ui/HomeDiscover.kt:241-247`（72dp、宽 76、显示张数、名字颜色不同）；地点：`ui/HomeDiscover.kt:125-134` 自绘卡片对比 `ui/HomeDiscover.kt:257` `CoverCard`。
+   - 做法：抽出 `PersonChip(name, image, count?)` 和 `PlaceCard`，两边共用。
+   - 改动：小–中
+
+C4. **分段控件和按钮各有好几套写法，圆角、字号也不统一**（token 部分重复 #150 / #152）
+   - 位置：分段：`Segmented`（`ui/MoviesTab.kt:121`，带拟物凹槽）、`PhotoModeSwitch`（`ui/Home.kt:125`，自己画的，13sp，拟物风格下没有凹槽效果）、`FillSegmented`（`ui/Settings.kt:280`）。按钮：`GhostButton`（`ui/MoviesTab.kt:187`）、`PillButton`（`ui/MusicTab.kt:195`）、`GradientButton`（`ui/Components.kt:215`），详情页播放按钮又单独画了一个（`ui/MovieDetail.kt:93`）。`ui/` 下圆角用了 12 种值（10/12/14/8/16/9/18/6/5/4/11/2dp），裸 `fontSize` 348 处，`MaterialTheme.typography` 只有 82 处。
+   - 做法：`PhotoModeSwitch` 直接改用 `Segmented`（拟物外观随之统一）；按钮收成主 / 次两种，尺寸做成参数；圆角收成 3 级 token、字号收成 5–6 级。
+   - 改动：中
+
+C5. **大图视频的解码器配置是复制出来的一份**（新）
+   - 位置：`ui/Viewer.kt:378-380` 和 `Playback.kt:267` `ffmpegRenderersFactory` 一模一样；而 `Playback.kt:262-265` 的注释还写着「照片查看器不用 FFmpeg」，已经不对了。
+   - 做法：改成调用 `ffmpegRenderersFactory(ctx)`，并修正注释。
+   - 改动：小
+
+C6. **两套文件夹选择器；WebDAV 照片文件夹只能选根目录下一层**（新）
+   - 现象：设置里选 WebDAV 照片文件夹只列根目录下一层（为空时提示「根目录下没有文件夹」），选不了更深的子目录；影视 / 音乐文件夹却可以一层层点进去选。
+   - 位置：`ui/Settings.kt:203-258` `DavFolderSelectDialog`；`ui/MovieDetail.kt:355` `FolderPicker`。
+   - 做法：给 `FolderPicker` 加多选模式，照片文件夹也用它。
+   - 改动：中
+
+C7. **缓存设置合并成一个「存储空间」页**（相关 #94 / #138：#94 的上限已做，#138 核对过没有重复的清理入口；本条是把散在各处的占用放到一起看）
+   - 现象：设置里「清理缓存」和「缩略图缓存上限」是两行，图标一样；「清理缓存」只统计 cacheDir，影视海报、音乐封面和歌词放在 filesDir，不算进去，要分别去影视 / 音乐设置里清。
+   - 位置：`ui/Settings.kt:143`、`ui/Settings.kt:159`（都用 `LI.layers()`）；`Music.kt:16-21`、`Movies.kt:49`（filesDir）；音乐清空 `ui/MusicTab.kt:578`。
+   - 做法：做一页，分项列出缩略图、实况视频、影视海报、音乐封面和歌词、各账号索引的占用，上限和清理都在这里；顺带列出已移除账号的残留（接 B5）。
+   - 改动：中
+
+C8. **影视页和音乐页的标题栏、无来源空状态各写了一份**（新）
+   - 位置：`ui/MoviesTab.kt:55`、`ui/MoviesTab.kt:72-82` 和 `ui/MusicTab.kt:77`、`ui/MusicTab.kt:100-110`，几乎一样（「影音」大标题 + 刷新 + 齿轮 + 电影剧集 / 音乐切换）。
+   - 做法：抽出 `MediaHeader(scanning, hasDirs, onScan)` 和共用的空状态；之后改审查发现 #2 / #3 / #12 只需改一处。
+   - 改动：小
+
+### 建议顺序（和用户口述、审查发现 1–14 一起排）
+- 先做小而确定的问题：B1、B3、B4、B9、C1、C5、B10、B11。
+- 再做影视体验：A1、A5，和用户口述第 1 条（筛选搜索页）一起，可以把 A6 收藏做成筛选的一项。
+- 音乐一批：A2、A3、A8。
+- 结构性合并：C2（同时修 B3）、C4、C8，可以和审查发现 #1–#3 的 TopSwitch 改造放在同一批。
+
+## 用户此前口述（2026-10-23，用户 10-30 要求一并纳入，先逐条核实是否已做完，没做完/没做好的放进下一版）
+- 局域网搜索搜不到飞牛设备
+- 影音播放交互对标腾讯视频/爱奇艺：左右拖动快进快退、上下拖动音量（左侧亮度）；详细信息显示码率、来源等；用户可选清晰度
+- 字幕和音轨列表去重，只显示「英语 / 中文 / 粤语」这种语言名；弹幕功能去掉
+- 设置里「同步设置到其他手机」、关于中「一维相册 1.0.0」删掉；生成短片、回忆短片删除
+- 发现页、设置页太乱：合并重复功能和开关，去掉多余的小字说明，整理分类
+- 人脸识别好像不工作
+- 接口代理、图片代理按用户情况自动调整，不要让用户选；后台运行设置去掉，保持默认
+- UI 风格：锤子（Smartisan）拟物阴影风格；图标蓝色简约、带飞牛元素
+- 快进时闪退、看视频卡顿（10-24 反馈，WebDAV 影音）

@@ -29,6 +29,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -74,7 +77,7 @@ private fun fmtCount(n: Int) = "$n 首"
 fun MusicTab() {
     val key = Movies.keyOf()
     val ctx = LocalContext.current
-    if (key == null) { Column { TopSwitch(); Box(Modifier.weight(1f)) { StateMessage(Icons.Rounded.MusicNote, "先添加一个来源", "音乐库跟着左上角的来源走", "添加 WebDAV") { Nav.push(Route.DavAccounts) } } }; return }
+    if (key == null) { Column { TopSwitch(); Box(Modifier.weight(1f)) { NoSourceState(Icons.Rounded.MusicNote, "音乐库跟着左上角的来源走") } }; return }
     val lib = remember(key) { Music.lib(key) }
     LaunchedEffect(key) {
         lib.awaitReady()   // #2 / H4: the library loads on IO; decide about the quiet rescan once it is in
@@ -96,6 +99,7 @@ fun MusicTab() {
     val folders = view?.folders ?: emptyList()
     val list = rememberMemList("music-$key-${MusicUi.sub}")
 
+    val albumCols = adaptiveCols(2)
     LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 170.dp)) {
         item { TopSwitch() }
         item {
@@ -144,10 +148,11 @@ fun MusicTab() {
         }
         when (MusicUi.sub) {
             0 -> itemsIndexed(shown, key = { _, t -> t.id }) { i, t -> TrackRow(t, key) { MusicState.play(key, shown, i) } }
-            1 -> items(albums.chunked(2), key = { it.first().key }) { row ->
+            // 全面审查 B11：专辑列数随屏宽变化（手机 2 列，平板 / 横屏更多），不再固定两列
+            1 -> items(albums.chunked(albumCols), key = { it.first().key }) { row ->
                 Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     row.forEach { g -> AlbumCard(g, Modifier.weight(1f)) { Nav.push(Route.MusicList("album", g.key, g.title)) } }
-                    if (row.size == 1) Spacer(Modifier.weight(1f))
+                    repeat(albumCols - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
             2 -> items(artists, key = { "a" + it.key }) { g -> GroupRow(g, round = true) { Nav.push(Route.MusicList("artist", g.key, g.title)) } }
@@ -351,7 +356,8 @@ fun MiniPlayer(modifier: Modifier = Modifier) {
     if (!MusicState.active) return
     val t = remember(MusicState.mediaId, MusicState.tick) { MusicState.current() }
     var pos by remember { mutableLongStateOf(0L) }
-    LaunchedEffect(MusicState.isPlaying, MusicState.mediaId) { while (true) { pos = MusicState.position; delay(500) } }
+    // 全面审查 B10：暂停时只读一次位置，不再每 0.5 秒刷新
+    LaunchedEffect(MusicState.isPlaying, MusicState.mediaId) { pos = MusicState.position; while (MusicState.isPlaying) { delay(500); pos = MusicState.position } }
     val dur = MusicState.duration
     Column(modifier.padding(horizontal = 10.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(C.Surface).clickable { Nav.push(Route.MusicNowPlaying) }) {
         Row(Modifier.padding(start = 8.dp, end = 4.dp, top = 7.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -511,26 +517,53 @@ private fun LyricsView(lines: List<Lrc.Line>?, pos: Long, onSeek: (Long) -> Unit
 private fun QueueSheet() {
     val q = MusicState.queue
     val st = rememberLazyListState(initialFirstVisibleItemIndex = (MusicState.index - 2).coerceAtLeast(0))
+    var confirmClear by remember { mutableStateOf(false) }
+    // 全面审查 B9：右侧拖动手柄排序；拖动时这一行跟着手指走，松手后按移动的行数换位置
+    var dragFrom by remember { mutableIntStateOf(-1) }
+    var dragDy by remember { mutableFloatStateOf(0f) }
+    val rowPx = with(androidx.compose.ui.platform.LocalDensity.current) { 64.dp.toPx() }
     Column(Modifier.fillMaxWidth().fillMaxHeight(0.75f)) {
         Row(Modifier.padding(horizontal = 20.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("播放列表", color = C.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Text("  ${q.size} 首 · ${modeText()}", color = C.Sub, fontSize = 13.sp, modifier = Modifier.weight(1f))
-            TextButton(onClick = { MusicState.stop() }) { Text("清空", color = C.Danger) }
+            TextButton(onClick = { confirmClear = true }) { Text("清空", color = C.Danger) }
         }
         LazyColumn(state = st, contentPadding = PaddingValues(bottom = 30.dp)) {
             itemsIndexed(q, key = { i, m -> "$i|${m.mediaId}" }) { i, m ->
                 val on = i == MusicState.index
-                Row(Modifier.fillMaxWidth().clickable { MusicState.playAt(i) }.padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                val dragging = dragFrom == i
+                Row(Modifier.fillMaxWidth().heightIn(min = 64.dp)
+                    .zIndex(if (dragging) 1f else 0f)
+                    .graphicsLayer { if (dragging) { translationY = dragDy; shadowElevation = 8f } }
+                    .background(if (dragging) C.Surface else Color.Transparent)
+                    .clickable { MusicState.playAt(i) }.padding(start = 20.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (on) Icon(Icons.Rounded.GraphicEq, null, tint = C.Accent, modifier = Modifier.size(18.dp).padding(end = 2.dp))
                     Column(Modifier.weight(1f).padding(start = if (on) 8.dp else 0.dp)) {
                         Text(m.mediaMetadata.title?.toString() ?: "", color = if (on) C.Accent else C.Text, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(m.mediaMetadata.artist?.toString() ?: "", color = C.Sub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    if (!on) Icon(LI.close(), null, tint = C.Faint, modifier = Modifier.size(18.dp).clip(CircleShape).clickable { MusicState.remove(i) })
+                    // B9：删除按钮 48dp 触控区（原来 18dp 图标直接点，容易点歪）
+                    if (!on) IconButton(onClick = { MusicState.remove(i) }) { Icon(LI.close(), "从播放列表移除", tint = C.Faint, modifier = Modifier.size(18.dp)) }
+                    Box(Modifier.size(48.dp).pointerInput(i, q.size) {
+                        detectDragGestures(
+                            onDragStart = { dragFrom = i; dragDy = 0f },
+                            onDragEnd = {
+                                val to = (i + kotlin.math.round(dragDy / rowPx).toInt()).coerceIn(0, q.size - 1)
+                                dragFrom = -1; dragDy = 0f; MusicState.move(i, to)
+                            },
+                            onDragCancel = { dragFrom = -1; dragDy = 0f },
+                        ) { ch, d -> ch.consume(); dragDy += d.y }
+                    }, contentAlignment = Alignment.Center) {
+                        Icon(Icons.Rounded.DragHandle, "拖动排序", tint = C.Faint, modifier = Modifier.size(20.dp))
+                    }
                 }
             }
         }
     }
+    if (confirmClear) AlertDialog(onDismissRequest = { confirmClear = false }, containerColor = C.Surface,
+        title = { Text("清空播放列表？", color = C.Text) }, text = { Text("会停止播放并移除列表里的 ${q.size} 首歌。", color = C.Sub) },
+        confirmButton = { TextButton(onClick = { confirmClear = false; MusicState.stop() }) { Text("清空", color = C.Danger) } },
+        dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("取消", color = C.Sub) } })
 }
 
 // ============================================================ settings
