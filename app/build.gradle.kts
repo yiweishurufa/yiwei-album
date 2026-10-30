@@ -12,8 +12,8 @@ android {
         applicationId = "com.hark.shiguang"
         minSdk = 26
         targetSdk = 34
-        versionCode = 26
-        versionName = "1.3.0"
+        versionCode = 27
+        versionName = "1.3.1"
         // GitHub Actions passes -PciRun=<run number>; the in-app updater compares it when versionCode is equal
         buildConfigField("int", "CI_RUN", ((project.findProperty("ciRun") as String?)?.toIntOrNull() ?: 0).toString())
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
