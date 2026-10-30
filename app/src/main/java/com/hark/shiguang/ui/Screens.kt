@@ -180,6 +180,10 @@ object HomeState {
     var photoFilter by mutableIntStateOf(Store.getStr("photo.filter").toIntOrNull()?.coerceIn(0, 3) ?: 0)
         private set
     fun setFilter(f: Int) { photoFilter = f.coerceIn(0, 3); Store.putStr("photo.filter", photoFilter.toString()) }
+    /** 第 6 批 沉浸视图第一步：图库网格 ↔ 单列大图流，记在 Store "photo.immersive"（默认网格）。 */
+    var immersive by mutableStateOf(Store.getStr("photo.immersive") == "1")
+        private set
+    fun useImmersive(on: Boolean) { immersive = on; Store.putStr("photo.immersive", if (on) "1" else "") }
     fun accepts(p: com.hark.shiguang.data.Photo, f: Int = photoFilter): Boolean = when (f) { 1 -> !p.isVideo; 2 -> p.isVideo; 3 -> p.isLive && !p.isVideo; else -> true }
 
     /**

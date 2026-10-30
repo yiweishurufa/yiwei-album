@@ -26,6 +26,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.GridView
+import androidx.compose.material.icons.rounded.ViewAgenda
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
@@ -110,12 +112,17 @@ private val tabs = listOf(
 @Composable
 internal fun PhotoFilterChips() {
     if (HomeState.tab != 0) return
-    Row(Modifier.padding(start = 16.dp, top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         listOf("全部", "照片", "视频", "实况").forEachIndexed { i, t ->
             val on = HomeState.photoFilter == i
             Text(t, color = if (on) C.Accent else C.Sub, fontSize = 13.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
                 modifier = Modifier.clip(RoundedCornerShape(16.dp)).background(if (on) C.Accent.copy(alpha = 0.14f) else C.Surface)
                     .clickable { HomeState.setFilter(i) }.heightIn(min = 32.dp).padding(horizontal = 14.dp, vertical = 7.dp))
+        }
+        Spacer(Modifier.weight(1f))
+        // 第 6 批 沉浸视图第一步：网格 ↔ 单列大图流
+        IconButton(onClick = { HomeState.useImmersive(!HomeState.immersive) }) {
+            Icon(if (HomeState.immersive) Icons.Rounded.GridView else Icons.Rounded.ViewAgenda, if (HomeState.immersive) "切换到网格" else "切换到大图流", tint = C.Sub, modifier = Modifier.size(20.dp))
         }
     }
 }
@@ -405,6 +412,9 @@ private fun PhotosTab() {
                 }, onPinch = ::pinch)
                 CompactBar("按年")
             }
+            HomeState.immersive -> ImmersiveFeed(entries, tl.loading, onEnd = { scope.launch { tl.next() } }, onOpen = { Nav.push(Route.Viewer(shown, it)) },
+                state = rememberMemList("fn-feed-" + NasAccounts.currentId), bottom = 100.dp + miniPlayerPad,
+                header = { Column { TopSwitch(); PhotoModeSwitch(); PhotoFilterChips(); BigTitle(mt, sub); MemoriesRow(memories) } })
             else -> {
                 PhotoGrid(
                     entries, cols, tl.loading, onEnd = { scope.launch { tl.next() } },
@@ -474,6 +484,9 @@ private fun DavPhotosTab() {
                 if (filter == 2) StateMessage(LI.videos(), "没有视频", "")
                 else if (filter == 3 && stills.isNotEmpty()) StateMessage(LI.photos(), "没有实况照片", "iPhone 实况（照片 + 同名 MOV）和安卓动态照片分析完后会出现在这里。")
                 else StateMessage(LI.photos(), "没有找到照片", "把照片放进这个 WebDAV 后下拉刷新。", "重新扫描") { scope.launch { lib.scan(full = true) } } } }
+            HomeState.immersive -> ImmersiveFeed(entries, lib.scanning, onEnd = {}, onOpen = { Nav.push(Route.Viewer(shown, it)) },
+                state = rememberMemList("dav-feed-" + lib.accountId), bottom = 100.dp + miniPlayerPad,
+                header = { Column { TopSwitch(); PhotoModeSwitch(); PhotoFilterChips(); BigTitle(mt, sub); MemoriesRow(memories) } })
             else -> {
                 PhotoGrid(entries, adaptiveCols(level.cols.coerceAtMost(7)), lib.scanning, onEnd = {}, onOpen = { Nav.push(Route.Viewer(shown, it)) }, state = grid, top = 0.dp, bottom = 100.dp + miniPlayerPad,
                     header = { Column { TopSwitch(); PhotoModeSwitch(); PhotoFilterChips(); BigTitle(mt, sub); MemoriesRow(memories) } }, onPinch = ::pinch)
