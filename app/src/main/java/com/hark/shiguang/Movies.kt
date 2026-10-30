@@ -98,6 +98,24 @@ class MovieLib(val sourceKey: String) {
     }
     fun clearProgress(path: String) { progress.remove(path); saveProgress(); version++ }
 
+    /** 全面审查 A1：标为已看（一次写盘）。没播过的文件不知道时长，用 1/1 记成「看完」。 */
+    fun markWatched(paths: List<String>) {
+        val now = System.currentTimeMillis()
+        paths.forEach { p -> val d = progress[p]?.dur?.takeIf { it > 0 } ?: 1L; progress[p] = Progress(d, d, now) }
+        saveProgress(); version++
+    }
+    /** A1：标为未看 = 清掉这些文件的进度（一次写盘）。 */
+    fun markUnwatched(paths: List<String>) { paths.forEach { progress.remove(it) }; saveProgress(); version++ }
+
+    /** A1：从「继续观看」移除。只记移除时间（Store，不动 progress.json）；之后再播放会重新出现。 */
+    private val cwHideKey get() = "movies.cwHide.$sourceKey"
+    private fun cwHidden(): Map<String, Long> = Store.getStr(cwHideKey).split('\n').mapNotNull { l ->
+        l.substringBefore('=').takeIf { it.isNotEmpty() }?.let { it to (l.substringAfter('=').toLongOrNull() ?: 0L) } }.toMap()
+    fun hideFromContinue(id: String) {
+        val m = cwHidden().toMutableMap(); m[id] = System.currentTimeMillis()
+        Store.putStr(cwHideKey, m.entries.toList().takeLast(200).joinToString("\n") { "${it.key}=${it.value}" }); version++
+    }
+
     /** 1.1.0: remembers which episode of show [showId] was played last (separate file, progress.json keeps its format). */
     fun setLastEpisode(showId: String, path: String) {
         if (showId.isEmpty() || path.isEmpty() || lastEp[showId] == path) return
@@ -124,7 +142,8 @@ class MovieLib(val sourceKey: String) {
                 eps.firstOrNull { it.path == pick.path }?.let { out.add(Triple(m, it, at)) }
             }
         }
-        return out.sortedByDescending { it.third }.map { it.first to it.second }.take(12)
+        val hidden = cwHidden()
+        return out.filter { (m, _, at) -> (hidden[m.id] ?: 0L) < at }.sortedByDescending { it.third }.map { it.first to it.second }.take(12)
     }
 
     fun item(id: String): MovieItem? = items.firstOrNull { it.id == id }

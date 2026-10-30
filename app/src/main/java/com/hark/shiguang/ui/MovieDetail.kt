@@ -3,6 +3,7 @@ package com.hark.shiguang.ui
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -112,6 +113,17 @@ fun MovieDetailScreen(r: Route.MovieDetail) {
                             Box(Modifier.fillMaxHeight().fillMaxWidth(p.ratio).background(C.Accent))
                         }
                     }
+                    // 全面审查 A1：有进度时可以从头播放；整部标为已看 / 未看
+                    val allPaths = if (m.kind == "movie") m.files.map { it.path } else m.episodes.map { it.path }
+                    val allWatched = allPaths.isNotEmpty() && allPaths.all { lib.progressOf(it)?.watched == true }
+                    Row(Modifier.padding(top = 6.dp).offset(x = (-12).dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (resume?.second?.watched == false) TextButton(onClick = { resume.let { Nav.push(Route.MoviePlay(lib.sourceKey, m.id, it.first, fromStart = true)) } }) {
+                            Text("从头播放", color = C.Accent, fontSize = 14.sp)
+                        }
+                        if (allPaths.isNotEmpty()) TextButton(onClick = {
+                            if (allWatched) { lib.markUnwatched(allPaths); toast(ctx, "已标为未看") } else { lib.markWatched(allPaths); toast(ctx, "已标为已看") }
+                        }) { Text(if (allWatched) "标为未看" else if (m.kind == "tv") "全部标为已看" else "标为已看", color = C.Sub, fontSize = 14.sp) }
+                    }
                     // 1.0.1 #6: low-confidence automatic match → ask instead of guessing
                     if (m.pending && m.guess != null) PendingCard(lib, m, m.guess) { fixing = true }
                     if (!m.overview.isNullOrBlank()) Text(m.overview, color = C.Text.copy(alpha = 0.86f), fontSize = 14.sp, lineHeight = 22.sp,
@@ -147,6 +159,13 @@ fun MovieDetailScreen(r: Route.MovieDetail) {
                                     modifier = Modifier.clip(RoundedCornerShape(16.dp)).background(if (on) C.Accent else C.Surface).clickable { season = s }.padding(horizontal = 14.dp, vertical = 7.dp))
                             }
                         } else Text(if (season == 0) "特别篇" else "第 $season 季", color = C.Text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 18.dp, bottom = 6.dp))
+                        // A1：这一季全部标为已看 / 未看
+                        val sp = m.seasons[season].orEmpty().map { it.path }
+                        val sw = sp.isNotEmpty() && sp.all { lib.progressOf(it)?.watched == true }
+                        if (sp.size > 1) TextButton(onClick = { if (sw) lib.markUnwatched(sp) else lib.markWatched(sp) }, modifier = Modifier.padding(start = 6.dp)) {
+                            Text(if (sw) "本季标为未看" else "本季标为已看", color = C.Sub, fontSize = 13.sp)
+                        }
+                        Text("长按某一集可以标为已看 / 未看、从头播放", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 18.dp, bottom = 4.dp))
                     }
                 }
                 items(m.seasons[season].orEmpty(), key = { it.path }) { e ->
@@ -201,10 +220,14 @@ private fun versionLabel(name: String): String {
     return listOfNotNull(res, hdr, codec, NameParser.ext(name).uppercase()).joinToString(" · ")
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun EpisodeRow(lib: MovieLib, m: MovieItem, e: Episode) {
     val p = lib.progressOf(e.path)
-    Row(Modifier.fillMaxWidth().clickable { Nav.push(Route.MoviePlay(lib.sourceKey, m.id, e.path)) }.padding(horizontal = 18.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+    var menu by remember { mutableStateOf(false) }
+    Box {
+    // 全面审查 A1：长按菜单 标为已看 / 标为未看 / 从头播放
+    Row(Modifier.fillMaxWidth().combinedClickable(onLongClick = { menu = true }) { Nav.push(Route.MoviePlay(lib.sourceKey, m.id, e.path)) }.padding(horizontal = 18.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.width(132.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp)).background(C.Surface2)) {
             val img = e.still ?: m.backdrop
             if (img != null) NetImage(posterModel(img), Modifier.fillMaxSize())
@@ -215,6 +238,22 @@ private fun EpisodeRow(lib: MovieLib, m: MovieItem, e: Episode) {
             Text("第 ${e.episode} 集", color = C.Sub, fontSize = 12.sp)
             Text(e.title ?: NameParser.stem(e.file?.name ?: e.path.substringAfterLast('/')), color = C.Text, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
         }
+    }
+    WatchMenu(menu, onDismiss = { menu = false }, watched = p?.watched == true, resumable = p != null && !p.watched,
+        onWatched = { lib.markWatched(listOf(e.path)) }, onUnwatched = { lib.markUnwatched(listOf(e.path)) },
+        onFromStart = { Nav.push(Route.MoviePlay(lib.sourceKey, m.id, e.path, fromStart = true)) })
+    }
+}
+
+/** 全面审查 A1：影视长按菜单（剧集、继续观看、海报墙共用）。 */
+@Composable
+fun WatchMenu(open: Boolean, onDismiss: () -> Unit, watched: Boolean, resumable: Boolean = false,
+              onWatched: () -> Unit, onUnwatched: () -> Unit, onFromStart: (() -> Unit)? = null, onHideContinue: (() -> Unit)? = null) {
+    DropdownMenu(open, onDismissRequest = onDismiss, modifier = Modifier.background(C.Surface)) {
+        if (resumable && onFromStart != null) DropdownMenuItem(text = { Text("从头播放", color = C.Text) }, onClick = { onDismiss(); onFromStart() })
+        if (watched) DropdownMenuItem(text = { Text("标为未看", color = C.Text) }, onClick = { onDismiss(); onUnwatched() })
+        else DropdownMenuItem(text = { Text("标为已看", color = C.Text) }, onClick = { onDismiss(); onWatched() })
+        if (onHideContinue != null) DropdownMenuItem(text = { Text("从继续观看移除", color = C.Text) }, onClick = { onDismiss(); onHideContinue() })
     }
 }
 

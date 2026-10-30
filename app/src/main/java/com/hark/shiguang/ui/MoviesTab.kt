@@ -2,6 +2,7 @@ package com.hark.shiguang.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -110,7 +111,7 @@ fun MoviesTab() {
                     TextButton(onClick = { Nav.push(Route.MovieLibrarySettings) }) { Text("设置文件夹类型", color = C.Accent) }
                 }
             }
-        } else items(shown, key = { it.id }) { m -> PosterCard(m) { Nav.push(Route.MovieDetail(key, m.id)) } }
+        } else items(shown, key = { it.id }) { m -> PosterCard(m, lib) { Nav.push(Route.MovieDetail(key, m.id)) } }
     }
 }
 
@@ -231,9 +232,15 @@ fun LibraryDirRow(name: String, path: String, onRemove: () -> Unit) {
 /** Poster file path or url → something Coil loads. */
 fun posterModel(p: String?): String? = p?.let { if (it.startsWith("/")) "file://$it" else TmdbNet.imgUrl(it) }
 
+/** 全面审查 A5：[lib] 不为空时海报上显示观看状态（电影「已看」/ 进度条，剧集「看到第几集」），长按可标已看 / 未看（A1）。 */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun PosterCard(m: MovieItem, onClick: () -> Unit) {
-    Column(Modifier.clickable(onClick = onClick)) {
+fun PosterCard(m: MovieItem, lib: MovieLib? = null, onClick: () -> Unit) {
+    var menu by remember { mutableStateOf(false) }
+    val paths = remember(m) { if (m.kind == "movie") m.files.map { it.path } else m.episodes.map { it.path } }
+    val st = lib?.let { l -> watchState(m, paths, l) }
+    Box {
+    Column(Modifier.combinedClickable(onLongClick = { if (lib != null && paths.isNotEmpty()) menu = true }, onClick = onClick)) {
         Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp)).background(C.Surface2)) {
             if (m.poster != null) NetImage(posterModel(m.poster), Modifier.fillMaxSize())
             else Column(Modifier.fillMaxSize().padding(10.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -244,11 +251,41 @@ fun PosterCard(m: MovieItem, onClick: () -> Unit) {
                 Text("%.1f".format(r), color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).clip(RoundedCornerShape(6.dp)).background(Color(0xB3000000)).padding(horizontal = 5.dp, vertical = 2.dp))
             }
+            if (st?.allWatched == true) Text("已看", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Medium,
+                modifier = Modifier.align(Alignment.TopStart).padding(6.dp).clip(RoundedCornerShape(6.dp)).background(C.Accent.copy(alpha = 0.9f)).padding(horizontal = 5.dp, vertical = 2.dp))
             if (!m.matched && m.source != "local") Text(if (m.pending) "待确认" else "未匹配", color = Color.White, fontSize = 10.sp,
                 modifier = Modifier.align(Alignment.BottomStart).padding(6.dp).clip(RoundedCornerShape(6.dp)).background(Color(0x99000000)).padding(horizontal = 5.dp, vertical = 2.dp))
+            st?.ratio?.let { r -> Box(Modifier.align(Alignment.BottomStart).fillMaxWidth(r).height(3.dp).background(C.Accent)) }
         }
         Text(m.title, color = C.Text, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 7.dp))
-        Text(listOfNotNull(m.year?.toString(), if (m.kind == "tv") "${m.episodes.size} 集" else null).joinToString("  "), color = C.Sub, fontSize = 11.sp, maxLines = 1)
+        Text(st?.label ?: listOfNotNull(m.year?.toString(), if (m.kind == "tv") "${m.episodes.size} 集" else null).joinToString("  "),
+            color = if (st?.label != null) C.Accent else C.Sub, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+    if (lib != null) WatchMenu(menu, onDismiss = { menu = false }, watched = st?.allWatched == true,
+        onWatched = { lib.markWatched(paths) }, onUnwatched = { lib.markUnwatched(paths) })
+    }
+}
+
+/** A5：海报上的观看状态。[ratio] 看了一半的电影显示进度条；[label] 剧集「看到 第1季 第3集」/「已看完」，没看过为 null。 */
+private class WatchState(val allWatched: Boolean, val ratio: Float?, val label: String?)
+
+private fun watchState(m: MovieItem, paths: List<String>, lib: MovieLib): WatchState? {
+    if (paths.isEmpty()) return null
+    val prs = paths.map { lib.progressOf(it) }
+    if (prs.all { it == null }) return null
+    val all = prs.all { it?.watched == true }
+    return if (m.kind == "movie") {
+        WatchState(all, if (all) null else prs.filterNotNull().maxByOrNull { it.at }?.ratio?.takeIf { it > 0.01f }, null)
+    } else {
+        val left = prs.count { it?.watched != true }
+        val pick = lib.resumeShow(m)
+        val ep = m.episodes.firstOrNull { it.path == pick?.path }
+        val label = when {
+            all -> "已看完"
+            ep != null -> "看到 第${ep.season}季 第${ep.episode}集 · 剩 $left 集"
+            else -> "剩 $left 集未看"
+        }
+        WatchState(all, null, label)
     }
 }
 
@@ -261,11 +298,15 @@ private fun PosterSkeleton() {
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun ContinueCard(lib: MovieLib, m: MovieItem, ep: Episode?) {
     val path = ep?.path ?: m.files.maxByOrNull { lib.progressOf(it.path)?.at ?: 0L }?.path ?: return
     val pr = lib.progressOf(path)
-    Column(Modifier.width(220.dp).clickable { Nav.push(Route.MoviePlay(lib.sourceKey, m.id, path)) }) {
+    var menu by remember { mutableStateOf(false) }
+    Box {
+    // 全面审查 A1：长按 从继续观看移除 / 标为已看 / 从头播放
+    Column(Modifier.width(220.dp).combinedClickable(onLongClick = { menu = true }) { Nav.push(Route.MoviePlay(lib.sourceKey, m.id, path)) }) {
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(10.dp)).background(C.Surface2)) {
             val img = ep?.still ?: m.backdrop ?: m.poster
             if (img != null) NetImage(posterModel(img), Modifier.fillMaxSize())
@@ -276,6 +317,11 @@ private fun ContinueCard(lib: MovieLib, m: MovieItem, ep: Episode?) {
         Text(m.title, color = C.Text, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
         Text(if (ep != null) "第${ep.season}季 第${ep.episode}集" + (pr?.let { if (it.watched) "" else " · 剩 ${fmtLeft(it)}" } ?: " · 下一集") else pr?.let { "剩 ${fmtLeft(it)}" } ?: "",
             color = C.Sub, fontSize = 11.sp, maxLines = 1)
+    }
+    WatchMenu(menu, onDismiss = { menu = false }, watched = false, resumable = pr != null && !pr.watched,
+        onWatched = { lib.markWatched(listOf(path)) }, onUnwatched = { lib.markUnwatched(listOf(path)) },
+        onFromStart = { Nav.push(Route.MoviePlay(lib.sourceKey, m.id, path, fromStart = true)) },
+        onHideContinue = { lib.hideFromContinue(m.id) })
     }
 }
 

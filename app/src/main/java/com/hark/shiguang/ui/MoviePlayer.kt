@@ -246,7 +246,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
             .setAudioAttributes(androidx.media3.common.AudioAttributes.Builder().setUsage(MC.USAGE_MEDIA).setContentType(MC.AUDIO_CONTENT_TYPE_MOVIE).build(), true)
             .setLoadControl(load).setMediaSourceFactory(DefaultMediaSourceFactory(resolving)).build().apply {
             val items = queue.map { q -> itemFor(q, urls[q.path].orEmpty(), subOffset) }
-            setMediaItems(items, start, lib.progressOf(queue[start].path)?.takeIf { !it.watched && it.pos > 5_000 }?.pos ?: 0L)
+            setMediaItems(items, start, if (r.fromStart) 0L else lib.progressOf(queue[start].path)?.takeIf { !it.watched && it.pos > 5_000 }?.pos ?: 0L)
             val a = PlayPrefs.audioLang(showId); val sl = PlayPrefs.subLang(showId)
             trackSelectionParameters = trackSelectionParameters.buildUpon()
                 .setPreferredAudioLanguages(*(listOf(a).filter { it.isNotEmpty() } + listOf("zh", "chi")).toTypedArray())
@@ -259,7 +259,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         }
     }
     // 迭代 #52 续播提示：从上次位置接着播时顶部提示一次（hint 6 秒后自动消失）；#51 第一次进播放器显示手势教学
-    val resumeAt = remember(queue) { lib.progressOf(queue[start].path)?.takeIf { !it.watched }?.pos ?: 0L }
+    val resumeAt = remember(queue) { if (r.fromStart) 0L else lib.progressOf(queue[start].path)?.takeIf { !it.watched }?.pos ?: 0L }
     var gestureTip by remember { mutableStateOf(!PlayPrefs.gestureTipSeen) }
     LaunchedEffect(Unit) {
         PlayerHints.resume(resumeAt)?.let { hint = it }

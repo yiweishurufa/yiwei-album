@@ -53,7 +53,8 @@ sealed class Route {
     data object AdvancedSettings : Route()
     data class Upload(val uris: List<android.net.Uri>) : Route()
     data class MovieDetail(val sourceKey: String, val itemId: String) : Route()
-    data class MoviePlay(val sourceKey: String, val itemId: String, val path: String) : Route()
+    /** [fromStart] 全面审查 A1：详情页「从头播放」，不接着上次的进度。 */
+    data class MoviePlay(val sourceKey: String, val itemId: String, val path: String, val fromStart: Boolean = false) : Route()
     data object MovieLibrarySettings : Route()
     /** 1.1.0: 影音设置 — one entry for TMDB / 音乐刮削 / 影视文件夹 / 音乐文件夹. */
     data object MediaSettings : Route()
