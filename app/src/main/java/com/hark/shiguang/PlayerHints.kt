@@ -30,6 +30,15 @@ object PlayerHints {
         return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%d:%02d".format(m, sec)
     }
 
+    /** 用户口述 2：新播放器进度条两端的 00:01:42 / 00:45:26（始终带小时）。 */
+    fun longClock(ms: Long): String {
+        val s = (ms.coerceAtLeast(0) / 1000)
+        return "%02d:%02d:%02d".format(s / 3600, (s % 3600) / 60, s % 60)
+    }
+
+    /** 用户口述 2：底栏左边的倍速文字「1.0x」「1.25x」。 */
+    fun speedLabel(s: Float): String = if (s * 10 == Math.round(s * 10).toFloat()) String.format(java.util.Locale.US, "%.1fx", s) else "${s}x"
+
     /** [posMs] 是起播位置；不是续播返回 null。 */
     fun resume(posMs: Long): String? = if (posMs > RESUME_MIN_MS) "已从 ${clock(posMs)} 继续播放" else null
 

@@ -29,7 +29,7 @@ import com.hark.shiguang.MediaBadges
 import com.hark.shiguang.TrackNames
 
 /** 用户 2026-10-23 反馈：播放器右侧面板（音轨 / 字幕 / 清晰度 / 详细信息），对标腾讯视频的侧边面板。 */
-internal enum class PlayerPanel { AUDIO, TEXT, QUALITY, INFO }
+internal enum class PlayerPanel { AUDIO, TEXT, QUALITY, INFO, EPISODES, SETTINGS }
 
 /** One media3 track behind a picker row. */
 internal data class TrackRef(val group: Tracks.Group, val index: Int) {

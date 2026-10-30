@@ -18,7 +18,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Cast
 import androidx.compose.material.icons.rounded.Lock
-import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.*
+import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.*
@@ -175,7 +176,6 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     var gestureLayer by remember { mutableStateOf<PlayerGestureLayer?>(null) }
     // 用户 2026-10-23 反馈：右侧面板（音轨 / 字幕 / 清晰度 / 详细信息）和手势浮层
     var panel by remember { mutableStateOf<PlayerPanel?>(null) }
-    var moreMenu by remember { mutableStateOf(false) }
     var tracksVer by remember { mutableIntStateOf(0) }
     var seekPreview by remember { mutableStateOf<String?>(null) }
     var seekFrac by remember { mutableFloatStateOf(0f) }
@@ -498,6 +498,19 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         }
     }
     var fitMode by remember { mutableIntStateOf(0) }   // 迭代 #61 画面比例，仅本次播放有效
+    // 用户口述 2（2026-10-30）：新播放器布局用 Compose 自己画控制层（不再用 media3 自带的控制条）
+    var playing by remember { mutableStateOf(true) }
+    var poke by remember { mutableIntStateOf(0) }          // 每次点控制层的按钮 +1，重新计时自动隐藏
+    var portrait by remember { mutableStateOf(false) }     // 左侧「旋转屏幕」按钮
+    DisposableEffect(player) {
+        val l = object : Player.Listener { override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying } }
+        player.addListener(l); playing = player.isPlaying
+        onDispose { player.removeListener(l) }
+    }
+    LaunchedEffect(controls, poke, playing, panel) { if (controls && playing && panel == null) { delay(4_000); controls = false } }
+    fun applyFit() {
+        playerView?.resizeMode = when (fitMode) { 1 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM; 2 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL; else -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT }
+    }
     var boostLevel by remember { mutableIntStateOf(0) }   // 迭代 #60 音量增强（0 关 / +3 / +6 / +9 dB），仅本次播放有效
     val boostFx = remember(player) { VolumeBoostFx() }
     DisposableEffect(player) {
@@ -549,7 +562,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     BackHandler { if (extIdx < 0) save(); Nav.pop() }
     LaunchedEffect(lockBtn) { if (lockBtn) { delay(3_000); lockBtn = false } }
     BackHandler(enabled = locked) { lockBtn = true }   // 锁定时返回键只提示解锁按钮
-    BackHandler(enabled = panel != null || moreMenu) { panel = null; moreMenu = false }   // a panel closes before the player does
+    BackHandler(enabled = panel != null) { panel = null }   // a panel closes before the player does
 
     // 用户 2026-10-23 反馈：手势（对标腾讯视频 / 爱奇艺），识别在 PlayerGestureLayer，动作在这里
     val audio = remember { ctx.getSystemService(android.media.AudioManager::class.java) }
@@ -563,10 +576,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
             var seekFrom = 0L; var seekTo = 0L; var dur = 0L
             var levelFrom = 0f; var brightness = false; var maxVol = 1
             var speedBefore = 1f
-            override fun onTap() {
-                val pv = playerView ?: return
-                if (pv.isControllerFullyVisible) pv.hideController() else pv.showController()
-            }
+            override fun onTap() { controls = !controls }
             override fun onDoubleTap() {
                 if (player.isPlaying) { player.pause(); flash = false } else {
                     if (player.playbackState == Player.STATE_ENDED) player.seekTo(0L)
@@ -682,7 +692,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     }
     // PiP shows only the video: no controller, no gestures (and the Compose overlays below are hidden too)
     LaunchedEffect(inPip, playerView, gestureLayer) {
-        playerView?.let { pv -> pv.useController = !inPip; if (inPip) pv.hideController() }
+        if (inPip) controls = false
         gestureLayer?.gesturesOn = !inPip
         if (inPip) panel = null
     }
@@ -721,14 +731,8 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         AndroidView(factory = {
             val pv = PlayerView(it).apply {
                 this.player = seekGate.forUi   // 快进 / 快退 / 进度条经过合并（PlayerSeekGate）
-                useController = true
-                // 用户 2026-10-23 反馈：音轨 / 字幕在顶栏自己的面板里选（去重、显示 mkv 标题），不用 media3 自带的 CC 和齿轮
-                setShowSubtitleButton(false)
-                setShowNextButton(queue.size > 1); setShowPreviousButton(queue.size > 1)
-                setShowFastForwardButton(true); setShowRewindButton(true)
-                controllerShowTimeoutMs = 3500
-                hideBuiltInSettings(this)
-                setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { v -> controls = v == android.view.View.VISIBLE; hideBuiltInSettings(this) })
+                // 用户口述 2：控制层改由下面的 Compose 画（参照用户给的飞牛影视截图），media3 自带控制条关掉
+                useController = false
                 keepScreenOn = true
                 playerView = this
                 subtitleView?.let { sv -> applySubLook(sv) }
@@ -739,38 +743,72 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                 gestureLayer = this
             }
         }, modifier = Modifier.fillMaxSize())
-        AnimatedVisibility(controls && !inPip, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopStart)) {
-            Row(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0x99000000), Color.Transparent))).padding(horizontal = 8.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { save(); Nav.pop() }) { Icon(LI.back(true), null, tint = Color.White) }
-                Text(title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                SpeedButton(player, showId)
-                TopTextButton(qualityLabel) { panel = PlayerPanel.QUALITY }
-                if (audioRows.size > 1) TopTextButton("音轨") { panel = PlayerPanel.AUDIO }
-                if (textRows.isNotEmpty()) TopTextButton("字幕") { panel = PlayerPanel.TEXT }
-                IconButton(onClick = { player.pause(); casting = true }) { Icon(Icons.Rounded.Cast, "投屏", tint = Color.White) }
-                Box {
-                    IconButton(onClick = { moreMenu = true }) { Icon(Icons.Rounded.MoreVert, "更多", tint = Color.White) }
-                    DropdownMenu(moreMenu, onDismissRequest = { moreMenu = false }) {
-                        DropdownMenuItem(text = { Text("详细信息") }, onClick = { moreMenu = false; panel = PlayerPanel.INFO })
-                        DropdownMenuItem(text = { Text("定时关闭 · " + PlayerHints.sleepLabel(sleepMin, sleepEnd)) }, onClick = { moreMenu = false; sleepDialog = true })
-                        DropdownMenuItem(text = { Text("画面比例 · " + PlayerHints.fitLabel(fitMode)) }, onClick = {
-                            moreMenu = false; fitMode = PlayerHints.nextFit(fitMode)
-                            playerView?.resizeMode = when (fitMode) { 1 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM; 2 -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL; else -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT }
-                            hint = "画面比例：" + PlayerHints.fitLabel(fitMode)
-                        })
-                        DropdownMenuItem(text = { Text("音量增强 · " + VolumeBoost.label(boostLevel)) }, onClick = {
-                            moreMenu = false
-                            val nl = VolumeBoost.next(boostLevel)
-                            if (boostFx.apply(player.audioSessionId, nl)) {
-                                boostLevel = nl
-                                hint = if (nl == 0) "音量增强：关" else "音量增强：${VolumeBoost.label(nl)}（声音过大失真就调低）"
-                            } else hint = "这台手机不支持音量增强"
-                        })
-                        DropdownMenuItem(text = { Text("锁定屏幕") }, onClick = {
-                            moreMenu = false; locked = true; playerView?.hideController(); hint = "已锁定，轻点屏幕可解锁"
-                        })
-                        DropdownMenuItem(text = { Text("播放设置") }, onClick = { moreMenu = false; menu = true })
+        // 用户口述 2（2026-10-30，参照 refs/player-ref.webp）：
+        // 顶部 返回 + 标题 …… 投屏 / 设置；左侧 旋转屏幕 / 画面比例；右侧中部 锁屏；
+        // 进度条一行（两端 00:01:42 / 00:45:26）；底部 倍速 清晰度 | 上一集 后退10秒 播放暂停 前进10秒 下一集 | 音轨 字幕 选集
+        AnimatedVisibility(controls && !inPip && !locked, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
+            var pos by remember { mutableLongStateOf(seekGate.position()) }
+            var dur by remember { mutableLongStateOf(player.duration.takeIf { it > 0 } ?: 0L) }
+            var drag by remember { mutableStateOf<Float?>(null) }
+            LaunchedEffect(Unit) { while (true) { pos = seekGate.position(); dur = player.duration.takeIf { it > 0 && it != MC.TIME_UNSET } ?: 0L; delay(500) } }
+            fun tap(f: () -> Unit) { poke++; f() }
+            Box(Modifier.fillMaxSize()) {
+                Row(Modifier.align(Alignment.TopStart).fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0x99000000), Color.Transparent)))
+                    .systemBarsPadding().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { save(); Nav.pop() }) { Icon(LI.back(true), "返回", tint = Color.White) }
+                    Text(title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    IconButton(onClick = { player.pause(); casting = true }) { Icon(Icons.Rounded.Cast, "投屏", tint = Color.White) }
+                    IconButton(onClick = { tap { panel = PlayerPanel.SETTINGS } }) { Icon(Icons.Rounded.Settings, "播放设置", tint = Color.White) }
+                }
+                Column(Modifier.align(Alignment.CenterStart).systemBarsPadding().padding(start = 16.dp), verticalArrangement = Arrangement.spacedBy(28.dp)) {
+                    OverlayIcon(Icons.Rounded.ScreenRotation, if (portrait) "横屏播放" else "竖屏播放") { tap {
+                        portrait = !portrait
+                        act?.requestedOrientation = if (portrait) ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                    } }
+                    OverlayIcon(if (fitMode == 0) Icons.Rounded.Fullscreen else Icons.Rounded.FullscreenExit, "画面比例：" + PlayerHints.fitLabel(fitMode)) { tap {
+                        fitMode = PlayerHints.nextFit(fitMode); applyFit(); hint = "画面比例：" + PlayerHints.fitLabel(fitMode)
+                    } }
+                }
+                Box(Modifier.align(Alignment.CenterEnd).systemBarsPadding().padding(end = 16.dp)) {
+                    OverlayIcon(Icons.Rounded.LockOpen, "锁定屏幕") { locked = true; controls = false; hint = "已锁定，轻点屏幕可解锁" }
+                }
+                Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xB3000000))))
+                    .systemBarsPadding().padding(horizontal = 16.dp).padding(top = 24.dp, bottom = 4.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        val shownPos = drag?.let { (it * dur).toLong() } ?: pos
+                        Text(PlayerHints.longClock(shownPos), color = Color.White, fontSize = 13.sp, style = androidx.compose.ui.text.TextStyle(fontFeatureSettings = "tnum"))
+                        Slider(value = drag ?: if (dur > 0) (pos.toFloat() / dur).coerceIn(0f, 1f) else 0f,
+                            onValueChange = { drag = it; poke++ }, enabled = dur > 0,
+                            onValueChangeFinished = { drag?.let { f -> seekGate.seekTo((f * dur).toLong(), "bar"); pos = (f * dur).toLong() }; drag = null },
+                            colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.White, inactiveTrackColor = Color(0x59FFFFFF)),
+                            modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
+                        Text(PlayerHints.longClock(dur), color = Color.White, fontSize = 13.sp, style = androidx.compose.ui.text.TextStyle(fontFeatureSettings = "tnum"))
+                    }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                            SpeedButton(player, showId) { poke++ }
+                            TopTextButton(qualityLabel) { tap { panel = PlayerPanel.QUALITY } }
+                        }
+                        val hasPrev = player.currentMediaItemIndex > 0
+                        val hasNext = player.currentMediaItemIndex < queue.size - 1
+                        if (queue.size > 1) OverlayIcon(Icons.Rounded.SkipPrevious, "上一集", enabled = hasPrev) { tap { save(); player.seekToPreviousMediaItem(); player.play() } }
+                        OverlayIcon(Icons.Rounded.Replay10, "后退 10 秒") { tap { seekGate.step(-10_000, "button-") } }
+                        IconButton(onClick = { tap {
+                            if (player.isPlaying) player.pause() else {
+                                if (player.playbackState == Player.STATE_ENDED) player.seekTo(0L)
+                                if (player.playbackState == Player.STATE_IDLE) player.prepare()
+                                player.play()
+                            }
+                        } }, modifier = Modifier.padding(horizontal = 8.dp).size(56.dp)) {
+                            Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playing) "暂停" else "播放", tint = Color.White, modifier = Modifier.size(40.dp))
+                        }
+                        OverlayIcon(Icons.Rounded.Forward10, "前进 10 秒") { tap { seekGate.step(10_000, "button+") } }
+                        if (queue.size > 1) OverlayIcon(Icons.Rounded.SkipNext, "下一集", enabled = hasNext) { tap { save(); player.seekToNextMediaItem(); player.play() } }
+                        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                            OverlayIcon(Icons.Rounded.GraphicEq, "音轨") { tap { panel = PlayerPanel.AUDIO } }
+                            OverlayIcon(Icons.Rounded.Subtitles, "字幕") { tap { panel = PlayerPanel.TEXT } }
+                            if (queue.size > 1) OverlayIcon(Icons.AutoMirrored.Rounded.PlaylistPlay, "选集") { tap { panel = PlayerPanel.EPISODES } }
+                        }
                     }
                 }
             }
@@ -813,7 +851,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         }
         if (locked && !inPip) {
             Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { lockBtn = true } }) {
-                if (lockBtn) Row(Modifier.align(Alignment.CenterStart).padding(start = 24.dp).clickable { locked = false; lockBtn = false; hint = "已解锁" }
+                if (lockBtn) Row(Modifier.align(Alignment.CenterEnd).systemBarsPadding().padding(end = 16.dp).clickable { locked = false; lockBtn = false; hint = "已解锁"; controls = true }
                     .background(Color(0xB3000000), androidx.compose.foundation.shape.RoundedCornerShape(24.dp)).padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.Lock, null, tint = Color.White)
@@ -836,10 +874,42 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         if (!inPip) when (panel) {
             PlayerPanel.AUDIO -> SidePanel("音轨", { panel = null }) {
                 audioRows.forEach { r -> PanelRow(r.option.title, r.option.detail, r.selected) { selectTrack(player, MC.TRACK_TYPE_AUDIO, r.refs.first()); panel = null } }
+                if (audioRows.size <= 1) PanelNote("这个视频只有一条音轨。")
+            }
+            PlayerPanel.EPISODES -> SidePanel("选集", { panel = null }) {
+                val cur = player.currentMediaItemIndex
+                Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+                    queue.forEachIndexed { i, q ->
+                        val pr = lib.progressOf(q.path)
+                        PanelRow(q.title.removePrefix(item.title).trimStart(' ', '·'), when { pr?.watched == true -> "已看完"; pr != null -> "看到 ${(pr.ratio * 100).toInt()}%"; else -> null }, i == cur) {
+                            panel = null
+                            if (i != cur) { save(); player.seekTo(i, pr?.takeIf { !it.watched && it.pos > 5_000 }?.pos ?: 0L); player.play() }
+                        }
+                    }
+                }
+            }
+            PlayerPanel.SETTINGS -> SidePanel("播放设置", { panel = null }) {
+                // 用户口述 2：原来 ⋯ 菜单里的功能都放到这里（倍速 / 清晰度 / 音轨 / 字幕 / 选集 / 画面比例 / 锁屏已搬到控制层上直接点）
+                Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+                    PanelRow("定时关闭", PlayerHints.sleepLabel(sleepMin, sleepEnd), false) { panel = null; sleepDialog = true }
+                    PanelRow("画面比例", PlayerHints.fitLabel(fitMode), false) { fitMode = PlayerHints.nextFit(fitMode); applyFit(); hint = "画面比例：" + PlayerHints.fitLabel(fitMode) }
+                    PanelRow("音量增强", VolumeBoost.label(boostLevel), false) {
+                        val nl = VolumeBoost.next(boostLevel)
+                        if (boostFx.apply(player.audioSessionId, nl)) {
+                            boostLevel = nl
+                            hint = if (nl == 0) "音量增强：关" else "音量增强：${VolumeBoost.label(nl)}（声音过大失真就调低）"
+                        } else hint = "这台手机不支持音量增强"
+                    }
+                    PanelRow("播放状态浮窗", if (showStats) "开 · 分辨率 / 帧率 / 码率 / 缓冲" else "关", showStats) { showStats = !showStats }
+                    PanelRow("跳过片头片尾 · 字幕外观", "按剧记住；字幕延迟仅外挂字幕", false) { panel = null; menu = true }
+                    PanelRow("详细信息", "码率、编码、来源", false) { panel = PlayerPanel.INFO }
+                    PanelNote("倍速、清晰度、音轨、字幕、选集在底栏；画面比例、旋转在左侧；锁屏在右侧。")
+                }
             }
             PlayerPanel.TEXT -> SidePanel("字幕", { panel = null }) {
                 val off = textRows.none { it.selected }
                 PanelRow("关闭", null, off) { subtitlesOff(player); panel = null }
+                if (textRows.isEmpty()) PanelNote("这个视频没有内嵌字幕，同目录也没找到同名字幕文件。")
                 textRows.forEach { r -> PanelRow(r.option.title, r.option.detail, r.selected) { selectTrack(player, MC.TRACK_TYPE_TEXT, r.refs.first()); panel = null } }
             }
             PlayerPanel.QUALITY -> SidePanel("清晰度", { panel = null }) {
@@ -952,7 +1022,7 @@ private fun readSub(f: File): String {
 }
 
 @Composable
-private fun SpeedButton(player: ExoPlayer, showId: String) {
+private fun SpeedButton(player: ExoPlayer, showId: String, onOpen: () -> Unit = {}) {
     var open by remember { mutableStateOf(false) }
     var speed by remember { mutableFloatStateOf(player.playbackParameters.speed) }
     // 倍速按剧记忆：进入播放器时恢复上次为这部剧选的倍速
@@ -961,7 +1031,8 @@ private fun SpeedButton(player: ExoPlayer, showId: String) {
         if (saved > 0f && saved != speed) { speed = saved; player.setPlaybackSpeed(saved) }
     }
     Box {
-        TextButton(onClick = { open = true }) { Text(if (speed == 1f) "倍速" else "${fmtSpeed(speed)}×", color = Color.White, fontSize = 14.sp) }
+        // 用户口述 2：底栏左边直接显示当前倍速「1.0x」
+        TextButton(onClick = { open = true; onOpen() }, modifier = Modifier.heightIn(min = 48.dp)) { Text(PlayerHints.speedLabel(speed), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium) }
         DropdownMenu(open, onDismissRequest = { open = false }) {
             listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f, 3f).forEach { s ->
                 DropdownMenuItem(text = { Text("${fmtSpeed(s)}×", fontWeight = if (s == speed) FontWeight.SemiBold else FontWeight.Normal) },
@@ -1002,14 +1073,15 @@ private const val LONG_PRESS_SPEED = 2f
 
 /** media3's settings gear only offers speed (we have 倍速) and its own un-deduplicated audio list — hide it. */
 @androidx.annotation.OptIn(UnstableApi::class)
-private fun hideBuiltInSettings(pv: PlayerView) {
-    pv.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_settings)?.visibility = android.view.View.GONE
-    pv.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_subtitle)?.visibility = android.view.View.GONE
+/** 用户口述 2：控制层上的图标按钮（48dp 触控区，白色图标，带读屏标签）。 */
+@Composable
+private fun OverlayIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, enabled: Boolean = true, onClick: () -> Unit) {
+    IconButton(onClick = onClick, enabled = enabled) { Icon(icon, label, tint = if (enabled) Color.White else Color(0x59FFFFFF), modifier = Modifier.size(26.dp)) }
 }
 
 @Composable
 private fun TopTextButton(text: String, onClick: () -> Unit) {
-    TextButton(onClick = onClick, modifier = Modifier.heightIn(min = 48.dp)) { Text(text, color = Color.White, fontSize = 14.sp) }
+    TextButton(onClick = onClick, modifier = Modifier.heightIn(min = 48.dp)) { Text(text, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium) }
 }
 
 /** Center feedback for gestures: seek preview「+01:23 / 12:00」, volume / brightness level, 2× while long-pressing, play / pause. */

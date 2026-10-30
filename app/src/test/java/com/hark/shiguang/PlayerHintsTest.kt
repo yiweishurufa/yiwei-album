@@ -30,4 +30,13 @@ class PlayerHintsTest {
         assertEquals(1, PlayerHints.nextFit(0)); assertEquals(2, PlayerHints.nextFit(1)); assertEquals(0, PlayerHints.nextFit(2))
         assertEquals("适应", PlayerHints.fitLabel(0))
     }
+
+    @Test fun newPlayerLabels() {
+        assertEquals("00:01:42", PlayerHints.longClock(102_000))
+        assertEquals("01:05:26", PlayerHints.longClock(3_926_000))
+        assertEquals("00:00:00", PlayerHints.longClock(-5))
+        assertEquals("1.0x", PlayerHints.speedLabel(1f))
+        assertEquals("1.5x", PlayerHints.speedLabel(1.5f))
+        assertEquals("1.25x", PlayerHints.speedLabel(1.25f))
+    }
 }
