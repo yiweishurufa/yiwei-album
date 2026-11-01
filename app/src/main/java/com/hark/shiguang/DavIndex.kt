@@ -29,6 +29,8 @@ object SimilarCache {
     fun load(dir: File, metaVersion: Int, paths: List<String>): List<List<String>>? = runCatching {
         val o = JSONObject(File(dir, "similar.json").readText())
         if (o.optInt("mv") != metaVersion) return null
+        // 用户 2026-11-01：旧算法的缓存可能含有几千张的巨型组，算法版本不同一律重算
+        if (o.optInt("algo") != SimilarCluster.ALGO) return null
         if (o.optInt("hash") != paths.sorted().hashCode()) return null
         val a = o.optJSONArray("g") ?: return null
         (0 until a.length()).map { i -> val g = a.optJSONArray(i) ?: JSONArray(); (0 until g.length()).map { g.optString(it) } }
@@ -36,7 +38,7 @@ object SimilarCache {
 
     fun save(dir: File, metaVersion: Int, groups: List<List<String>>, paths: List<String>) = runCatching {
         val a = JSONArray(); groups.forEach { g -> a.put(JSONArray(g)) }
-        File(dir, "similar.json").writeText(JSONObject().put("mv", metaVersion).put("hash", paths.sorted().hashCode()).put("g", a).toString())
+        File(dir, "similar.json").writeText(JSONObject().put("mv", metaVersion).put("algo", SimilarCluster.ALGO).put("hash", paths.sorted().hashCode()).put("g", a).toString())
     }
 }
 

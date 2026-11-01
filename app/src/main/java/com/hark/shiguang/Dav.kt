@@ -417,6 +417,11 @@ class DavLib(val accountId: String) {
      * disk (dav/<id>/similar.json) and keyed by [metaVersion] + the photo set; a repeat call with the same
      * key rebuilds the groups from paths without recomputing any hash distance.
      */
+    /**
+     * 用户 2026-11-01：以前是并查集（A 像 B、B 像 C 就并成一组），暗图 / 纯色图的 dHash 接近 0 成了「桥」，
+     * 把 8700+ 张不相干的照片串成一组。现在交给 [SimilarCluster]：排除低信息量哈希、完全链接、组大小上限、
+     * 拍摄时间和横竖方向作辅助约束。
+     */
     fun similar(maxDist: Int = 6): List<List<Photo>> {
         val items = photos.mapNotNull { p ->
             if (p.isVideo) null else meta[p.cloudPath]?.takeIf { it.hasHash }?.let { p to it }
@@ -424,18 +429,20 @@ class DavLib(val accountId: String) {
         val paths = items.map { it.first.cloudPath }
         SimilarCache.load(dir, metaVersion, paths)?.let { cached ->
             val byPath = photos.associateBy { it.cloudPath }
-            val groups = cached.mapNotNull { g -> g.mapNotNull { byPath[it] }.takeIf { it.size > 1 } }
+            val groups = cached.mapNotNull { g -> g.mapNotNull { byPath[it] }.takeIf { it.size in 2..SimilarCluster.MAX_GROUP } }
             if (groups.isNotEmpty() || items.isEmpty()) return groups.sortedByDescending { it.size }
         }
-        val h = items.map { it.second.dhash }
-        val md = items.map { it.second.headMd5 + it.first.size }
-        val plain = items.map { it.first }
-        val parent = IntArray(plain.size) { it }
-        fun find(x: Int): Int { var a = x; while (parent[a] != a) { parent[a] = parent[parent[a]]; a = parent[a] }; return a }
-        for (i in plain.indices) for (j in i + 1 until minOf(plain.size, i + 400)) {
-            if (md[i] != md[j] && java.lang.Long.bitCount(h[i] xor h[j]) <= maxDist) parent[find(i)] = find(j)
-        }
-        val groups = plain.indices.groupBy { find(it) }.values.filter { it.size > 1 }.map { g -> g.map { plain[it] } }.sortedByDescending { it.size }
+        val exifFmt = java.text.SimpleDateFormat("yyyy:MM:dd HH:mm:ss", java.util.Locale.US)
+        val times = LongArray(items.size) { i -> items[i].second.time.takeIf { it.length >= 19 }?.let { t -> runCatching { exifFmt.parse(t)?.time }.getOrNull() } ?: 0L }
+        val idx = SimilarCluster.cluster(
+            hashes = LongArray(items.size) { items[it].second.dhash },
+            times = times,
+            widths = IntArray(items.size) { items[it].first.width },
+            heights = IntArray(items.size) { items[it].first.height },
+            dupKeys = items.map { (p, m) -> if (m.headMd5.isEmpty()) "" else m.headMd5 + ":" + p.size },
+            maxDist = maxDist,
+        )
+        val groups = idx.map { g -> g.map { items[it].first } }
         SimilarCache.save(dir, metaVersion, groups.map { g -> g.map { it.cloudPath } }, paths)
         return groups
     }

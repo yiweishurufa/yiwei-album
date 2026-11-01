@@ -216,8 +216,14 @@ object Analyzer {
                 (ex.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL) ?: ex.getAttribute(ExifInterface.TAG_DATETIME))?.takeIf { it.length >= 19 && !it.startsWith("0000") }?.let { m.time = it.take(19) }
                 m.cam = camOf(ex); m.camChecked = true
                 val tb = ex.thumbnailBytes
-                val bmp = if (tb != null) BitmapFactory.decodeByteArray(tb, 0, tb.size) else BitmapFactory.decodeByteArray(head, 0, head.size)
-                if (bmp != null) { m.dhash = dHash(bmp); m.hasHash = true }
+                // 用户 2026-11-01：没有 EXIF 缩略图时只拿到前 128KB，解码出来下半截是空白，dHash 大半为 0，
+                // 会和暗图、其他半截图「相似」。文件没读全就不算 dHash（不参与相似），读全了才用原图算。
+                val bmp = when {
+                    tb != null -> BitmapFactory.decodeByteArray(tb, 0, tb.size)
+                    p.size > 0 && head.size.toLong() >= p.size -> BitmapFactory.decodeByteArray(head, 0, head.size)
+                    else -> null
+                }
+                if (bmp != null) { m.dhash = dHash(bmp); m.hasHash = true } else if (tb == null) m.hasHash = false
             }.isSuccess
             m.done = exifOk
             m.failed = !exifOk
