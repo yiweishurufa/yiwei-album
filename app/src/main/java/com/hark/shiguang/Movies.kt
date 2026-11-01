@@ -252,7 +252,7 @@ class MovieLib(val sourceKey: String) {
     private fun subsFor(video: FsEntry, siblings: List<FsEntry>): List<String> {
         val stem = NameParser.stem(video.name)
         val subs = siblings.filter { NameParser.ext(it.name) in NameParser.SUBS }
-        val own = subs.filter { it.name.startsWith(stem) }
+        val own = subs.filter { it.name.startsWith(stem, ignoreCase = true) }   // 优化 4：大小写不同（Movie.SRT）也算同名
         val videosHere = siblings.count { NameParser.ext(it.name) in NameParser.VIDEO }
         return (if (own.isNotEmpty()) own else if (videosHere == 1) subs else emptyList()).map { it.path }
     }

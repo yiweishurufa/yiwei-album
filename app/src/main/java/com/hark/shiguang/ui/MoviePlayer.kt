@@ -148,7 +148,8 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     suspend fun fetchSubs(q: QItem): List<File> = q.file.subs.mapNotNull { sp ->
         subGate.withPermit {
             val f = File(subDir, MessageDigest.getInstance("MD5").digest("${r.sourceKey}|$sp".toByteArray()).joinToString("") { "%02x".format(it) }.take(20) + "." + NameParser.ext(sp))
-            if (f.exists() && f.length() > 0) f else runCatching { fs.bytes(sp) }.getOrNull()?.let { b -> f.writeBytes(b); f }
+            // 优化 4：GBK / Big5 / UTF-16 字幕存成 UTF-8（media3 只按 UTF-8 读）；旧版本缓存的原始字节在这里顺手转换
+            if (f.exists() && f.length() > 0) f.also { SubText.fixFile(it) } else runCatching { fs.bytes(sp) }.getOrNull()?.let { b -> f.writeBytes(SubText.toUtf8(b)); f }
         }
     }
     val subMap = remember(queue) { androidx.compose.runtime.mutableStateMapOf<String, List<File>>() }
@@ -1116,12 +1117,8 @@ private fun Stepper(label: String, value: String, onMinus: () -> Unit, onPlus: (
     }
 }
 
-/** Reads a subtitle file as UTF-8, falling back to GBK (common for Chinese .srt/.ass). */
-private fun readSub(f: File): String {
-    val b = f.readBytes()
-    val utf = String(b, Charsets.UTF_8)
-    return if (utf.contains('\uFFFD')) runCatching { String(b, charset("GBK")) }.getOrDefault(utf) else utf
-}
+/** Reads a subtitle file of unknown encoding (see [SubText]). */
+private fun readSub(f: File): String = SubText.decode(f.readBytes())
 
 @Composable
 private fun SpeedButton(player: ExoPlayer, showId: String, onOpen: () -> Unit = {}) {

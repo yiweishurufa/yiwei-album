@@ -231,6 +231,41 @@ object PlayPrefs {
 }
 
 /** Shifts SRT / ASS / VTT timestamps by [ms] (used for the per-show subtitle offset on external subtitles). */
+/**
+ * 用户 2026-11-02（优化 4）：外挂字幕编码自动识别。media3 把 srt / ass 一律当 UTF-8 读，GBK / Big5 的中文字幕显示成乱码。
+ * 下载到缓存时统一转成 UTF-8：BOM（UTF-8 / UTF-16LE / UTF-16BE）→ 严格 UTF-8 → 严格 GBK → Big5 → 兜底 GB18030。
+ */
+object SubText {
+    private fun strict(b: ByteArray, off: Int, cs: java.nio.charset.Charset): String? = runCatching {
+        cs.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT).onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+            .decode(java.nio.ByteBuffer.wrap(b, off, b.size - off)).toString()
+    }.getOrNull()
+
+    fun decode(b: ByteArray): String {
+        fun u(i: Int) = b[i].toInt() and 0xff
+        return when {
+            b.size >= 3 && u(0) == 0xef && u(1) == 0xbb && u(2) == 0xbf -> String(b, 3, b.size - 3, Charsets.UTF_8)
+            b.size >= 2 && u(0) == 0xff && u(1) == 0xfe -> String(b, 2, b.size - 2, Charsets.UTF_16LE)
+            b.size >= 2 && u(0) == 0xfe && u(1) == 0xff -> String(b, 2, b.size - 2, Charsets.UTF_16BE)
+            else -> strict(b, 0, Charsets.UTF_8)
+                ?: runCatching { strict(b, 0, charset("GBK")) }.getOrNull()
+                ?: runCatching { strict(b, 0, charset("Big5")) }.getOrNull()
+                ?: runCatching { String(b, charset("GB18030")) }.getOrDefault(String(b, Charsets.UTF_8))
+        }
+    }
+
+    /** UTF-8 bytes (no BOM) of a subtitle file of unknown encoding; already-UTF-8 input comes back unchanged. */
+    fun toUtf8(b: ByteArray): ByteArray {
+        if (b.size < 3 || !(b[0] == 0xef.toByte() && b[1] == 0xbb.toByte())) strict(b, 0, Charsets.UTF_8)?.let { return b }
+        return decode(b).toByteArray(Charsets.UTF_8)
+    }
+
+    /** Converts a cached subtitle file (from an older version) to UTF-8 in place. */
+    fun fixFile(f: java.io.File) {
+        runCatching { val b = f.readBytes(); val u = toUtf8(b); if (u !== b) f.writeBytes(u) }
+    }
+}
+
 object SubShift {
     /** S14: only a real timeline row ("00:01:02,000 --> 00:01:04,000") is shifted — a timestamp that
      * appears inside subtitle TEXT (e.g. "约在 00:01:02 见面") used to be shifted too by the old global regex. */
