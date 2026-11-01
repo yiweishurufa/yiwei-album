@@ -45,6 +45,8 @@ sealed class Route {
     data class DavBigFiles(val accountId: String) : Route()
     data class Folders(val path: String, val title: String) : Route()
     data object Recycle : Route()
+    /** 优化 5：WebDAV 账号的「最近删除」。 */
+    data class DavRecycle(val accountId: String) : Route()
     data object DavAccounts : Route()
     data object AiSettings : Route()
     /** 用户 2026-10-23：设置 → 智能整理（WebDAV：AI / 人脸 / 图中文字 / 旅行相册）。 */
@@ -276,6 +278,7 @@ class MainActivity : ComponentActivity() {
                             is Route.DavBigFiles -> DavBigFilesScreen(r)
                             is Route.Folders -> FoldersScreen(r)
                             Route.Recycle -> RecycleScreen()
+                            is Route.DavRecycle -> com.hark.shiguang.ui.DavRecycleScreen(r)
                             Route.DavAccounts -> DavAccountsScreen()
                             Route.AiSettings -> AiSettingsScreen()
                             Route.SmartSettings -> SmartSettingsScreen()

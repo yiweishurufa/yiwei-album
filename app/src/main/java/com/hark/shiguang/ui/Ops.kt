@@ -108,9 +108,15 @@ object CloudPhotos {
     private val fmt = SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US)
 
     /** Turns media entries into Photos; resolves raw urls (bounded concurrency) where no thumbnail exists. */
-    suspend fun toPhotos(accountId: String, list: List<CloudEntry>): List<Photo> = coroutineScope {
+    suspend fun toPhotos(accountId: String, list: List<CloudEntry>): List<Photo> {
         ensureAuth()
-        val src = source(accountId) ?: return@coroutineScope emptyList()
+        val src = source(accountId) ?: return emptyList()
+        // 优化 5：服务器不支持移动、在「最近删除」里等待删除的文件不显示
+        val pending = com.hark.shiguang.DavRecycle.pendingPaths(accountId)
+        return toPhotosInner(accountId, if (pending.isEmpty()) list else list.filter { it.path !in pending }, src)
+    }
+
+    private suspend fun toPhotosInner(accountId: String, list: List<CloudEntry>, src: CloudSource): List<Photo> = coroutineScope {
         val gate = Semaphore(6)
         fun build(e: CloudEntry, raw: String?): Photo? {
             val thumb = e.thumbUrl ?: raw?.let { com.hark.shiguang.DavThumb.mark(it) } ?: return null
@@ -259,7 +265,9 @@ object Ops {
             val ok = ArrayList<String>()
             ps.forEach { p ->
                 val e = CloudPhotos.entryOf(p) ?: com.hark.shiguang.cloud.CloudEntry(p.fileName, p.cloudPath, false, p.size, 0, null, !p.isVideo, p.isVideo)
-                runCatching { src.delete(e) }.onSuccess { ok.add(p.cloudPath) }.onFailure { failed.add(it.message ?: p.fileName) }
+                // 优化 5：WebDAV 删除先进 App 内回收站（最近删除，30 天）；关掉开关时照旧直接删除
+                runCatching { if (src is com.hark.shiguang.cloud.WebDavSource && com.hark.shiguang.DavRecycle.enabled) com.hark.shiguang.DavRecycle.trash(acc, src, e) else src.delete(e) }
+                    .onSuccess { ok.add(p.cloudPath) }.onFailure { failed.add(it.message ?: p.fileName) }
             }
             if (ok.isNotEmpty()) com.hark.shiguang.Dav.lib(acc).removeLocal(ok)
         }
@@ -533,7 +541,7 @@ fun SelectionBar(modifier: Modifier = Modifier, onChanged: () -> Unit = {}) {
     }
     if (confirm) {
         val cloudN = sel.count { it.isCloud }
-        ConfirmDialog("删除 ${sel.size} 项？", if (cloudN > 0) "其中 $cloudN 项网盘文件会被直接删除，NAS 照片移到回收站。" else "照片会移到回收站，可以恢复。", "删除",
+        ConfirmDialog("删除 ${sel.size} 项？", if (cloudN > 0 && !com.hark.shiguang.DavRecycle.enabled) "其中 $cloudN 项网盘文件会被直接删除，NAS 照片移到回收站。" else "会移到「最近删除」（回收站），30 天内可以恢复。", "删除",
             onDismiss = { confirm = false }) {
             confirm = false
             val l = Selection.list

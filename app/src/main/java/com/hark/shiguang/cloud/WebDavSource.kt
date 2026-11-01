@@ -234,6 +234,13 @@ class WebDavSource(a: CloudAccount) : CloudSource {
         check(r.code, "删除")
     }
 
+    /** 优化 5（用户 2026-11-02）：WebDAV MOVE（移到回收站 / 从回收站恢复）。不覆盖已有文件（Overwrite: F）。 */
+    suspend fun move(from: String, to: String) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val r = CloudHttp.exec(req(urlOf(from, false)).method("MOVE", null).header("Destination", urlOf(to, false)).header("Overwrite", "F").build())
+        if (r.code == 412) throw Exception("目标位置已有同名文件")
+        check(r.code, "移动")
+    }
+
     override suspend fun mkdir(parent: String, name: String) {
         val r = CloudHttp.call(req(urlOf(CloudPath.join(parent, name), true)).method("MKCOL", null).build())
         if (r.code == 405) throw Exception("文件夹已存在")

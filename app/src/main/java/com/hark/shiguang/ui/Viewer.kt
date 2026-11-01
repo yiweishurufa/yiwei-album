@@ -181,7 +181,7 @@ fun ViewerScreen(photosIn: List<Photo>, start: Int, slideshowStart: Boolean = fa
             if (photos.isEmpty()) Nav.pop()
         })
         if (confirmDelete && p != null) ConfirmDialog(
-            if (p.isCloud) "从网盘删除这张照片？" else "移到回收站？", if (p.isCloud) "网盘里的文件会被删除。" else "30 天内可以在回收站恢复。", "删除",
+            if (p.isCloud && !com.hark.shiguang.DavRecycle.enabled) "从网盘删除这张照片？" else "移到回收站？", if (p.isCloud && !com.hark.shiguang.DavRecycle.enabled) "网盘里的文件会被删除。" else "30 天内可以在「最近删除」里恢复。", "删除",
             onDismiss = { confirmDelete = false }) {
             confirmDelete = false
             scope.launch {

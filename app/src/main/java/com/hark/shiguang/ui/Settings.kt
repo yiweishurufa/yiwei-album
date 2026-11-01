@@ -508,6 +508,7 @@ fun AdvancedSettingsScreen() {
     val dav = HomeState.source == "dav"
     var caOpen by remember { mutableStateOf(false) }
     var forever by remember { mutableStateOf(Store.getStr("nas.deleteForever") == "1") }
+    var davRecycle by remember { mutableStateOf(DavRecycle.enabled) }
     var wmOn by remember { mutableStateOf(com.hark.shiguang.Features.workManager) }
     Page("高级") {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(bottom = 40.dp)) {
@@ -520,6 +521,14 @@ fun AdvancedSettingsScreen() {
                         info = "打开后删除照片时跳过飞牛回收站，无法恢复；关闭时删除的照片先进飞牛回收站，30 天内可恢复。") {
                         forever = it; Store.putStr("nas.deleteForever", if (it) "1" else "")
                     }
+                } else {
+                    Div()
+                    // 优化 5：WebDAV 删除先移到网盘里的 /.yiwei-recycle（服务器不能移动时延迟删除），30 天内可在「最近删除」恢复
+                    ToggleRow(LI.trash(), "网盘删除先进回收站", if (davRecycle) "30 天内可在「最近删除」恢复" else "删除后无法恢复", davRecycle, alert = !davRecycle,
+                        info = "打开时删除的网盘照片先移到网盘里的隐藏文件夹 .yiwei-recycle，30 天后自动彻底删除；服务器不支持移动时先在 App 里隐藏，30 天后再删除。入口：发现 → 工具 → 最近删除。") {
+                        davRecycle = it; DavRecycle.enabled = it
+                    }
+                    Dav.lib()?.let { l -> Div(); NavRow(LI.trash(), "最近删除") { Nav.push(Route.DavRecycle(l.accountId)) } }
                 }
                 Div()
                 ToggleRow(LI.clock(), "系统定时后台整理", on = wmOn,

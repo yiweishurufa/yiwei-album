@@ -323,6 +323,10 @@ internal fun DavDiscoverTab() {
                 (lib.analyzing || fl.running || AiRunner.running) && (imgs - analyzedN).coerceAtLeast(faceTodo) >= BgGuidePrompt.MIN_PENDING)
             GroupCard {
                 ToolRow(LI.swap(), "传输队列", if (Transfers.active > 0) "${Transfers.active} 个进行中" else null) { Nav.push(Route.Transfers) }
+                GroupDivider()
+                // 优化 5：网盘照片删除后先进「最近删除」，30 天内可恢复
+                val recycleN = remember(HomeState.dirty) { DavRecycle.list(lib.accountId).size }
+                ToolRow(LI.trash(), "最近删除", if (recycleN > 0) "$recycleN 项" else null) { Nav.push(Route.DavRecycle(lib.accountId)) }
             }
         }
     }
