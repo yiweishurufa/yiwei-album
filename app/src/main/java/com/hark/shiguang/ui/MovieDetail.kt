@@ -495,6 +495,7 @@ fun MediaSettingsScreen() {
     var pip by remember { mutableStateOf(VideoPip.enabled) }
     var autoNext by remember { mutableStateOf(PlayPrefs.autoNext) }
     var bgAudio by remember { mutableStateOf(PlayPrefs.bgAudio) }
+    var gapless by remember { mutableStateOf(MusicPrefs.gapless) }
     var fnQuality by remember { mutableStateOf(PlayPrefs.fnQualityRemember) }
     Page("影音设置", src?.let { "${if (it.kind == "dav") "WebDAV" else "飞牛"} · ${it.title}" } ?: "") {
         Column(Modifier.fillMaxSize().verticalScrollCompat().navigationBarsPadding().padding(bottom = 40.dp)) {
@@ -523,6 +524,11 @@ fun MediaSettingsScreen() {
                 if (src != null && src.kind != "dav") {
                     Div()
                     ToggleRow(LI.film(), "记住飞牛清晰度", on = fnQuality) { fnQuality = it; PlayPrefs.fnQualityRemember = it }
+                }
+                Div()
+                // 优化 9 / 17：音乐预加载下一首 + 无缝播放
+                ToggleRow(LI.music(), "音乐无缝播放", on = gapless, info = "当前这首缓冲好后提前加载下一首，切歌不停顿，整张专辑连续播放没有空隙。会提前用掉一首歌的流量。") {
+                    gapless = it; MusicPrefs.gapless = it
                 }
             }
             Section("资料补全（所有来源共用）")

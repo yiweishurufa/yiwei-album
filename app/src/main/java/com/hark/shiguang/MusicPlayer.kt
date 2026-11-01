@@ -57,6 +57,14 @@ class MusicPlayer(private val ctx: Context) : SimpleBasePlayer(Looper.getMainLoo
     private var pendingSeek = 0L
     private var retried = false
     private val uids = java.util.IdentityHashMap<MediaItem, Any>()
+    /**
+     * 优化 9 / 17（用户 2026-11-02）：预加载下一首 + 无缝播放。当前这首就绪后，把下一首的地址查好、作为 ExoPlayer 播放列表的
+     * 第 2 项加进去：ExoPlayer 在当前这首缓冲够了以后提前缓冲下一首，切歌时不停顿；同一个播放列表里 MP3 的 LAME / iTunes
+     * 编码延迟、FLAC / WAV 的样本边界都由 ExoPlayer 处理，专辑连续曲目无缝衔接。
+     * [preloaded] = 已经加到 ExoPlayer 第 2 项的那首（队列里的对象）；队列 / 顺序 / 循环方式一变就撤掉重来。
+     */
+    private var preloaded: MediaItem? = null
+    private var preloadGen = 0
     /** Human readable note for the UI (e.g. "这首用兼容模式播放"/"这个格式放不了"). */
     var note: String = ""; private set
 
@@ -124,14 +132,16 @@ class MusicPlayer(private val ctx: Context) : SimpleBasePlayer(Looper.getMainLoo
     }
 
     override fun handleAddMediaItems(at: Int, items: MutableList<MediaItem>): ListenableFuture<*> {
+        dropPreload()
         val i = at.coerceIn(0, queue.size)
         queue.addAll(i, items); original = original?.let { it + items }
         if (i <= index && queue.size > items.size) index += items.size
-        if (queue.size == items.size) load(0, 0)
+        if (queue.size == items.size) load(0, 0) else preloadNext()
         return Futures.immediateVoidFuture()
     }
 
     override fun handleRemoveMediaItems(from: Int, to: Int): ListenableFuture<*> {
+        dropPreload()
         val removed = queue.subList(from, to).toList()
         val wasCurrent = index in from until to
         queue.subList(from, to).clear(); original = original?.filterNot { o -> removed.any { it === o } }
@@ -140,14 +150,17 @@ class MusicPlayer(private val ctx: Context) : SimpleBasePlayer(Looper.getMainLoo
             wasCurrent -> { index = from.coerceAtMost(queue.size - 1); load(index, 0) }
             index >= to -> index -= (to - from)
         }
+        if (!wasCurrent) preloadNext()
         return Futures.immediateVoidFuture()
     }
 
     override fun handleMoveMediaItems(from: Int, to: Int, newIndex: Int): ListenableFuture<*> {
+        dropPreload()
         val cur = queue.getOrNull(index)
         val moving = queue.subList(from, to).toList(); queue.subList(from, to).clear()
         queue.addAll(newIndex.coerceIn(0, queue.size), moving)
         index = queue.indexOfFirst { it === cur }.coerceAtLeast(0)
+        preloadNext()
         return Futures.immediateVoidFuture()
     }
 
@@ -181,16 +194,18 @@ class MusicPlayer(private val ctx: Context) : SimpleBasePlayer(Looper.getMainLoo
         return Futures.immediateVoidFuture()
     }
 
-    override fun handleSetRepeatMode(repeatMode: Int): ListenableFuture<*> { repeat = repeatMode; MusicState.saveModes(repeat, shuffle); return Futures.immediateVoidFuture() }
+    override fun handleSetRepeatMode(repeatMode: Int): ListenableFuture<*> { repeat = repeatMode; MusicState.saveModes(repeat, shuffle); dropPreload(); preloadNext(); return Futures.immediateVoidFuture() }
 
     override fun handleSetShuffleModeEnabled(enabled: Boolean): ListenableFuture<*> {
         if (enabled == shuffle) return Futures.immediateVoidFuture()
+        dropPreload()
         shuffle = enabled
         if (enabled) shuffleKeepingCurrent() else original?.let { o ->
             val cur = queue.getOrNull(index); queue = ArrayList(o); original = null
             index = queue.indexOfFirst { it === cur }.coerceAtLeast(0)
         }
         MusicState.saveModes(repeat, shuffle)
+        preloadNext()
         return Futures.immediateVoidFuture()
     }
 
@@ -257,12 +272,26 @@ class MusicPlayer(private val ctx: Context) : SimpleBasePlayer(Looper.getMainLoo
             if (engine != 1) return
             when (s) {
                 Player.STATE_ENDED -> ended()
-                Player.STATE_READY -> { state = Player.STATE_READY; exo.duration.takeIf { it > 0 && it != C.TIME_UNSET }?.let { MusicState.durationLearnt(idOf(queue[index]), it) }; invalidateState() }
+                Player.STATE_READY -> { state = Player.STATE_READY; exo.duration.takeIf { it > 0 && it != C.TIME_UNSET }?.let { MusicState.durationLearnt(idOf(queue[index]), it) }; invalidateState(); preloadNext() }
                 Player.STATE_BUFFERING -> { state = Player.STATE_BUFFERING; invalidateState() }
                 else -> {}
             }
         }
         override fun onIsPlayingChanged(isPlaying: Boolean) { if (engine == 1) invalidateState() }
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            // 优化 9 / 17：ExoPlayer 自己无缝切到了预加载的下一首
+            if (engine != 1 || reason != Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) return
+            val next = preloaded ?: return
+            preloaded = null
+            val ni = queue.indexOfFirst { it === next }
+            if (ni < 0 || exo.currentMediaItemIndex != 1) { Diag.log("MUSIC", "gapless: queue changed under the preloaded track, loading normally"); load(nextIndex().coerceAtLeast(0), 0); return }
+            index = ni; gen++; retried = false; note = ""; error = null
+            runCatching { exo.removeMediaItem(0) }
+            state = if (exo.playbackState == Player.STATE_READY) Player.STATE_READY else Player.STATE_BUFFERING
+            exo.duration.takeIf { it > 0 && it != C.TIME_UNSET }?.let { MusicState.durationLearnt(idOf(queue[index]), it) }
+            invalidateState()
+            preloadNext()
+        }
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
             // audio focus loss / headphones unplugged pause ExoPlayer itself: mirror it
             if (engine == 1 && playWhenReady != pwr && reason != Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST) { pwr = playWhenReady; invalidateState() }
@@ -317,7 +346,39 @@ class MusicPlayer(private val ctx: Context) : SimpleBasePlayer(Looper.getMainLoo
 
     private fun stopEngines() {
         if (engine == 1) runCatching { exo.stop(); exo.clearMediaItems() }
-        engine = 0
+        engine = 0; preloaded = null; preloadGen++
+    }
+
+    /** Index the queue moves to after the current track ends on its own; -1 = stop / repeat this one. */
+    private fun nextIndex(): Int = when {
+        queue.isEmpty() || repeat == Player.REPEAT_MODE_ONE -> -1
+        index < queue.size - 1 -> index + 1
+        repeat == Player.REPEAT_MODE_ALL && queue.size > 1 -> 0
+        else -> -1
+    }
+
+    /** 优化 9 / 17：撤掉已经加到 ExoPlayer 里的下一首（队列或顺序变了）。 */
+    private fun dropPreload() {
+        preloadGen++
+        if (preloaded != null && engine == 1) runCatching { if (exo.mediaItemCount > 1) exo.removeMediaItems(1, exo.mediaItemCount) }
+        preloaded = null
+    }
+
+    /** 优化 9 / 17：当前这首在 ExoPlayer 里就绪后，查好下一首的地址并加为播放列表第 2 项（提前缓冲、无缝衔接）。 */
+    private fun preloadNext() {
+        if (!MusicPrefs.gapless || engine != 1 || preloaded != null || exo.mediaItemCount != 1 || state != Player.STATE_READY) return
+        if (MusicState.sleepAfterTrack != null) return   // 「本首播完后停止」：不往下接
+        val ni = nextIndex(); if (ni < 0) return
+        val mi = queue[ni]; val my = ++preloadGen; val g = gen
+        scope.launch {
+            val r = withContext(Dispatchers.IO) { runCatching { resolve(mi) }.getOrNull() }
+            if (my != preloadGen || g != gen || engine != 1 || exo.mediaItemCount != 1 || r == null) return@launch
+            if (r.third in Music.UNSUPPORTED) return@launch   // 放不了的格式照旧在切到它时提示并跳过
+            hdr[r.first] = r.second
+            exo.addMediaItem(MediaItem.Builder().setUri(r.first).setMediaId(idOf(mi)).build())
+            preloaded = mi
+            Diag.log("MUSIC", "preloaded next .${r.third}")
+        }
     }
 
     /** Headphones unplugged / Bluetooth gone: ExoPlayer pauses itself (setHandleAudioBecomingNoisy); kept for MusicService. */

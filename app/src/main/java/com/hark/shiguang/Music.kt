@@ -432,6 +432,10 @@ class MusicLib(val sourceKey: String) {
 }
 
 object MusicPrefs {
+    /** 优化 9 / 17（用户 2026-11-02）：预加载下一首 + 无缝播放，默认开（设置里可关，网络流量会提前用掉一首）。 */
+    var gapless: Boolean
+        get() = Store.getStr("music.gapless", "1") == "1"
+        set(v) = Store.putStr("music.gapless", if (v) "1" else "0")
     /** 联网补全（网易云音乐公开接口 + LRCLIB），设置里可关。 */
     var online: Boolean
         get() = Store.getStr("music.online", "1") == "1"
