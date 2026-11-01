@@ -494,6 +494,7 @@ fun MediaSettingsScreen() {
     var online by remember { mutableStateOf(MusicPrefs.online) }
     var pip by remember { mutableStateOf(VideoPip.enabled) }
     var autoNext by remember { mutableStateOf(PlayPrefs.autoNext) }
+    var bgAudio by remember { mutableStateOf(PlayPrefs.bgAudio) }
     var fnQuality by remember { mutableStateOf(PlayPrefs.fnQualityRemember) }
     Page("影音设置", src?.let { "${if (it.kind == "dav") "WebDAV" else "飞牛"} · ${it.title}" } ?: "") {
         Column(Modifier.fillMaxSize().verticalScrollCompat().navigationBarsPadding().padding(bottom = 40.dp)) {
@@ -512,6 +513,12 @@ fun MediaSettingsScreen() {
                 ToggleRow(LI.videos(), "离开时画中画", if (pipOk) null else "本机不支持", pip && pipOk, enabled = pipOk) { pip = it; VideoPip.enabled = it }
                 Div()
                 ToggleRow(LI.play(), "自动播放下一集", on = autoNext) { autoNext = it; PlayPrefs.autoNext = it }
+                Div()
+                // 优化 6：息屏 / 切到后台时影视继续出声（通知栏和锁屏可暂停）；回到前台画面接上
+                ToggleRow(LI.music(), "息屏继续播放声音", on = bgAudio) {
+                    bgAudio = it; PlayPrefs.bgAudio = it
+                    if (it) (ctx as? android.app.Activity)?.let { a -> BgRun.maybeAskNotifications(a) }
+                }
                 // 用户 2026-10-23 反馈（清晰度）：只有飞牛来源有转码档位，WebDAV 时不显示
                 if (src != null && src.kind != "dav") {
                     Div()

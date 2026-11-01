@@ -774,10 +774,24 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     LaunchedEffect(player, casting, extIdx, playerView) { pushPip() }
     // the activity is stopped (screen off, PiP window closed, PiP turned off and the user left): save and pause.
     // While shown as a PiP window the activity is only paused, so playback continues there.
+    // 优化 6（用户 2026-11-02）：「息屏继续播放声音」打开时（默认），息屏 / 切到后台不暂停，由 VideoSessionService
+    // 保持前台服务、在通知栏和锁屏给出播放控制；关掉画中画小窗（刚离开小窗就 stop）仍然暂停。
     val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    var pipLeftAt by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(inPip) { if (!inPip) pipLeftAt = android.os.SystemClock.elapsedRealtime() }
+    DisposableEffect(player) {
+        if (PlayPrefs.bgAudio) VideoSession.start(ctx, player, queue[start].title)
+        onDispose { VideoSession.stop(ctx) }
+    }
     DisposableEffect(lifecycleOwner, player) {
         val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
-            if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP) { save(); player.pause() }
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+                save()
+                val pipClosed = android.os.SystemClock.elapsedRealtime() - pipLeftAt < 1_500 && pipLeftAt > 0
+                val keep = PlayPrefs.bgAudio && VideoSession.session != null && player.isPlaying && extIdx < 0 && !casting && !pipClosed
+                if (keep) Diag.log("PLAYER", "screen off / background: keep playing audio") else player.pause()
+            }
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_START && PlayPrefs.bgAudio) playerView?.let { pv -> if (pv.player == null) pv.player = seekGate.forUi }
         }
         lifecycleOwner.lifecycle.addObserver(obs)
         onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }

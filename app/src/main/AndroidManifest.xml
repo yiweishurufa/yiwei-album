@@ -74,6 +74,15 @@
                 <action android:name="androidx.media3.session.MediaSessionService" />
             </intent-filter>
         </service>
+        <!-- 1.4.0 优化 6：影视息屏 / 后台继续播放声音（播放器页打开期间的媒体会话，见 VideoSessionService） -->
+        <service
+            android:name=".VideoSessionService"
+            android:exported="true"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
         <service
             android:name=".ScanService"
             android:exported="false"

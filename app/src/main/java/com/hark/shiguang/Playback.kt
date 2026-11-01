@@ -213,6 +213,8 @@ object PlayPrefs {
 
     /** 1.1.0 影音设置「自动播放下一集」（全局，默认开）：剧集播完后倒数 5 秒自动播下一集。 */
     var autoNext: Boolean get() = Store.getStr("play.autoNext", "1") == "1"; set(v) = Store.putStr("play.autoNext", if (v) "1" else "0")
+    /** 优化 6（用户 2026-11-02）：影视息屏 / 切到后台继续播放声音，默认开。 */
+    var bgAudio: Boolean get() = Store.getStr("play.bgAudio", "1") == "1"; set(v) = Store.putStr("play.bgAudio", if (v) "1" else "0")
 
     /** 迭代 #51：播放器手势教学是否已经看过（只在第一次进播放器时显示一次）。 */
     var gestureTipSeen: Boolean get() = Store.getStr("play.gestureTip", "0") == "1"; set(v) = Store.putStr("play.gestureTip", if (v) "1" else "0")
