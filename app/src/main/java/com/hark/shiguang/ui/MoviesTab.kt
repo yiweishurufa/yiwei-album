@@ -58,7 +58,10 @@ fun MoviesTab() {
     val lib = remember(key) { Movies.lib(key) }
     val grid = rememberMemGrid("movies-$key-${MoviesState.seg}")
     LaunchedEffect(key) {
+        val t0 = System.currentTimeMillis()
         lib.awaitReady()   // #2 / H4: the library loads on IO; decide about the quiet rescan once it is in
+        // 用户 2026-11-01 反馈第一次进影音黑屏：记下读库用时和条数，下次凭诊断日志确认
+        Diag.log("MEDIA", "movies tab ready in ${System.currentTimeMillis() - t0} ms, items=${lib.items.size} dirs=${lib.dirs.size}")
         // first visit after a restart: pick up new files quietly (only new ones are scraped)
         autoScanIfStale("movies.last.$key", lib.dirs.isNotEmpty(), lib.scanning) { lib.scan(); ScanService.ensure(App.ctx) }
     }

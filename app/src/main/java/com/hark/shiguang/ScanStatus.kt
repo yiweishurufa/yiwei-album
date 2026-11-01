@@ -17,9 +17,10 @@ object ScanStatus {
     fun current(): Triple<String, String, Pair<Int, Int>>? {
         Dav.lib()?.let { lib ->
             listing(lib)?.let { return Triple(it.title, it.text, it.done to it.total) }
-            val fl = Faces.lib(lib.accountId)
             if (Analyzer.running) return Triple("本地分析 ${lib.analyzed} / ${lib.imagesCount()}", "地点、重复、相似、实况", lib.analyzed to lib.imagesCount())
-            if (Faces.running) return Triple("人脸识别 ${fl.done} / ${fl.total}", "只在本机进行", fl.done to fl.total)
+            // 用户 2026-11-01（第一次进影音黑屏，推测）：这里每秒在主线程跑（扫描通知）。以前用 Faces.lib() 会在第一次调用时
+            // 在主线程读取并解码整份 faces.json（含全部人脸特征），进影音触发影视自动扫描时界面会卡住几秒。现在只取已加载的。
+            if (Faces.running) Faces.peek(lib.accountId)?.let { fl -> return Triple("人脸识别 ${fl.done} / ${fl.total}", "只在本机进行", fl.done to fl.total) }
             // 1.1.0 图中文字
             if (OcrRunner.running) return Triple("识别图中文字 ${OcrRunner.done} / ${OcrRunner.total}", "只在本机进行 · 用缩略图", OcrRunner.done to OcrRunner.total)
         }

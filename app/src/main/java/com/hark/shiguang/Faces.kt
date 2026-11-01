@@ -191,6 +191,8 @@ class FaceLib(val accountId: String) {
 object Faces {
     private val libs = HashMap<String, FaceLib>()
     fun lib(id: String): FaceLib = synchronized(libs) { libs.getOrPut(id) { FaceLib(id).also { it.load() } } }
+    /** 只取已经在内存里的库，不读盘。主线程上的状态轮询（扫描通知、进度卡片）用它，避免第一次就在主线程解析 faces.json。 */
+    fun peek(id: String): FaceLib? = synchronized(libs) { libs[id] }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     /** B28: one job per account — scanning account A never cancels account B. */
