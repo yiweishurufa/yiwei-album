@@ -29,6 +29,8 @@ sealed class Route {
     data object Home : Route()
     data class Collection(val title: String, val subtitle: String, val source: PhotoSource, val album: AlbumRef? = null) : Route()
     data object Search : Route()
+    /** 优化 18：发现页的全局搜索（照片 + 影视 + 歌曲）。 */
+    data object GlobalSearch : Route()
     /** 审查 1 / 用户口述 1：影音页的搜索（搜影片，不是照片）。 */
     data object MovieSearch : Route()
     data class Viewer(val photos: List<Photo>, val start: Int, val slideshow: Boolean = false) : Route()
@@ -278,6 +280,7 @@ class MainActivity : ComponentActivity() {
                             is Route.DavBigFiles -> DavBigFilesScreen(r)
                             is Route.Folders -> FoldersScreen(r)
                             Route.Recycle -> RecycleScreen()
+                            Route.GlobalSearch -> com.hark.shiguang.ui.GlobalSearchScreen()
                             is Route.DavRecycle -> com.hark.shiguang.ui.DavRecycleScreen(r)
                             Route.DavAccounts -> DavAccountsScreen()
                             Route.AiSettings -> AiSettingsScreen()

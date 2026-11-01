@@ -168,11 +168,12 @@ internal fun DiscoverTab() {
 private fun SearchBar() {
     Row(
         Modifier.padding(horizontal = 16.dp, vertical = 6.dp).fillMaxWidth().height(50.dp).skeuoInset(RoundedCornerShape(16.dp), C.Surface)
-            .clickable { Nav.push(Route.Search) }.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically
+            .clickable { Nav.push(Route.GlobalSearch) }.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(LI.search(), null, tint = C.Sub, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(10.dp))
-        Text("试试「海边日落」「去年的猫」", color = C.Faint, fontSize = 15.sp, modifier = Modifier.weight(1f))
+        // 优化 18：一个框搜照片、影视、歌曲
+        Text("搜照片、电影剧集、歌曲", color = C.Faint, fontSize = 15.sp, modifier = Modifier.weight(1f))
         if (!AiConfig.configured && HomeState.source == "dav") Text("需配置 AI", color = C.Gold, fontSize = 11.sp, modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(C.Gold.copy(alpha = 0.14f)).padding(horizontal = 6.dp, vertical = 3.dp))
     }
 }
