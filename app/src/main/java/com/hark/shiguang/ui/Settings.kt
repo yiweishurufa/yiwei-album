@@ -170,6 +170,14 @@ fun SettingsScreen() {
             Div()
             NavRow(Icons.Rounded.MailOutline, "反馈与帮助") { helpOpen = true }
             Div()
+            // 优化 10（用户 2026-11-02）：一键导出诊断日志（不含密码 / token / 链接参数），调起系统分享
+            NavRow(Icons.Rounded.BugReport, "导出诊断日志", value = "遇到问题时发给开发者") {
+                scope.launch {
+                    val f = runCatching { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { Diag.writeExport() } }.getOrNull()
+                    if (f == null) Toast.makeText(ctx, "导出失败", Toast.LENGTH_SHORT).show() else Diag.share(ctx, f)
+                }
+            }
+            Div()
             NavRow(LI.settings(), "高级") { Nav.push(Route.AdvancedSettings) }
         }
         // 1.1.0: 账号入口只保留顶部卡片（切换与管理 → 退出 / 移除都在账号页里）

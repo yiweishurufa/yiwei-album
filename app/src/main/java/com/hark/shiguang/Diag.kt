@@ -18,7 +18,9 @@ object Diag {
     // and a login OTP must never land in a log the user might forward.
     private val secret = Regex("(?<![A-Za-z0-9_])(accesstoken|token|password|pass|secret|authx|access_token|Authorization|si|otp|sign|signature)([\"'=:\\s]+)([^\"'&\\s,\\}]+)", RegexOption.IGNORE_CASE)
     /** S21: userinfo in a URL ("https://user@host/…") — the user part is masked, the host stays readable. */
-    private val userinfo = Regex("([a-zA-Z][a-zA-Z0-9+.-]*://)([^/@\\s:]+)@")
+    private val userinfo = Regex("([a-zA-Z][a-zA-Z0-9+.-]*://)([^/@\\s]+)@")   // 优化 10：「用户名:密码@」整段打码（以前带冒号的不匹配）
+    /** 优化 10：链接的查询参数（签名、令牌、过期时间…）整段打码，只留主机和路径。 */
+    private val query = Regex("(https?://[^\\s?#\"']+)\\?[^\\s\"']+", RegexOption.IGNORE_CASE)
 
     fun init(c: Context) {
         dir = File(c.cacheDir, "diag").apply { mkdirs() }
@@ -32,7 +34,7 @@ object Diag {
         log("APP", "start ${Build.MANUFACTURER} ${Build.MODEL} Android ${Build.VERSION.RELEASE} (${Build.VERSION.SDK_INT}) v${BuildInfo.version}")
     }
 
-    fun mask(s: String): String = userinfo.replace(secret.replace(s) { m -> m.groupValues[1] + m.groupValues[2] + "***" }) { m -> m.groupValues[1] + "***@" }
+    fun mask(s: String): String = query.replace(userinfo.replace(secret.replace(s) { m -> m.groupValues[1] + m.groupValues[2] + "***" }) { m -> m.groupValues[1] + "***@" }) { m -> m.groupValues[1] + "?***" }
 
     /**
      * H14: lines queue up and one background thread appends them in batches (about once a second), instead of an
@@ -68,14 +70,23 @@ object Diag {
         }
     }
 
-    fun export(c: Context) {
+    fun export(c: Context) = share(c, writeExport())
+
+    /** 优化 10：写出导出文件（IO 线程调用）。只保留最近 3 份。 */
+    fun writeExport(): File {
         flush()
+        dir.listFiles { f -> f.name.startsWith("shiguang-diag-") }?.sortedByDescending { it.lastModified() }?.drop(2)?.forEach { it.delete() }
         val out = File(dir, "shiguang-diag-${SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())}.txt")
         val sb = StringBuilder()
         sb.append("一维相册 诊断日志 v${BuildInfo.version}\n设备 ${Build.MANUFACTURER} ${Build.MODEL} Android ${Build.VERSION.RELEASE}\n\n")
         File(dir, "previous.log").takeIf { it.exists() }?.let { sb.append("==== 上次运行 ====\n").append(it.readText().takeLast(200_000)).append("\n") }
         File(dir, "current.log").takeIf { it.exists() }?.let { sb.append("==== 本次运行 ====\n").append(it.readText().takeLast(200_000)) }
         out.writeText(mask(sb.toString()))
+        log("APP", "diag exported (${out.length() / 1024} KB)")
+        return out
+    }
+
+    fun share(c: Context, out: File) {
         val uri = FileProvider.getUriForFile(c, c.packageName + ".files", out)
         val i = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         c.startActivity(Intent.createChooser(i, "导出诊断日志").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
