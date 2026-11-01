@@ -233,11 +233,34 @@ internal object CloudHttp {
     /** Encode every segment of a "/"-separated path, keeping the slashes. */
     fun encPath(p: String): String = p.split('/').joinToString("/") { if (it.isEmpty()) it else enc(it) }
 
-    /** Percent-decode without turning '+' into space. */
-    fun pctDecode(s: String): String = try {
-        URLDecoder.decode(s.replace("+", "%2B"), "UTF-8")
-    } catch (e: Exception) {
-        s
+    /**
+     * Percent-decode without turning '+' into space.
+     * 用户 2026-11-02 反馈（音乐中文乱码）一并检查：个别网盘 / NAS 的 WebDAV 把中文文件名按 GBK 字节百分号编码，
+     * 按 UTF-8 解出来是一串替换字符。现在先按字节解码，严格 UTF-8 不成立时改用 GBK；坏的 %xx 原样保留。
+     */
+    fun pctDecode(s: String): String {
+        if ('%' !in s) return s
+        val out = java.io.ByteArrayOutputStream(s.length)
+        var i = 0
+        var escaped = false
+        while (i < s.length) {
+            val c = s[i]
+            if (c == '%' && i + 2 < s.length) {
+                val hi = Character.digit(s[i + 1], 16); val lo = Character.digit(s[i + 2], 16)
+                if (hi >= 0 && lo >= 0) { out.write(hi * 16 + lo); i += 3; escaped = true; continue }
+            }
+            out.write(c.toString().toByteArray(Charsets.UTF_8))
+            i++
+        }
+        if (!escaped) return s
+        val b = out.toByteArray()
+        return runCatching {
+            Charsets.UTF_8.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT).decode(java.nio.ByteBuffer.wrap(b)).toString()
+        }.getOrNull() ?: runCatching {
+            java.nio.charset.Charset.forName("GBK").newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                .decode(java.nio.ByteBuffer.wrap(b)).toString()
+        }.getOrNull() ?: String(b, Charsets.UTF_8)
     }
 
     fun normalizeBase(url: String): String {

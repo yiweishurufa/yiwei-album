@@ -76,6 +76,18 @@ object MusicTags {
     private fun ascii(b: ByteArray, i: Int, n: Int) = if (i + n > b.size) "" else String(b, i, n, Charsets.ISO_8859_1)
     private val GBK: Charset = runCatching { Charset.forName("GBK") }.getOrDefault(Charsets.ISO_8859_1)
 
+    /**
+     * 用户 2026-11-02 反馈（123云盘 WAV 中文歌名显示 ??）：有些转换工具按非中文代码页写 RIFF LIST/INFO，中文在写入时就被换成了
+     * 字面的 '?'（0x3F），字节里已经没有原文。这样的值当作「没有标签」：[put] / [frame] 不收，WAV 里的 id3 块或文件名顶上。
+     * 判定：去掉空白和常见分隔符后，'?'（或替换字符 U+FFFD）占一半以上。
+     */
+    fun isGarbled(s: String): Boolean {
+        val core = s.filterNot { it.isWhitespace() || it in "&/,;、·-_()（）[]" }
+        if (core.isEmpty()) return false
+        val bad = core.count { it == '?' || it == '\uFFFD' }
+        return bad * 2 >= core.length
+    }
+
     /** "ISO-8859-1" bytes that are really GBK (very common in Chinese mp3s) or UTF-8. */
     fun latin(b: ByteArray, off: Int = 0, len: Int = b.size - off): String {
         if (len <= 0) return ""
@@ -102,7 +114,7 @@ object MusicTags {
 
     /** Sets a field from a Vorbis-comment / APE / MP4-style key. */
     private fun put(t: Tags, key0: String, v0: String) {
-        val v = v0.trim().trim('\u0000'); if (v.isEmpty()) return
+        val v = v0.trim().trim('\u0000'); if (v.isEmpty() || isGarbled(v)) return
         when (key0.trim().uppercase()) {
             "TITLE" -> if (t.title.isEmpty()) t.title = v
             "ARTIST" -> if (t.artist.isEmpty()) t.artist = v
@@ -168,10 +180,10 @@ object MusicTags {
     private fun frame(id: String, d: ByteArray, t: Tags) {
         if (d.isEmpty()) return
         val e = u8(d, 0)
-        fun tx() = text(d, 1, e).split('\u0000').firstOrNull { it.isNotBlank() }.orEmpty().trim()
+        fun tx() = text(d, 1, e).split('\u0000').firstOrNull { it.isNotBlank() }.orEmpty().trim().let { if (isGarbled(it)) "" else it }
         when (id) {
             "TIT2", "TT2" -> if (t.title.isEmpty()) t.title = tx()
-            "TPE1", "TP1" -> if (t.artist.isEmpty()) t.artist = text(d, 1, e).split('\u0000').filter { it.isNotBlank() }.joinToString("/").trim()
+            "TPE1", "TP1" -> if (t.artist.isEmpty()) t.artist = text(d, 1, e).split('\u0000').filter { it.isNotBlank() }.joinToString("/").trim().let { if (isGarbled(it)) "" else it }
             "TALB", "TAL" -> if (t.album.isEmpty()) t.album = tx()
             "TPE2", "TP2" -> if (t.albumArtist.isEmpty()) t.albumArtist = tx()
             "TYER", "TYE", "TDRC", "TDOR", "TORY" -> if (t.year == 0) t.year = yearOf(tx())
@@ -468,8 +480,11 @@ object MusicTags {
         t.codec = "wav"
         var off = 12L; var byteRate = 0L; var guard = 0
         var b = head; var base = 0L
+        // 用户 2026-11-02 反馈：LIST/INFO 常是有损的 ANSI（中文变 ??），同一文件里的 id3 块是 Unicode。
+        // INFO 先放进 [info]，整个文件走完后再补到 id3 没给的字段上（以前 INFO 在前、先占位，id3 的正确中文进不来）。
+        val info = Tags()
         while (guard++ < 64) {
-            if (!(off >= base && off + 8 <= base + b.size)) { b = src.at(off, 65536) ?: return; base = off; if (b.size < 8) return }
+            if (!(off >= base && off + 8 <= base + b.size)) { b = src.at(off, 65536) ?: break; base = off; if (b.size < 8) break }
             val i = (off - base).toInt()
             val id = ascii(b, i, 4); val len = le32(b, i + 4)
             when (id) {
@@ -483,7 +498,7 @@ object MusicTags {
                             val sid = ascii(lb, k, 4); val sl = le32(lb, k + 4).toInt()
                             if (sl < 0 || k + 8 + sl > lb.size) break
                             val v = latin(lb, k + 8, sl).trim('\u0000', ' ')
-                            when (sid) { "INAM" -> put(t, "TITLE", v); "IART" -> put(t, "ARTIST", v); "IPRD" -> put(t, "ALBUM", v); "ICRD" -> put(t, "DATE", v); "ITRK", "IPRT" -> put(t, "TRACK", v) }
+                            when (sid) { "INAM" -> put(info, "TITLE", v); "IART" -> put(info, "ARTIST", v); "IPRD" -> put(info, "ALBUM", v); "ICRD" -> put(info, "DATE", v); "ITRK", "IPRT" -> put(info, "TRACK", v) }
                             k += 8 + sl + (sl and 1)
                         }
                     }
@@ -493,6 +508,7 @@ object MusicTags {
             off += 8 + len + (len and 1)
             if (src.size in 1..off) break
         }
+        t.mergeFrom(info)
     }
 
     private fun aiff(src: Src, head: ByteArray, t: Tags) {

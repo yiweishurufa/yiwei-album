@@ -45,7 +45,13 @@ data class Track(
     val tagged: Boolean = false,     // embedded tags were read (title etc. not only from the file name)
     val scanned: Boolean = false,    // tag reading attempted
     val online: Boolean = false,     // online completion attempted
+    /** 标签读取器版本（1.4.0 起为 [Music.TAG_VER]）；旧库没有这个字段时为 0。 */
+    val tagVer: Int = 0,
 ) {
+    /** 用户 2026-11-02 反馈：旧版本把有损的 WAV INFO（中文已变成 ??）存进了曲库。 */
+    val garbled: Boolean get() = MusicTags.isGarbled(title) || MusicTags.isGarbled(artist) || MusicTags.isGarbled(album)
+    /** 这条缓存要不要按新版读取器重读：旧版读出来、且歌名 / 歌手 / 专辑是乱码。 */
+    val staleTags: Boolean get() = scanned && tagVer < Music.TAG_VER && garbled
     val ext: String get() = NameParser.ext(name)
     val displayArtist: String get() = artist.ifBlank { albumArtist }.ifBlank { "未知歌手" }
     val displayAlbum: String get() = album.ifBlank { "未知专辑" }
@@ -54,11 +60,11 @@ data class Track(
 
     fun json(): JSONObject = JSONObject().put("id", id).put("p", path).put("n", name).put("s", size).put("m", mtime).put("t", title).put("ar", artist)
         .put("al", album).put("aa", albumArtist).put("y", year).put("tn", trackNo).put("dn", discNo).put("d", durationMs).put("c", codec)
-        .put("art", artPath ?: "").put("lrc", lrcPath ?: "").put("f", folder).put("tg", tagged).put("sc", scanned).put("on", online)
+        .put("art", artPath ?: "").put("lrc", lrcPath ?: "").put("f", folder).put("tg", tagged).put("sc", scanned).put("on", online).put("tv", tagVer)
     companion object {
         fun of(o: JSONObject) = Track(o.optString("id"), o.optString("p"), o.optString("n"), o.optLong("s"), o.optLong("m"), o.optString("t"),
             o.optString("ar"), o.optString("al"), o.optString("aa"), o.optInt("y"), o.optInt("tn"), o.optInt("dn"), o.optLong("d"), o.optString("c"),
-            o.optString("art").ifEmpty { null }, o.optString("lrc").ifEmpty { null }, o.optString("f"), o.optBoolean("tg"), o.optBoolean("sc"), o.optBoolean("on"))
+            o.optString("art").ifEmpty { null }, o.optString("lrc").ifEmpty { null }, o.optString("f"), o.optBoolean("tg"), o.optBoolean("sc"), o.optBoolean("on"), o.optInt("tv"))
     }
 }
 
@@ -82,6 +88,8 @@ class MusicLib(val sourceKey: String) {
     /** 用户 2026-10-22 反馈 #2 / H4 / H5：库文件在 IO 线程读完、在主线程装进 [tracks] 后才置 true（加载完成才置位，线程安全）。 */
     var ready by mutableStateOf(false)
         private set
+    /** 用户 2026-11-02 反馈：库里有旧版读成 ?? 的歌，打开音乐页时立刻安静地重读这些（只重读它们）。 */
+    var needsRetag = false
     private val started = java.util.concurrent.atomic.AtomicBoolean(false)
     private val loadedSignal = CompletableDeferred<Unit>()
     @Volatile private var dirsTouched = false
@@ -105,6 +113,7 @@ class MusicLib(val sourceKey: String) {
             withContext(Dispatchers.Main) {
                 if (d != null && !dirsTouched) dirs = d
                 if (tracks.isEmpty()) tracks.addAll(l)
+                needsRetag = l.any { it.staleTags }
                 version++; ready = true
             }
             loadedSignal.complete(Unit)
@@ -198,7 +207,7 @@ class MusicLib(val sourceKey: String) {
                 val fresh = unique.map { (e, folder) ->
                     val o = old[e.path]
                     val lrc = sidecarLrc(e, folders[folder].orEmpty())
-                    if (o != null && !rescrape && o.size == e.size && (e.mtime == 0L || o.mtime == 0L || o.mtime == e.mtime) && o.scanned) o.copy(lrcPath = lrc ?: o.lrcPath, folder = folder)
+                    if (o != null && !rescrape && o.size == e.size && (e.mtime == 0L || o.mtime == 0L || o.mtime == e.mtime) && o.scanned && !o.staleTags) o.copy(lrcPath = lrc ?: o.lrcPath, folder = folder)
                     else guess(e, folder).copy(lrcPath = lrc)
                 }.distinctBy { it.id }.sortedWith(compareBy({ it.folder }, { it.discNo }, { it.trackNo }, { it.name }))
                 withContext(Dispatchers.Main) { tracks.clear(); tracks.addAll(fresh); version++ }
@@ -348,10 +357,11 @@ class MusicLib(val sourceKey: String) {
     }
 
     private suspend fun readTags(t0: Track, siblings: List<FsEntry>, covers: MutableMap<String, String>): Track {
-        var t = t0.copy(scanned = true)
+        var t = t0.copy(scanned = true, tagVer = Music.TAG_VER)
         val src = RemoteSrc(t0)
         val tags = try { withContext(Dispatchers.IO) { MusicTags.read(src, t0.ext).also { tg -> tg.picture = tg.picture?.takeIf { it.size > 200 }?.let { shrinkArt(it) } } } } finally { src.release() }
         if (tags.hasAny) t = t.copy(tagged = true)
+        else if (t0.ext == "wav") Diag.log("MUSIC", "wav without usable tags (missing or garbled ??), using the file name")
         t = t.copy(
             title = tags.title.ifBlank { t.title }, artist = tags.artist.ifBlank { t.artist }, album = tags.album.ifBlank { t.album },
             albumArtist = tags.albumArtist, year = tags.year, trackNo = if (tags.track > 0) tags.track else t.trackNo,
@@ -429,6 +439,8 @@ object MusicPrefs {
 }
 
 object Music {
+    /** 标签读取器版本：2 = 1.4.0（WAV 优先 id3 块、?? 乱码当作没有标签）。升高后旧的乱码缓存会重读。 */
+    const val TAG_VER = 2
     /** Extensions the scanner collects. */
     val AUDIO = setOf("mp3", "flac", "ape", "wav", "m4a", "aac", "alac", "ogg", "oga", "opus", "wma", "dsf", "dff", "aiff", "aif", "aifc", "wv", "m4b")
     /** media3 extractors (with the Jellyfin FFmpeg decoder for ALAC / Opus / Vorbis fallbacks). */
