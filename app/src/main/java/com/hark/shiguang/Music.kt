@@ -165,7 +165,7 @@ class MusicLib(val sourceKey: String) {
     }
 
     fun clearCache() {
-        job?.cancel(); tracks.clear(); File(dir, "library.json").delete(); artDir.deleteRecursively(); lyricsDir.deleteRecursively(); version++
+        job?.cancel(); tracks.clear(); File(dir, "library.json").delete(); listingFile.delete(); dirSnaps.clear(); artDir.deleteRecursively(); lyricsDir.deleteRecursively(); version++
     }
 
     /** The player learnt the real length (tags had none). */
@@ -187,20 +187,66 @@ class MusicLib(val sourceKey: String) {
 
     // ---------------------------------------------------------------- scan
 
+    /**
+     * 优化 11（用户 2026-11-02）：自动刷新（[quiet]）时界面只在顶部显示一行小字「正在更新」，列表照常可用，不出大进度条。
+     * 优化 12：刷新失败（离线 / 登录过期）时列表保持上次的内容。
+     */
+    var quiet by mutableStateOf(false)
+        private set
+
+    /**
+     * 优化 8（用户 2026-11-02）：增量扫描。叶子文件夹（上次列出时没有子文件夹）的修改时间和上次一样时，直接用上次的文件列表，
+     * 不再对它发 PROPFIND；文件夹里增删文件、增删子文件夹都会改它的修改时间。服务器不报修改时间（0）的文件夹照常列。
+     * 自动刷新用缓存；手动点刷新（[quiet] = false）每个文件夹都重新列，作为兜底。
+     * 歌曲标签本来就只读新增 / 改过（路径 + 修改时间 + 大小）的文件。
+     */
+    private class DirSnap(val mtime: Long, val files: List<FsEntry>)
+    private val dirSnaps = java.util.concurrent.ConcurrentHashMap<String, DirSnap>()
+    private val listingFile: File get() = File(dir, "listing.json")
+    @Volatile private var snapsLoaded = false
+
+    private fun loadSnaps() {
+        if (snapsLoaded) return
+        snapsLoaded = true
+        runCatching {
+            val o = JSONObject(listingFile.readText())
+            o.keys().forEach { k ->
+                val d = o.getJSONObject(k)
+                val files = d.optJSONArray("f")?.objs().orEmpty().map { e -> FsEntry(e.optString("n"), e.optString("p"), false, e.optLong("s"), mtime = e.optLong("m")) }
+                dirSnaps[k] = DirSnap(d.optLong("m"), files)
+            }
+        }
+    }
+
+    private fun saveSnaps() {
+        runCatching {
+            val o = JSONObject()
+            dirSnaps.forEach { (k, v) ->
+                o.put(k, JSONObject().put("m", v.mtime).put("f", JSONArray().apply { v.files.forEach { e -> put(JSONObject().put("n", e.name).put("p", e.path).put("s", e.size).put("m", e.mtime)) } }))
+            }
+            listingFile.writeText(o.toString())
+        }
+    }
+
     /** [rescrape]: read every file's tags again (设置 → 重新刮削). */
-    fun scan(rescrape: Boolean = false) {
+    fun scan(rescrape: Boolean = false, quiet: Boolean = false) {
         if (job?.isActive == true) return
         ensure()
         job = scope.launch {
             awaitReady()
-            withContext(Dispatchers.Main) { scanning = true; error = null; done = 0; total = 0; found = 0; phase = "正在列出音乐文件" }
+            withContext(Dispatchers.Main) { scanning = true; this@MusicLib.quiet = quiet; error = null; done = 0; total = 0; found = 0; phase = "正在列出音乐文件" }
+            val t0 = System.currentTimeMillis()
             try {
                 val files = ArrayList<Pair<FsEntry, String>>()           // audio file, folder
                 val folders = HashMap<String, List<FsEntry>>()          // folder → its files (covers, lrc)
                 // H1: nested folders (/Music and /Music/周杰伦) are walked once, from the outermost one,
                 // and every file is kept once by its normalized path — the same song twice means two
                 // tracks with the same id, which crashes the song list (duplicate LazyColumn key).
-                for (d in rootDirs(dirs)) walk(d.path, files, folders)
+                loadSnaps()
+                val stats = intArrayOf(0, 0)   // listed, reused
+                for (d in rootDirs(dirs)) walk(d.path, files, folders, useSnaps = quiet, stats = stats)
+                saveSnaps()
+                Diag.log("MUSIC", "list ${files.size} files in ${System.currentTimeMillis() - t0} ms: listed ${stats[0]} folders, reused ${stats[1]} unchanged (quiet=$quiet)")
                 val seen = HashSet<String>()
                 val unique = files.filter { (e, _) -> seen.add(MediaIsolation.normPath(e.path)) }
                 val old = tracks.associateBy { it.path }
@@ -252,8 +298,11 @@ class MusicLib(val sourceKey: String) {
                         b2.flush(true)
                     }
                 }
-            } catch (e: CancellationException) { throw e } catch (e: Exception) { withContext(Dispatchers.Main) { error = e.message ?: "扫描失败" } }
-            withContext(Dispatchers.Main) { scanning = false; phase = "" }
+            } catch (e: CancellationException) { throw e } catch (e: Exception) {
+                Diag.log("MUSIC", "scan failed: ${e.javaClass.simpleName} ${e.message?.take(120)} (keeping ${tracks.size} cached tracks)")
+                withContext(Dispatchers.Main) { error = e.message ?: "扫描失败" }
+            }
+            withContext(Dispatchers.Main) { scanning = false; this@MusicLib.quiet = false; phase = "" }
             pruneCaches(force = true)
         }
     }
@@ -276,16 +325,25 @@ class MusicLib(val sourceKey: String) {
         }
     }
 
-    private suspend fun walk(root: String, out: MutableList<Pair<FsEntry, String>>, folders: MutableMap<String, List<FsEntry>>) {
-        var level = listOf(root); var depth = 0
+    private suspend fun walk(root: String, out: MutableList<Pair<FsEntry, String>>, folders: MutableMap<String, List<FsEntry>>, useSnaps: Boolean = false, stats: IntArray = IntArray(2)) {
+        // (folder, its modification time as reported by the parent listing; 0 = unknown / root)
+        var level = listOf(root to 0L); var depth = 0
         val gate = Semaphore(com.hark.shiguang.cloud.CloudMedia.SCAN_PARALLEL)
         while (level.isNotEmpty() && depth <= 10) {
-            val next = java.util.Collections.synchronizedList(ArrayList<String>())
+            val next = java.util.Collections.synchronizedList(ArrayList<Pair<String, Long>>())
             coroutineScope {
-                level.forEach { d ->
+                level.forEach { (d, dm) ->
                     launch {
                         gate.withPermit {
-                            val l = runCatching { fs.list(d) }.getOrElse { if (d == root) throw it else emptyList() }
+                            val snap = dirSnaps[d]
+                            val reuse = useSnaps && dm > 0 && snap != null && snap.mtime == dm
+                            val l = if (reuse) { synchronized(stats) { stats[1]++ }; snap!!.files } else {
+                                synchronized(stats) { stats[0]++ }
+                                runCatching { fs.list(d) }.getOrElse { if (d == root) throw it else emptyList() }.also { fresh ->
+                                    // only leaf folders are reusable: a sub folder's own changes don't touch this folder's time
+                                    if (dm > 0 && fresh.none { it.isDir }) dirSnaps[d] = DirSnap(dm, fresh) else dirSnaps.remove(d)
+                                }
+                            }
                             val files = l.filter { !it.isDir }
                             synchronized(folders) { folders[d] = files }
                             // B36: audio files that live inside a 影视 folder are not music.
@@ -293,7 +351,7 @@ class MusicLib(val sourceKey: String) {
                             synchronized(out) { audio.forEach { out.add(it to d) } }
                             // B36: never descend into 影视 folders — a music dir inside / next to a movie
                             // library must not pull movie soundtracks into the music library.
-                            next.addAll(l.filter { it.isDir && !it.name.startsWith(".") && !it.name.startsWith("@") && !it.name.startsWith("#") && !MediaIsolation.isMoviePath(sourceKey, it.path) }.map { it.path })
+                            next.addAll(l.filter { it.isDir && !it.name.startsWith(".") && !it.name.startsWith("@") && !it.name.startsWith("#") && !MediaIsolation.isMoviePath(sourceKey, it.path) }.map { it.path to it.mtime })
                             if (audio.isNotEmpty()) withContext(Dispatchers.Main) { found += audio.size; phase = "正在列出音乐文件 · 已找到 $found 首" }
                         }
                     }

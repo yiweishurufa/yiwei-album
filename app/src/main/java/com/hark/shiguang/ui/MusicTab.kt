@@ -80,9 +80,9 @@ fun MusicTab() {
     LaunchedEffect(key) {
         lib.awaitReady()   // #2 / H4: the library loads on IO; decide about the quiet rescan once it is in
         // first visit after a restart: pick up new files quietly (only new / changed files are read)
-        autoScanIfStale("music.last.$key", lib.dirs.isNotEmpty(), lib.scanning) { lib.scan(); ScanService.ensure(App.ctx) }
+        autoScanIfStale("music.last.$key", lib.dirs.isNotEmpty(), lib.scanning) { lib.scan(quiet = true); ScanService.ensure(App.ctx) }
         // 用户 2026-11-02 反馈（WAV 中文 ??）：旧版存下的乱码歌名不等过期，进来就重读这些歌（其余不动）
-        if (lib.needsRetag && !lib.scanning && lib.dirs.isNotEmpty()) { lib.needsRetag = false; Diag.log("MUSIC", "garbled tags cached, re-reading them"); lib.scan(); ScanService.ensure(App.ctx) }
+        if (lib.needsRetag && !lib.scanning && lib.dirs.isNotEmpty()) { lib.needsRetag = false; Diag.log("MUSIC", "garbled tags cached, re-reading them"); lib.scan(quiet = true); ScanService.ensure(App.ctx) }
     }
     val v = lib.version
     val q = MusicUi.query.trim()
