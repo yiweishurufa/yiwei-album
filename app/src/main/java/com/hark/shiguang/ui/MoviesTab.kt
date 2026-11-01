@@ -65,7 +65,7 @@ fun MoviesTab() {
         // 用户 2026-11-01 反馈第一次进影音黑屏：记下读库用时和条数，下次凭诊断日志确认
         Diag.log("MEDIA", "movies tab ready in ${System.currentTimeMillis() - t0} ms, items=${lib.items.size} dirs=${lib.dirs.size}")
         // first visit after a restart: pick up new files quietly (only new ones are scraped)
-        autoScanIfStale("movies.last.$key", lib.dirs.isNotEmpty(), lib.scanning) { lib.scan(); ScanService.ensure(App.ctx) }
+        autoScanIfStale("movies.last.$key", lib.dirs.isNotEmpty(), lib.scanning) { lib.scan(quiet = true); ScanService.ensure(App.ctx) }
     }
     val v = lib.version
     val kind = if (MoviesState.seg == 0) "movie" else "tv"
@@ -95,7 +95,11 @@ fun MoviesTab() {
                 SortMenu()
             }
         }
-        if (lib.scanning || lib.error != null) item(span = { GridItemSpan(maxLineSpan) }) { ScanBar(lib) }
+        // 优化 11 / 12：有缓存时，自动刷新和刷新失败只显示一行小字（列表先显示上次的内容）；没缓存或手动全量扫描才用进度卡片
+        val hasCache = lib.items.isNotEmpty()
+        if ((lib.scanning && lib.quiet && hasCache) || (!lib.scanning && lib.error != null && hasCache))
+            item(span = { GridItemSpan(maxLineSpan) }) { QuietStatusLine(lib.scanning, lib.error, Modifier.padding(horizontal = 2.dp)) { lib.scan(); ScanService.ensure(App.ctx) } }
+        else if (lib.scanning || lib.error != null) item(span = { GridItemSpan(maxLineSpan) }) { ScanBar(lib) }
         if (cont.isNotEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column {

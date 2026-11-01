@@ -112,7 +112,11 @@ fun MusicTab() {
             }
             return@LazyColumn
         }
-        if (lib.scanning || lib.error != null) item { Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) { MusicScanBar(lib) } }
+        // 优化 11 / 12：有缓存时，自动刷新和刷新失败只显示一行小字（先显示上次的列表）；没缓存或手动全量扫描才用进度卡片
+        val hasCache = lib.tracks.isNotEmpty()
+        if ((lib.scanning && lib.quiet && hasCache) || (!lib.scanning && lib.error != null && hasCache))
+            item { QuietStatusLine(lib.scanning, lib.error, Modifier.padding(horizontal = 18.dp)) { lib.scan(); ScanService.ensure(App.ctx) } }
+        else if (lib.scanning || lib.error != null) item { Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) { MusicScanBar(lib) } }
         item { SearchBox() }
         item {
             Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {

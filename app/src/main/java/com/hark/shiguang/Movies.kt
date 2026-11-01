@@ -166,12 +166,16 @@ class MovieLib(val sourceKey: String) {
 
     // ---------------------------------------------------------------- scan
 
-    fun scan(rescrapeUnmatched: Boolean = false) {
+    /** 优化 11（用户 2026-11-02）：自动刷新时只在顶部显示一行「正在更新」，片库照常可用。 */
+    var quiet by mutableStateOf(false)
+        private set
+
+    fun scan(rescrapeUnmatched: Boolean = false, quiet: Boolean = false) {
         if (job?.isActive == true) return
         ensure()
         job = scope.launch {
             awaitReady()
-            withContext(Dispatchers.Main) { scanning = true; error = null; done = 0; total = 0; phase = "正在列出文件" }
+            withContext(Dispatchers.Main) { scanning = true; this@MovieLib.quiet = quiet; error = null; done = 0; total = 0; phase = "正在列出文件" }
             try {
                 val found = ArrayList<Pair<MovieDir, Walked>>()
                 for (d in dirs) {
@@ -208,8 +212,12 @@ class MovieLib(val sourceKey: String) {
                     }
                 }
                 saveLib()
-            } catch (e: CancellationException) { throw e } catch (e: Exception) { error = e.message ?: "扫描失败" }
-            withContext(Dispatchers.Main) { scanning = false; phase = "" }
+            } catch (e: CancellationException) { throw e } catch (e: Exception) {
+                // 优化 12：离线 / 登录过期时片库保持上次的内容（items 只在列完文件后才替换）
+                Diag.log("MEDIA", "movie scan failed: ${e.javaClass.simpleName} ${e.message?.take(120)} (keeping ${items.size} cached items)")
+                withContext(Dispatchers.Main) { error = e.message ?: "扫描失败" }
+            }
+            withContext(Dispatchers.Main) { scanning = false; this@MovieLib.quiet = false; phase = "" }
         }
     }
 

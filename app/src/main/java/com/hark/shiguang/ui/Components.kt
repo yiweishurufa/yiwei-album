@@ -245,6 +245,31 @@ fun RoundIcon(icon: ImageVector, modifier: Modifier = Modifier, tint: Color = C.
 }
 
 /**
+ * 优化 11 / 12（用户 2026-11-02）：后台刷新 / 刷新失败时列表上方的一行小字，不挡内容。
+ * [error] 不为空 = 刷新失败（离线、登录过期…），列表是上次缓存的内容。
+ */
+@Composable
+fun QuietStatusLine(scanning: Boolean, error: String?, modifier: Modifier = Modifier, onRetry: (() -> Unit)? = null) {
+    Row(modifier.fillMaxWidth().heightIn(min = 32.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (scanning) {
+            CircularProgressIndicator(color = C.Sub, strokeWidth = 1.5.dp, modifier = Modifier.size(12.dp))
+            Text("正在更新…", color = C.Sub, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp))
+        } else if (error != null) {
+            Icon(androidx.compose.material.icons.Icons.Rounded.CloudOff, null, tint = C.Sub, modifier = Modifier.size(14.dp))
+            Text(offlineText(error), color = C.Sub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 8.dp).weight(1f))
+            if (onRetry != null) TextButton(onClick = onRetry, modifier = Modifier.heightIn(min = 48.dp)) { Text("重试", color = C.Accent, fontSize = 13.sp) }
+        }
+    }
+}
+
+/** 刷新失败时的一句话：列表照常显示上次的内容，打开具体文件时再提示。 */
+fun offlineText(error: String): String = when (com.hark.shiguang.ErrorKind.of(error)) {
+    com.hark.shiguang.ErrorKind.AUTH -> "登录已过期，显示的是上次的列表"
+    com.hark.shiguang.ErrorKind.NETWORK -> "连不上网盘 / NAS，显示的是上次的列表"
+    else -> "更新失败，显示的是上次的列表"
+}
+
+/**
  * 第 4 批：影视 / 音乐共用的扫描进度卡（ScanStatusCard 式统一进度卡）。
  * 以前 MoviesTab.ScanBar 和 MusicTab.MusicScanBar 是两份几乎一样的实现（标题行 + 错误行 + 进度条），
  * 现在都调这个；样式保持原样（Surface 底、14dp 圆角、3dp 进度条），只抽公共部分，不改行为。
