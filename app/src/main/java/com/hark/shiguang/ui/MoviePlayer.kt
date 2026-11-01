@@ -27,6 +27,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -292,6 +294,16 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
             if (l.isNotEmpty() && i != player.currentMediaItemIndex && i < player.mediaItemCount && !tv.transcoding(q.path))
                 player.replaceMediaItem(i, itemFor(q, fileUrl(q), subOffset))
         }
+    }
+    // 优化 13（用户 2026-11-02）：拖进度条 / 横滑快进时显示目标位置的画面（见 SeekThumbs；转码流只显示时间）
+    var seekThumb by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    var thumbs by remember { mutableStateOf<SeekThumbs?>(null) }
+    val mainHandler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
+    DisposableEffect(Unit) { onDispose { thumbs?.release() } }
+    fun wantThumb(posMs: Long) {
+        val t = thumbs ?: return
+        t.cached(posMs)?.let { seekThumb = it.asImageBitmap(); return }
+        t.request(posMs) { _, bm -> mainHandler.post { seekThumb = bm.asImageBitmap() } }
     }
     // 迭代 #52 续播提示：从上次位置接着播时顶部提示一次（hint 6 秒后自动消失）；#51 第一次进播放器显示手势教学
     val resumeAt = remember(queue) { if (r.fromStart) 0L else lib.progressOf(queue[start].path)?.takeIf { !it.watched }?.pos ?: 0L }
@@ -628,6 +640,15 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     }
     fun playNextNow() { nextIn = null; save(); player.seekToNextMediaItem(); player.play() }
     LaunchedEffect(hint) { if (hint != null) { delay(6_000); hint = null } }
+    // 优化 13：每集一个取帧器；转码中（HLS）不取帧
+    LaunchedEffect(curPath, tv.transcoding(curPath)) {
+        thumbs?.release(); thumbs = null; seekThumb = null
+        val q = queue.firstOrNull { it.path == curPath } ?: return@LaunchedEffect
+        if (tv.transcoding(curPath)) return@LaunchedEffect
+        delay(1_500)   // let playback start first
+        val u = urls[q.path] ?: return@LaunchedEffect
+        thumbs = SeekThumbs(u, if (u.startsWith("http")) fs.headers(u) else emptyMap())
+    }
     // 用户 2026-10-23 反馈（清晰度）：每集各查一次飞牛影视的转码档位；离开的那集如果在转码，结束会话并换回原文件
     LaunchedEffect(curPath) {
         if (!isFn) return@LaunchedEffect
@@ -694,10 +715,11 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                 seekTo = PlayerGestureMath.seekTarget(seekFrom, dxPx, widthPx, dur)
                 seekPreview = PlayerGestureMath.seekLabel(seekTo - seekFrom, seekTo)
                 seekFrac = (seekTo.toFloat() / dur).coerceIn(0f, 1f)
+                wantThumb(seekTo)
             }
             override fun onSeekEnd(commit: Boolean) {
                 if (commit && seekTo != seekFrom) seekGate.seekTo(seekTo, "swipe")   // only on release, like 腾讯视频
-                seekPreview = null
+                seekPreview = null; seekThumb = null
             }
             override fun onVerticalStart(brightness: Boolean) {
                 this.brightness = brightness
@@ -880,12 +902,23 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                 }
                 Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xB3000000))))
                     .systemBarsPadding().padding(horizontal = 16.dp).padding(top = 24.dp, bottom = 4.dp)) {
+                    drag?.let { f ->
+                        // 优化 13：拖动时的画面预览（取不到帧时只显示时间）
+                        Column(Modifier.align(Alignment.CenterHorizontally).padding(bottom = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            seekThumb?.let { img ->
+                                androidx.compose.foundation.Image(img, null, modifier = Modifier.width(160.dp).aspectRatio(img.width.toFloat() / img.height.coerceAtLeast(1))
+                                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp)))
+                            }
+                            Text(PlayerHints.longClock((f * dur).toLong()), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(top = 4.dp).background(Color(0x99000000), androidx.compose.foundation.shape.RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 2.dp))
+                        }
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         val shownPos = drag?.let { (it * dur).toLong() } ?: pos
                         Text(PlayerHints.longClock(shownPos), color = Color.White, fontSize = 13.sp, style = androidx.compose.ui.text.TextStyle(fontFeatureSettings = "tnum"))
                         Slider(value = drag ?: if (dur > 0) (pos.toFloat() / dur).coerceIn(0f, 1f) else 0f,
-                            onValueChange = { drag = it; poke++ }, enabled = dur > 0,
-                            onValueChangeFinished = { drag?.let { f -> seekGate.seekTo((f * dur).toLong(), "bar"); pos = (f * dur).toLong() }; drag = null },
+                            onValueChange = { drag = it; poke++; wantThumb((it * dur).toLong()) }, enabled = dur > 0,
+                            onValueChangeFinished = { drag?.let { f -> seekGate.seekTo((f * dur).toLong(), "bar"); pos = (f * dur).toLong() }; drag = null; seekThumb = null },
                             colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.White, inactiveTrackColor = Color(0x59FFFFFF)),
                             modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
                         Text(PlayerHints.longClock(dur), color = Color.White, fontSize = 13.sp, style = androidx.compose.ui.text.TextStyle(fontFeatureSettings = "tnum"))
@@ -965,7 +998,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                 }
             }
         }
-        if (!inPip) GestureHud(seekPreview, seekFrac, levelHud, fast, flash)
+        if (!inPip) GestureHud(seekPreview, seekFrac, levelHud, fast, flash, seekThumb.takeIf { seekPreview != null })
         videoIssue?.takeIf { !inPip && error == null }?.let { msg ->
             Column(Modifier.align(Alignment.TopCenter).padding(top = 72.dp, start = 32.dp, end = 32.dp)
                 .background(Color(0xCC000000), androidx.compose.foundation.shape.RoundedCornerShape(14.dp)).padding(horizontal = 16.dp, vertical = 12.dp)) {
@@ -1199,11 +1232,15 @@ private fun TopTextButton(text: String, onClick: () -> Unit) {
 
 /** Center feedback for gestures: seek preview「+01:23 / 12:00」, volume / brightness level, 2× while long-pressing, play / pause. */
 @Composable
-private fun BoxScope.GestureHud(seek: String?, seekFrac: Float, level: Pair<String, Float>?, fast: Boolean, flash: Boolean?) {
+private fun BoxScope.GestureHud(seek: String?, seekFrac: Float, level: Pair<String, Float>?, fast: Boolean, flash: Boolean?, thumb: androidx.compose.ui.graphics.ImageBitmap? = null) {
     val shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
     if (seek != null) {
         Column(Modifier.align(Alignment.Center).background(Color(0xB3000000), shape).padding(horizontal = 20.dp, vertical = 14.dp),
             horizontalAlignment = Alignment.CenterHorizontally) {
+            thumb?.let { img ->
+                androidx.compose.foundation.Image(img, null, modifier = Modifier.padding(bottom = 8.dp).width(180.dp).aspectRatio(img.width.toFloat() / img.height.coerceAtLeast(1))
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp)))
+            }
             Text(seek, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
             LinearProgressIndicator(progress = { seekFrac }, color = C.Accent, trackColor = Color(0x4DFFFFFF),
                 modifier = Modifier.padding(top = 10.dp).width(180.dp).height(3.dp))
