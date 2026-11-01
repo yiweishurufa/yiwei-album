@@ -42,6 +42,8 @@ fun MovieDetailScreen(r: Route.MovieDetail) {
     if (m == null) { Page("影视") { StateMessage(LI.film(), "找不到这部作品", "可能已从影视目录移走，重新扫描试试") }; return }
     var season by remember(m.id) { mutableIntStateOf(m.seasons.keys.minOrNull()?.takeIf { it > 0 } ?: m.seasons.keys.minOrNull() ?: 1) }
     var versions by remember { mutableStateOf(false) }
+    // 优化 14：合并到这张海报的其他片库条目（同 TMDB id，或同名同年）的文件也算版本；(条目 id, 文件)
+    val allVersions = remember(v, m) { (listOf(m) + MovieMerge.siblings(lib.items, m)).flatMap { o -> o.files.map { o to it } } }
     var fixing by remember { mutableStateOf(false) }
     var fullPlot by remember { mutableStateOf(false) }
     var casting by remember { mutableStateOf(false) }
@@ -97,7 +99,7 @@ fun MovieDetailScreen(r: Route.MovieDetail) {
                             Icon(LI.play(true), null, tint = C.OnAccent, modifier = Modifier.size(18.dp))
                             Text(label, color = C.OnAccent, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 8.dp), maxLines = 1)
                         }
-                        if (m.kind == "movie" && m.files.size > 1) GhostButton("版本 ${m.files.size}") { versions = true }
+                        if (m.kind == "movie" && allVersions.size > 1) GhostButton("版本 ${allVersions.size}") { versions = true }
                         GhostButton("重新识别") { fixing = true }
                         GhostButton(if (CastState.device != null) "投屏中" else "投屏") { casting = true }
                     }
@@ -189,12 +191,14 @@ fun MovieDetailScreen(r: Route.MovieDetail) {
     }
 
     if (versions) AlertDialog(onDismissRequest = { versions = false }, containerColor = C.Surface, title = { Text("选择版本", color = C.Text) }, text = {
-        Column {
-            m.files.forEach { f ->
-                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { versions = false; Nav.push(Route.MoviePlay(lib.sourceKey, m.id, f.path)) }.padding(vertical = 10.dp, horizontal = 4.dp)) {
+        Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+            allVersions.forEach { (owner, f) ->
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { versions = false; Nav.push(Route.MoviePlay(lib.sourceKey, owner.id, f.path)) }.padding(vertical = 10.dp, horizontal = 4.dp)) {
                     Text(versionLabel(f.name), color = C.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                     BadgeRow(MediaBadges.of(f.path, f.name), Modifier.padding(vertical = 3.dp))
-                    Text(f.name + "  ·  " + fmtBytes(f.size), color = C.Sub, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    // 来源：所在文件夹（合并的版本可能在不同目录）
+                    val folder = f.path.removePrefix("fm:").trimEnd('/').substringBeforeLast('/').substringAfterLast('/')
+                    Text(listOf(f.name, fmtBytes(f.size), folder.takeIf { it.isNotEmpty() }?.let { "来自 $it" }).filterNotNull().joinToString("  ·  "), color = C.Sub, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
             }
         }

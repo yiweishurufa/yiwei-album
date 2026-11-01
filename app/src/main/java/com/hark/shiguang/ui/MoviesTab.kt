@@ -69,7 +69,8 @@ fun MoviesTab() {
     }
     val v = lib.version
     val kind = if (MoviesState.seg == 0) "movie" else "tv"
-    val shown = remember(v, lib.items.size, kind, MoviesState.sort) { sorted(lib.items.filter { it.kind == kind }, MoviesState.sort) }
+    // 优化 14：同一部电影的多个版本（不同文件夹 / 清晰度）合并成一张海报，详情页里选版本
+    val shown = remember(v, lib.items.size, kind, MoviesState.sort) { MovieMerge.group(sorted(lib.items.filter { it.kind == kind }, MoviesState.sort)) }
     val cont = remember(v, lib.items.size) { lib.continueWatching() }
     val counts = remember(v, lib.items.size) { lib.items.count { it.kind == "movie" } to lib.items.count { it.kind == "tv" } }
 
@@ -120,7 +121,7 @@ fun MoviesTab() {
                     TextButton(onClick = { Nav.push(Route.MovieLibrarySettings) }) { Text("设置文件夹类型", color = C.Accent) }
                 }
             }
-        } else items(shown, key = { it.id }) { m -> PosterCard(m, lib) { Nav.push(Route.MovieDetail(key, m.id)) } }
+        } else items(shown, key = { it.first().id }) { g -> val m = g.first(); PosterCard(m, lib, versions = g.sumOf { it.files.size }) { Nav.push(Route.MovieDetail(key, m.id)) } }
     }
 }
 
@@ -244,7 +245,7 @@ fun posterModel(p: String?): String? = p?.let { if (it.startsWith("/")) "file://
 /** 全面审查 A5：[lib] 不为空时海报上显示观看状态（电影「已看」/ 进度条，剧集「看到第几集」），长按可标已看 / 未看（A1）。 */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun PosterCard(m: MovieItem, lib: MovieLib? = null, onClick: () -> Unit) {
+fun PosterCard(m: MovieItem, lib: MovieLib? = null, versions: Int = 0, onClick: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     val paths = remember(m) { if (m.kind == "movie") m.files.map { it.path } else m.episodes.map { it.path } }
     val st = lib?.let { l -> watchState(m, paths, l) }
@@ -265,6 +266,8 @@ fun PosterCard(m: MovieItem, lib: MovieLib? = null, onClick: () -> Unit) {
             if (!m.matched && m.source != "local") Text(if (m.pending) "待确认" else "未匹配", color = Color.White, fontSize = 10.sp,
                 modifier = Modifier.align(Alignment.BottomStart).padding(6.dp).clip(RoundedCornerShape(6.dp)).background(Color(0x99000000)).padding(horizontal = 5.dp, vertical = 2.dp))
             st?.ratio?.let { r -> Box(Modifier.align(Alignment.BottomStart).fillMaxWidth(r).height(3.dp).background(C.Accent)) }
+            if (versions > 1) Text("$versions 个版本", color = Color.White, fontSize = 10.sp,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp).clip(RoundedCornerShape(6.dp)).background(Color(0x99000000)).padding(horizontal = 5.dp, vertical = 2.dp))
         }
         Text(m.title, color = C.Text, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 7.dp))
         Text(st?.label ?: listOfNotNull(m.year?.toString(), if (m.kind == "tv") "${m.episodes.size} 集" else null).joinToString("  "),
