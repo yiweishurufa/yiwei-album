@@ -109,7 +109,7 @@ private fun DavGroupsBody(r: Route.DavGroups, overrides: MutableMap<String, Bool
     var ready by remember { mutableStateOf(cached != null) }
     val groups = remember { mutableStateListOf<List<Photo>>().apply { cached?.let { addAll(it) } } }
     val del = remember {
-        mutableStateMapOf<String, Boolean>().apply { cached?.forEach { gg -> val b = Quality.best(gg); gg.forEach { p -> (overrides[p.key] ?: if (p !== b) true else null)?.let { put(p.key, it) } } } }
+        mutableStateMapOf<String, Boolean>().apply { cached?.forEach { gg -> val b = Quality.best(gg); val auto = SimilarCluster.autoSelect(gg.size); gg.forEach { p -> (overrides[p.key] ?: if (p !== b && auto) true else null)?.let { put(p.key, it) } } } }
     }
     fun setDel(key: String, v: Boolean) { del[key] = v; overrides[key] = v }
     val v = lib.metaVersion
@@ -120,7 +120,9 @@ private fun DavGroupsBody(r: Route.DavGroups, overrides: MutableMap<String, Bool
         val keepSel = del.toMap()
         groups.clear(); groups.addAll(g)
         DavGroupsCache.map[cacheKey] = g
-        del.clear(); g.forEach { gg -> val b = Quality.best(gg); gg.forEach { if (it !== b) del[it.key] = overrides[it.key] ?: keepSel[it.key] ?: true else if (overrides[it.key] == true) del[it.key] = true } }
+        // 用户 2026-11-01：超过 SimilarCluster.AUTO_SELECT_MAX 张的组不默认勾选，免得一键清理误删一大片
+        del.clear(); g.forEach { gg -> val b = Quality.best(gg); val auto = SimilarCluster.autoSelect(gg.size)
+            gg.forEach { if (it !== b) (overrides[it.key] ?: keepSel[it.key] ?: auto.takeIf { a -> a })?.let { v -> del[it.key] = v } else if (overrides[it.key] == true) del[it.key] = true } }
         ready = true
     }
     val imgs = lib.imagesCount()
@@ -128,8 +130,11 @@ private fun DavGroupsBody(r: Route.DavGroups, overrides: MutableMap<String, Bool
     val pending = imgs > 0 && analyzedN < imgs
     if (!ready) { Page(r.title, "") { Column(Modifier.fillMaxSize()) { header(); Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = C.Accent) } } }; return }
     var confirmAll by remember { mutableStateOf(false) }
+    // 用户 2026-11-01：单组「删除 N 张」以前点了直接删，现在也先确认
+    var confirmGroup by remember { mutableStateOf<Pair<List<Photo>, List<Photo>>?>(null) }
     var busy by remember { mutableStateOf(false) }
-    fun doDelete(list: List<Photo>, after: () -> Unit) {
+    /** [after] 收到实际删掉的照片 key（重复模式下全文校验排除的不在里面，留在分组里）。 */
+    fun doDelete(list: List<Photo>, after: (Set<String>) -> Unit) {
         if (list.isEmpty()) return
         busy = true
         Ops.launch {
@@ -137,12 +142,13 @@ private fun DavGroupsBody(r: Route.DavGroups, overrides: MutableMap<String, Bool
             // A candidate whose full hash differs is excluded (head-only collision); one that cannot be
             // verified (too large / unreadable) stays selected but is reported. The confirm dialog is unchanged.
             var verified = list
+            val listKeys = list.mapTo(HashSet()) { it.key }
             if (dup) {
                 var excluded = 0; var unverified = 0
                 val keep = ArrayList<Photo>()
                 for (g in groups) {
                     val best = Quality.best(g)
-                    val selected = g.filter { p -> p in list && p !== best }
+                    val selected = g.filter { p -> p.key in listKeys && p !== best }
                     if (selected.isEmpty()) continue
                     val bestHash = runCatching { lib.fullSha256(best.cloudPath) }.getOrNull()
                     for (p in selected) {
@@ -163,7 +169,7 @@ private fun DavGroupsBody(r: Route.DavGroups, overrides: MutableMap<String, Bool
                 val keys = verified.map { it.key }.toSet()
                 lib.photos.removeAll { it.key in keys }
                 keys.forEach { overrides.remove(it) }
-                after(); DavGroupsCache.map[cacheKey] = groups.toList(); toast(ctx, "已删除 ${verified.size} 张")
+                after(keys); DavGroupsCache.map[cacheKey] = groups.toList(); toast(ctx, "已删除 ${verified.size} 张")
             }.onFailure { toast(ctx, it.message ?: "删除失败") }
             busy = false
         }
@@ -194,6 +200,7 @@ private fun DavGroupsBody(r: Route.DavGroups, overrides: MutableMap<String, Bool
                             Text("第 ${gi + 1} 组 · ${g.size} 张", color = C.Text, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, modifier = Modifier.weight(1f))
                             Text("推荐保留：" + Quality.why(best, g), color = C.Sub, fontSize = 12.sp)
                         }
+                        if (!SimilarCluster.autoSelect(g.size)) Text("这组照片较多，没有自动勾选，请点开逐张确认后再勾选要删的", color = C.Gold, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
                         LazyRow(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             itemsIndexed(g, key = { _, p -> p.key }) { i, p ->
                                 val sel = del[p.key] == true
@@ -217,7 +224,7 @@ private fun DavGroupsBody(r: Route.DavGroups, overrides: MutableMap<String, Bool
                         Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text("红色勾选的会删除", color = C.Sub, fontSize = 12.sp, modifier = Modifier.weight(1f))
                             TextButton(enabled = !busy && gd.isNotEmpty() && gd.size < g.size, onClick = {
-                                doDelete(gd) { val left = g - gd.toSet(); val idx = groups.indexOf(g); if (idx >= 0) { if (left.size > 1) groups[idx] = left else groups.removeAt(idx) } }
+                                confirmGroup = g to gd
                             }) { Text(if (gd.size >= g.size) "至少保留一张" else "删除 ${gd.size} 张", color = if (gd.isNotEmpty() && gd.size < g.size) C.Danger else C.Faint) }
                         }
                     }
@@ -228,9 +235,20 @@ private fun DavGroupsBody(r: Route.DavGroups, overrides: MutableMap<String, Bool
             }
         }
     }
-    if (confirmAll) ConfirmDialog("删除 $total 张照片？", "会从 WebDAV 上直接删除文件，不能恢复。每组至少保留一张。", "删除", onDismiss = { confirmAll = false }) {
+    if (confirmAll) ConfirmDialog("删除 $total 张照片？", "将从 ${groups.count { g -> g.any { del[it.key] == true } }} 组里删除共 $total 张，会从 WebDAV 上直接删除文件，不能恢复。每组至少保留一张。" +
+        (if (!dup) "相似照片并不完全相同，请确认每组都看过。" else ""), "删除 $total 张", onDismiss = { confirmAll = false }) {
         confirmAll = false
         val list = groups.flatMap { g -> g.filter { del[it.key] == true }.let { if (it.size >= g.size) it.drop(1) else it } }
-        doDelete(list) { groups.clear() }
+        // 以前删完把所有分组都清空（没勾选的组也消失）；现在只去掉删掉的照片，剩 2 张以上的组保留
+        doDelete(list) { gone ->
+            val left = groups.map { g -> g.filter { it.key !in gone } }.filter { it.size > 1 }
+            groups.clear(); groups.addAll(left)
+        }
+    }
+    confirmGroup?.let { (g, gd) ->
+        ConfirmDialog("删除这组里的 ${gd.size} 张？", "会从 WebDAV 上直接删除文件，不能恢复。这组保留 ${g.size - gd.size} 张。", "删除 ${gd.size} 张", onDismiss = { confirmGroup = null }) {
+            confirmGroup = null
+            doDelete(gd) { gone -> val left = g.filter { it.key !in gone }; val idx = groups.indexOf(g); if (idx >= 0) { if (left.size > 1) groups[idx] = left else groups.removeAt(idx) } }
+        }
     }
 }
