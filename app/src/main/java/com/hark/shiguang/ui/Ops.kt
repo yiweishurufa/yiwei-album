@@ -537,7 +537,8 @@ fun SelectionBar(modifier: Modifier = Modifier, onChanged: () -> Unit = {}) {
             onDismiss = { confirm = false }) {
             confirm = false
             val l = Selection.list
-            Ops.launch { runCatching { Ops.delete(l) }.onSuccess { toast(ctx, "已删除 ${l.size} 项"); Selection.clear(); onChanged() }.onFailure { toast(ctx, it.message ?: "删除失败") } }
+            // 部分删除失败时，已删掉的那些也要从列表里消失：以前失败只弹提示，不刷新，已删的照片还留在网格和选择里
+            Ops.launch { runCatching { Ops.delete(l) }.onSuccess { toast(ctx, "已删除 ${l.size} 项"); Selection.clear(); onChanged() }.onFailure { toast(ctx, it.message ?: "删除失败"); Selection.clear(); onChanged() } }
         }
     }
 }
