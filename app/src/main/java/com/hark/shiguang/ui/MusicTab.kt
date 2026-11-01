@@ -59,11 +59,6 @@ object MusicUi {
 
 private val collator = java.text.Collator.getInstance(java.util.Locale.CHINA)
 
-/** 电影剧集 | 音乐 at the top of the 影音 tab. */
-@Composable
-fun MediaAreaSwitch() {
-    Segmented(listOf("电影剧集", "音乐"), MoviesState.area) { MoviesState.area = it; Store.putStr("movies.area", "$it") }
-}
 
 /** Little square cover (local file) with a note icon when there is none. */
 @Composable
@@ -106,7 +101,7 @@ fun MusicTab() {
 
     val albumCols = adaptiveCols(2)
     LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 170.dp)) {
-        item { MediaHeader(SearchScope.None, lib.scanning, lib.dirs.isNotEmpty(), "重新扫描音乐") { lib.scan(); ScanService.ensure(App.ctx) } }
+        item { MediaHeader("音乐", SearchScope.None, lib.scanning, lib.dirs.isNotEmpty(), "重新扫描音乐") { lib.scan(); ScanService.ensure(App.ctx) } }
         if (!lib.ready) { item { Box(Modifier.fillMaxWidth().height(440.dp)) { LibLoading() } }; return@LazyColumn }
         if (lib.dirs.isEmpty()) {
             item {

@@ -188,11 +188,11 @@ object HomeState {
 
     /**
      * 1.1.0: 旧 tab 索引兼容（保存的 nav.tab、通知/深链）：
-     * 0 照片 · 1 视频（旧）→ 照片页 + 视频筛选 · 2 相册（照片页里的「相册」）· 3 发现（原 AI）· 4 设置 · 5 影音。
+     * 0 照片 · 1 视频（旧）→ 照片页 + 视频筛选 · 2 相册（照片页里的「相册」）· 3 发现（原 AI）· 4 设置 · 5 影视 · 6 音乐（1.4.0 从影音拆出）。
      */
-    fun openTab(i: Int) { if (i == 1) { setFilter(2); tab = 0 } else tab = if (i in 0..5) i else 0 }
+    fun openTab(i: Int) { if (i == 1) { setFilter(2); tab = 0 } else tab = if (i in 0..6) i else 0 }
     /** Deep link names (intent extra "tab"): photos / videos / albums / discover (ai) / settings / media (movies, music). */
-    fun openTab(name: String) = openTab(when (name.lowercase()) { "videos", "video" -> 1; "albums", "album" -> 2; "discover", "ai" -> 3; "settings" -> 4; "media", "movies", "music" -> 5; else -> 0 })
+    fun openTab(name: String) = openTab(when (name.lowercase()) { "videos", "video" -> 1; "albums", "album" -> 2; "discover", "ai" -> 3; "settings" -> 4; "media", "movies" -> 5; "music" -> 6; else -> 0 })
     var columns by mutableIntStateOf(Store.columns)
     var dirty by mutableStateOf(false)
     var showDate by mutableStateOf(false)

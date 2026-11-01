@@ -132,7 +132,10 @@ object Nav {
     /** Rebuilds the persisted top route (or Home). Returns true when the saved route itself was restored. */
     fun restore(savedTop: String): Boolean {
         val tab = Store.getStr("nav.tab").toIntOrNull() ?: 0
-        com.hark.shiguang.ui.HomeState.openTab(tab)   // 1.1.0: old index 1 (视频) → 照片 + 视频筛选
+        // 1.4.0：「影音」拆成「影视」「音乐」；上次停在影音 → 音乐的，回到新的「音乐」tab（只迁移一次）
+        val migrated = if (tab == 5 && com.hark.shiguang.ui.MoviesState.legacyMusicArea) 6 else tab
+        if (com.hark.shiguang.ui.MoviesState.legacyMusicArea) Store.putStr("movies.area", "0")
+        com.hark.shiguang.ui.HomeState.openTab(migrated)   // 1.1.0: old index 1 (视频) → 照片 + 视频筛选
         val r = when (savedTop) {
             "settings" -> Route.Settings
             "backup" -> Route.Backup
@@ -187,7 +190,7 @@ class MainActivity : ComponentActivity() {
         }
         if (uris.isNotEmpty()) { i.action = null; Nav.push(Route.Upload(uris)) }
         // 1.0.3 #4: tap on the music notification → the full screen player
-        // 1.1.0 deep link: intent extra "tab" = photos / videos / albums / discover / settings / media
+        // 1.1.0 deep link: intent extra "tab" = photos / videos / albums / discover / settings / media(movies) / music
         i.getStringExtra("tab")?.let { t -> i.removeExtra("tab"); com.hark.shiguang.ui.HomeState.openTab(t); Nav.reset(Route.Home) }
         if (i.getStringExtra("open") == "music") {
             i.removeExtra("open")

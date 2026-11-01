@@ -45,7 +45,7 @@ class MusicService : MediaSessionService() {
         p.setModes(MusicState.savedRepeat(), MusicState.savedShuffle())
         player = p
         val open = PendingIntent.getActivity(this, 7, Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            .putExtra("open", "music"), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+            .putExtra("open", "music").putExtra("tab", "music"), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         session = MediaSession.Builder(this, p).setSessionActivity(open).setCallback(object : MediaSession.Callback {
             // items come from our own MediaController with mediaId + metadata only: the player resolves the stream itself
             override fun onAddMediaItems(s: MediaSession, c: MediaSession.ControllerInfo, items: MutableList<MediaItem>): ListenableFuture<MutableList<MediaItem>> =

@@ -105,7 +105,8 @@ private fun n(v: Int) = NumberFormat.getIntegerInstance().format(v)
  */
 private data class Tab(val title: String, val index: Int, val icon: (Boolean) -> ImageVector)
 private val tabs = listOf(
-    Tab("照片", 0) { LI.photos(it) }, Tab("影音", 5) { LI.film(it) }, Tab("发现", 3) { LI.discover(it) }, Tab("设置", 4) { LI.settings(it) },
+    // 用户 2026-11-02：「影音」拆成「影视」「音乐」两个 tab（音乐 = 索引 6）
+    Tab("照片", 0) { LI.photos(it) }, Tab("影视", 5) { LI.film(it) }, Tab("音乐", 6) { LI.music(it) }, Tab("发现", 3) { LI.discover(it) }, Tab("设置", 4) { LI.settings(it) },
 )
 
 /** 1.1.0: 全部 / 照片 / 视频 / 实况 chips under the 时间线 | 相册 switch (timeline mode only). */
@@ -155,7 +156,7 @@ fun HomeScreen() {
     Row(Modifier.fillMaxSize().appBackground()) {
     if (wide) SideRail()
     Box(Modifier.weight(1f).fillMaxHeight()) {
-        if (HomeState.switching && HomeState.tab != 4) Column { TopSwitch(search = if (HomeState.tab == 5) SearchScope.None else SearchScope.Photos, showDate = HomeState.tab != 5); SkeletonGrid(4, 20.dp) }
+        if (HomeState.switching && HomeState.tab != 4) Column { TopSwitch(search = if (HomeState.tab == 5 || HomeState.tab == 6) SearchScope.None else SearchScope.Photos, showDate = HomeState.tab != 5 && HomeState.tab != 6); SkeletonGrid(4, 20.dp) }
         // 用户 2026-10-24 要求继续优化：切底部 tab 时各 tab 的 rememberSaveable 状态（设置页滚动、发现页展开的卡片）
         // 也按 tab 保存，切回来还在。照片网格 / 发现页列表的滚动另有 ScrollMem 按账号保存。
         else tabStates.SaveableStateProvider(homeTabKey(HomeState.tab, false, HomeState.source)) {
@@ -166,6 +167,7 @@ fun HomeScreen() {
                 2 -> CollectionsTab(dav)   // 用户口述 3：「合集」页（相册、人物、地点、分类、媒体类型…）
                 3 -> if (dav) DavDiscoverTab() else DiscoverTab()
                 5 -> MoviesTab()
+                6 -> MusicTab()
                 else -> SettingsScreen()
             }
         }

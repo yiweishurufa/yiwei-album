@@ -37,8 +37,11 @@ fun Modifier.bleed(h: androidx.compose.ui.unit.Dp) = this.layout { m, c ->
 object MoviesState {
     // 审查 11：电影 / 剧集的选择也存下来，重启后保持
     var seg by mutableIntStateOf(Store.getStr("movies.seg", "0").toIntOrNull() ?: 0)        // 0 电影, 1 剧集
-    // 1.0.3 #4: 0 电影剧集, 1 音乐 (the switch under the 影音 title)
-    var area by mutableIntStateOf(Store.getStr("movies.area", "0").toIntOrNull() ?: 0)
+    /**
+     * 1.0.3 #4 的「电影剧集 | 音乐」切换（Store "movies.area"）。1.4.0 拆成两个底栏 tab 后只用于迁移：
+     * 上次停在影音 → 音乐的用户，升级后第一次启动直接回到「音乐」tab（见 MainActivity 恢复 nav.tab）。
+     */
+    val legacyMusicArea: Boolean get() = Store.getStr("movies.area", "0") == "1"
     var sort by mutableIntStateOf(Store.getStr("movies.sort", "0").toIntOrNull() ?: 0)
     val sorts = listOf("最近添加", "名称", "年份", "评分")
 }
@@ -52,7 +55,6 @@ private fun sorted(l: List<MovieItem>, s: Int): List<MovieItem> = when (s) {
 
 @Composable
 fun MoviesTab() {
-    if (MoviesState.area == 1) { MusicTab(); return }
     val key = Movies.keyOf()
     if (key == null) { Column { TopSwitch(SearchScope.None, showDate = false); Box(Modifier.weight(1f)) { NoSourceState(LI.film(), "影视库跟着左上角的来源走") } }; return }
     val lib = remember(key) { Movies.lib(key) }
@@ -75,7 +77,7 @@ fun MoviesTab() {
     LazyVerticalGrid(GridCells.Adaptive(110.dp), state = grid, modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = 120.dp + miniPlayerPad), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Box(Modifier.bleed(14.dp)) { MediaHeader(SearchScope.Media, lib.scanning, lib.dirs.isNotEmpty(), "重新扫描影视") { lib.scan(); ScanService.ensure(App.ctx) } }
+            Box(Modifier.bleed(14.dp)) { MediaHeader("影视", SearchScope.Media, lib.scanning, lib.dirs.isNotEmpty(), "重新扫描影视") { lib.scan(); ScanService.ensure(App.ctx) } }
         }
         if (!lib.ready) { items(9) { PosterSkeleton() }; return@LazyVerticalGrid }
         if (lib.dirs.isEmpty()) {
@@ -119,19 +121,19 @@ fun MoviesTab() {
 }
 
 /**
- * 全面审查 C8：影音页（电影剧集 / 音乐）共用的头部——来源顶栏 + 「影音」大标题 + 刷新 / 设置 + 电影剧集 | 音乐 切换。
+ * 全面审查 C8：影视页 / 音乐页共用的头部——来源顶栏 + 大标题（1.4.0 起分别是「影视」「音乐」两个 tab，不再有切换）+ 刷新 / 设置。
  * 审查 2/3：影音不显示「按日期筛选照片」；[search] 电影剧集是搜影片，音乐页有页内搜索框所以不放。
  */
 @Composable
-fun MediaHeader(search: SearchScope, scanning: Boolean, hasDirs: Boolean, scanLabel: String, onScan: () -> Unit) {
+fun MediaHeader(title: String, search: SearchScope, scanning: Boolean, hasDirs: Boolean, scanLabel: String, onScan: () -> Unit) {
     Column {
         TopSwitch(search = search, showDate = false)
         Row(Modifier.padding(top = 6.dp, start = 18.dp, end = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("影音", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = C.Text, letterSpacing = (-0.4).sp, modifier = Modifier.weight(1f))
+            Text(title, fontSize = 30.sp, fontWeight = FontWeight.Bold, color = C.Text, letterSpacing = (-0.4).sp, modifier = Modifier.weight(1f))
             if (hasDirs) IconButton(onClick = onScan, enabled = !scanning) { Icon(LI.refresh(), scanLabel, tint = if (scanning) C.Faint else C.Text, modifier = Modifier.size(21.dp)) }
             IconButton(onClick = { Nav.push(Route.MediaSettings) }) { Icon(LI.settings(), "影音设置", tint = C.Text, modifier = Modifier.size(22.dp)) }
         }
-        Row(Modifier.padding(start = 16.dp, top = 2.dp, bottom = 8.dp)) { MediaAreaSwitch() }
+        Spacer(Modifier.height(6.dp))
     }
 }
 

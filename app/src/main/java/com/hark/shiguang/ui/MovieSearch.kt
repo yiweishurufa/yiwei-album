@@ -100,7 +100,7 @@ fun MovieSearchScreen() {
                 Column(Modifier.fillMaxWidth().padding(vertical = 60.dp, horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(when {
                         all.isEmpty() && lib.scanning -> "正在扫描影视库…"
-                        all.isEmpty() -> "影视库还是空的，先在影音页选好影视文件夹"
+                        all.isEmpty() -> "影视库还是空的，先在影视页选好影视文件夹"
                         text.isNotBlank() -> "没有找到「${text.trim()}」"
                         else -> "没有符合筛选条件的影片"
                     }, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
