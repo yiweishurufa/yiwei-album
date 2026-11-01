@@ -70,6 +70,12 @@ import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
+/** Start of the message shown when a selected video track never renders a frame. */
+private const val NO_PICTURE = "画面解码失败"
+
+/** Placeholder scheme for an episode whose play url is looked up when it starts loading. */
+private const val PENDING = "yw-pending://"
+
 /** 1.1.0 剧集连播：本集结束前多久开始倒数。 */
 private const val NEXT_COUNTDOWN_MS = 5_000L
 
@@ -87,7 +93,9 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     val fs = remember(r.sourceKey) { lib.fs }
 
     // queue: a movie plays the chosen version; a show plays from the chosen episode onward (auto next).
-    val queue = remember(item, r.path) {
+    // 用户 2026-11-02 反馈「播放仍会黑屏」：以前按 item 对象做 key，后台扫描 / 刮削把这一项换成新对象时整个队列重建，
+    // 播放器跟着被释放重建，画面回到黑底转圈。现在只按路由（哪部、哪一集）建一次，拿到 item 后不再变。
+    val queue = remember(r.itemId, r.path, item != null) {
         if (item == null) emptyList() else if (item.kind == "movie") {
             val f = item.files.firstOrNull { it.path == r.path } ?: item.files.first()
             listOf(QItem(f.path, item.title, f))
@@ -131,33 +139,38 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         return
     }
 
-    // external subtitles: fetch the small files once into cache (they may sit on an authenticated host)
-    val subs by produceState<Map<String, List<File>>?>(null, queue) {
-        value = withContext(Dispatchers.IO) {
-            val gate = Semaphore(4)
-            val dir = File(ctx.cacheDir, "subs").apply { mkdirs() }
-            kotlinx.coroutines.coroutineScope {
-                queue.take(start + 40).drop((start - 1).coerceAtLeast(0)).map { q ->
-                    async {
-                        q.path to q.file.subs.mapNotNull { sp ->
-                            gate.withPermit {
-                                val f = File(dir, MessageDigest.getInstance("MD5").digest("${r.sourceKey}|$sp".toByteArray()).joinToString("") { "%02x".format(it) }.take(20) + "." + NameParser.ext(sp))
-                                if (f.exists() && f.length() > 0) f else fs.bytes(sp)?.let { b -> f.writeBytes(b); f }
-                            }
-                        }
-                    }
-                }.awaitAll().toMap()
-            }
+    // 用户 2026-11-02 反馈「播放仍会黑屏」：以前开播前要把整季（最多 41 集）的外挂字幕都下载完、把每一集的播放地址都查一遍
+    // （飞牛 文件管理 每集一次网络请求），期间整屏黑底只有一个小圈，网络慢或某个请求挂住就一直黑。
+    // 现在只等第一集：它的地址 + 它的字幕（字幕最多等 8 秒，超时先播、不带外挂字幕）；其余集的地址在真正加载时由
+    // ResolvingDataSource 在加载线程里查（[PENDING] 占位），字幕在后台下载完再挂上去。
+    val subDir = remember { File(ctx.cacheDir, "subs").apply { mkdirs() } }
+    val subGate = remember { Semaphore(4) }
+    suspend fun fetchSubs(q: QItem): List<File> = q.file.subs.mapNotNull { sp ->
+        subGate.withPermit {
+            val f = File(subDir, MessageDigest.getInstance("MD5").digest("${r.sourceKey}|$sp".toByteArray()).joinToString("") { "%02x".format(it) }.take(20) + "." + NameParser.ext(sp))
+            if (f.exists() && f.length() > 0) f else runCatching { fs.bytes(sp) }.getOrNull()?.let { b -> f.writeBytes(b); f }
         }
     }
-    // 1.0.10: play urls can need a network call (fnOS /multiple-download token) — resolve them off the main thread
-    val playUrls by produceState<Map<String, String>?>(null, queue) {
-        value = withContext(Dispatchers.IO) { queue.associate { q -> q.path to (runCatching { fs.playUrl(q.file) }.getOrNull() ?: "") } }
+    val subMap = remember(queue) { androidx.compose.runtime.mutableStateMapOf<String, List<File>>() }
+    val urls = remember(queue) { ConcurrentHashMap<String, String>() }
+    var startReady by remember(queue) { mutableStateOf(false) }
+    LaunchedEffect(queue) {
+        val t0 = System.currentTimeMillis()
+        val q0 = queue[start]
+        withContext(Dispatchers.IO) {
+            runCatching { fs.playUrl(q0.file) }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { urls[q0.path] = it }
+            kotlinx.coroutines.withTimeoutOrNull(8_000) { fetchSubs(q0) }?.let { subMap[q0.path] = it }
+        }
+        Diag.log("PLAYER", "startup ready in ${System.currentTimeMillis() - t0} ms (queue=${queue.size}, url=${urls.containsKey(q0.path)}, subs=${subMap[q0.path]?.size ?: -1})")
+        startReady = true
     }
-    val subMap = subs
-    val pre = playUrls
-    if (subMap == null || pre == null) {
-        Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(32.dp)) }
+    if (!startReady) {
+        Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(32.dp))
+                Text("正在准备播放…", color = Color(0xB3FFFFFF), fontSize = 13.sp, modifier = Modifier.padding(top = 12.dp))
+            }
+        }
         return
     }
 
@@ -190,6 +203,9 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     var extIdx by remember { mutableIntStateOf(if (startExternal) start else -1) }
     var canExternal by remember { mutableStateOf(false) }
 
+    /** The file's play url, or a [PENDING] placeholder the data source resolves on its loading thread. */
+    fun fileUrl(q: QItem): String = urls[q.path] ?: (PENDING + Uri.encode(q.path))
+
     /** External subtitles of [q], shifted by the show's subtitle delay when it is not 0. */
     fun itemFor(q: QItem, url: String, offset: Long, hls: Boolean = false): MediaItem {
         val sc = subMap[q.path].orEmpty().mapIndexed { i, f0 ->
@@ -207,14 +223,13 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
             .apply { if (hls) setMimeType(MimeTypes.APPLICATION_M3U8) }   // 飞牛影视转码是 HLS（play_link …/preset.m3u8）
             .setMediaMetadata(MediaMetadata.Builder().setTitle(q.title).build()).build()
     }
-    val urls = remember(queue) { HashMap<String, String>(pre) }
     // 用户 2026-10-23 反馈（清晰度）：飞牛来源可切到飞牛影视服务器转码（见 FnTvQuality）；WebDAV 只有原画
     val isFn = lib.kind != "dav"
     val tv = remember(queue) { FnTvQuality() }
     val scope = rememberCoroutineScope()
     var curPath by remember { mutableStateOf(queue[start].path) }
     /** Url the player uses for [q]: its running transcode, else the original file. */
-    fun srcOf(q: QItem): String = tv.urlFor(q.path) ?: urls[q.path].orEmpty()
+    fun srcOf(q: QItem): String = tv.urlFor(q.path) ?: fileUrl(q)
     // 1.1.0 剧集连播：倒数秒数（null = 不显示）、本集已取消连播的文件
     val isShow = item.kind != "movie"
     val autoNext = remember { PlayPrefs.autoNext }
@@ -224,7 +239,15 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     val bufferParams = remember { PlayerBuffer.forHeap(Runtime.getRuntime().maxMemory()) }
     val player = remember(queue) {
         val upstream = OkHttpDataSource.Factory(PlayHttp.client)
-        val resolving = ResolvingDataSource.Factory(DefaultDataSource.Factory(ctx, upstream)) { spec ->
+        val resolving = ResolvingDataSource.Factory(DefaultDataSource.Factory(ctx, upstream)) { spec0 ->
+            // 后面几集的地址在这里（加载线程）才查，见 [PENDING]
+            val spec = spec0.uri.toString().takeIf { it.startsWith(PENDING) }?.let { ph ->
+                val path = Uri.decode(ph.removePrefix(PENDING))
+                val q = queue.firstOrNull { it.path == path }
+                val real = urls[path] ?: q?.let { runCatching { fs.playUrl(it.file) }.getOrNull() }?.takeIf { it.isNotEmpty() }?.also { urls[path] = it }
+                    ?: throw java.io.IOException("no play url").also { Diag.log("PLAYER", "play url lookup failed for a queued episode") }
+                spec0.withUri(Uri.parse(real))
+            } ?: spec0
             val url = spec.uri.toString()
             if (!url.startsWith("http")) return@Factory spec
             com.hark.shiguang.data.FnTv.mediaHeaders(url)?.let { return@Factory spec.withAdditionalHeaders(it) }   // 转码 HLS 片段
@@ -245,7 +268,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         ExoPlayer.Builder(ctx, renderers).setHandleAudioBecomingNoisy(true)
             .setAudioAttributes(androidx.media3.common.AudioAttributes.Builder().setUsage(MC.USAGE_MEDIA).setContentType(MC.AUDIO_CONTENT_TYPE_MOVIE).build(), true)
             .setLoadControl(load).setMediaSourceFactory(DefaultMediaSourceFactory(resolving)).build().apply {
-            val items = queue.map { q -> itemFor(q, urls[q.path].orEmpty(), subOffset) }
+            val items = queue.map { q -> itemFor(q, fileUrl(q), subOffset) }
             setMediaItems(items, start, if (r.fromStart) 0L else lib.progressOf(queue[start].path)?.takeIf { !it.watched && it.pos > 5_000 }?.pos ?: 0L)
             val a = PlayPrefs.audioLang(showId); val sl = PlayPrefs.subLang(showId)
             trackSelectionParameters = trackSelectionParameters.buildUpon()
@@ -258,6 +281,17 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
             if (startExternal) playWhenReady = false else { prepare(); playWhenReady = true }
         }
     }
+    // 其余集的外挂字幕在后台下载（最多往后 40 集），下好的挂到还没在播的那一集上
+    LaunchedEffect(player) {
+        val rest = queue.withIndex().filter { (i, _) -> i != start && i in (start - 1)..(start + 40) }
+        for ((i, q) in rest) {
+            if (q.file.subs.isEmpty() || subMap.containsKey(q.path)) continue
+            val l = withContext(Dispatchers.IO) { fetchSubs(q) }
+            subMap[q.path] = l
+            if (l.isNotEmpty() && i != player.currentMediaItemIndex && i < player.mediaItemCount && !tv.transcoding(q.path))
+                player.replaceMediaItem(i, itemFor(q, fileUrl(q), subOffset))
+        }
+    }
     // 迭代 #52 续播提示：从上次位置接着播时顶部提示一次（hint 6 秒后自动消失）；#51 第一次进播放器显示手势教学
     val resumeAt = remember(queue) { if (r.fromStart) 0L else lib.progressOf(queue[start].path)?.takeIf { !it.watched }?.pos ?: 0L }
     var gestureTip by remember { mutableStateOf(!PlayPrefs.gestureTipSeen) }
@@ -267,6 +301,53 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     LaunchedEffect(gestureTip) { if (gestureTip) { PlayPrefs.gestureTipSeen = true; delay(6_000); gestureTip = false } }
     // 用户 2026-10-24 反馈：连续快进闪退 / 卡顿 —— 同一集内的跳转（横滑、快进快退按钮、进度条）合并成一次
     val seekGate = remember(player) { PlayerSeekGate(player) }
+    // 用户 2026-11-02 反馈「播放仍会黑屏」：首帧看门狗 + 视频轨选不上时的明确提示（见 VideoDecoders）
+    val watch = remember(player) { FirstFrameWatch() }
+    var videoIssue by remember { mutableStateOf<String?>(null) }
+    var lastVideoDecoder by remember { mutableStateOf("") }
+    val openedAt = remember(player) { System.currentTimeMillis() }
+    DisposableEffect(player) {
+        val al = object : androidx.media3.exoplayer.analytics.AnalyticsListener {
+            override fun onVideoDecoderInitialized(eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime, decoderName: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
+                lastVideoDecoder = decoderName
+            }
+            override fun onRenderedFirstFrame(eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime, output: Any, renderTimeMs: Long) {
+                if (!watch.hasPicture) Diag.log("PLAYER", "first frame on ${output.javaClass.simpleName} after ${System.currentTimeMillis() - openedAt} ms (decoder $lastVideoDecoder)")
+                watch.onFirstFrame()
+                if (videoIssue != null && videoIssue?.startsWith(NO_PICTURE) == true) videoIssue = null
+            }
+        }
+        player.addAnalyticsListener(al)
+        onDispose { player.removeAnalyticsListener(al); VideoDecoders.blocked.clear() }
+    }
+    LaunchedEffect(player) {
+        while (true) {
+            delay(500)
+            val id = player.currentMediaItem?.mediaId ?: continue
+            val hasVideo = player.currentTracks.groups.any { it.type == MC.TRACK_TYPE_VIDEO && it.isSelected }
+            when (watch.tick(id, android.os.SystemClock.elapsedRealtime(), player.isPlaying && hasVideo && extIdx < 0 && !casting)) {
+                FirstFrameWatch.Action.REATTACH -> {
+                    Diag.log("PLAYER", "no picture after ${watch.reattachMs / 1000}s of playing (decoder $lastVideoDecoder): re-attaching the surface")
+                    playerView?.let { pv -> pv.player = null; pv.player = seekGate.forUi }
+                }
+                FirstFrameWatch.Action.NEXT_DECODER -> {
+                    if (lastVideoDecoder.isNotEmpty()) VideoDecoders.blocked.add(lastVideoDecoder)
+                    Diag.log("PLAYER", "still no picture: blocking $lastVideoDecoder and preparing again with the next decoder")
+                    hint = "画面没出来，正在换一个解码器重试…"
+                    val pos = player.currentPosition
+                    player.stop(); player.seekTo(pos); player.prepare(); player.play()
+                }
+                FirstFrameWatch.Action.GIVE_UP -> {
+                    val f = player.videoFormat
+                    val codec = VideoDecoders.describe(f?.sampleMimeType, f?.codecs, f?.let { MediaBadges.dvProfile(it) }, f?.width ?: 0, f?.height ?: 0)
+                    Diag.log("PLAYER", "giving up on the picture: $codec ${f?.codecs} decoders tried=${VideoDecoders.blocked} last=$lastVideoDecoder")
+                    canExternal = true
+                    videoIssue = "$NO_PICTURE（$codec）。声音会继续播放；可以用其他播放器打开" + if (isFn) "，或在「清晰度」里选服务器转码。" else "。"
+                }
+                FirstFrameWatch.Action.NONE -> Unit
+            }
+        }
+    }
     /** Hands queue item [i] to another app (auth goes through the loopback proxy, see ExternalPlayer). */
     fun openExternal(i: Int) {
         val q = queue.getOrNull(i) ?: return
@@ -317,7 +398,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         val wasHls = tv.transcoding(q.path)
         if (t == null) {
             tv.stop()
-            if (wasHls) reload(i, q, urls[q.path].orEmpty(), false, pos)
+            if (wasHls) reload(i, q, fileUrl(q), false, pos)
             why?.let { hint = it }
             return
         }
@@ -339,7 +420,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                 // 播放器已关 / 换集 / 切回原画时会话已作废（FnTvSessions），什么都不用做
                 if (e is kotlinx.coroutines.CancellationException) return@onFailure
                 FnTvQuality.log("switch failed: ${e.message}")
-                if (wasHls && player.currentMediaItemIndex == i) reload(i, q, urls[q.path].orEmpty(), false, seekGate.position().coerceAtLeast(0))
+                if (wasHls && player.currentMediaItemIndex == i) reload(i, q, fileUrl(q), false, seekGate.position().coerceAtLeast(0))
                 hint = "转码没有开始：${e.message ?: "未知错误"}，" + if (wasHls) "已回到原画" else "继续播放原画"
             }
         }
@@ -369,6 +450,15 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                 val badges = MediaBadges.fromTracks(tracks)
                 MediaBadges.remember(id, badges)
                 val dv = tracks.groups.firstNotNullOfOrNull { g -> if (g.type == MC.TRACK_TYPE_VIDEO) MediaBadges.dvProfile(g.getTrackFormat(0)) else null }
+                // 用户 2026-11-02 反馈播放黑屏：有视频轨却一条都没选上 = 手机解不了这个画面，media3 只放声音、不报错
+                val vg = tracks.groups.filter { it.type == MC.TRACK_TYPE_VIDEO }
+                if (vg.isNotEmpty() && vg.none { it.isSelected } && !tv.transcoding(id)) {
+                    val f = vg.first().getTrackFormat(0)
+                    val codec = VideoDecoders.describe(f.sampleMimeType, f.codecs, MediaBadges.dvProfile(f), f.width, f.height)
+                    Diag.log("PLAYER", "video track not playable: ${f.sampleMimeType} ${f.codecs} ${f.width}x${f.height} support=${(0 until vg.first().length).map { vg.first().getTrackSupport(it) }}")
+                    canExternal = true
+                    videoIssue = "这台手机解不了这个视频的画面（$codec），现在只有声音。可以用其他播放器打开" + if (isFn) "，或在「清晰度」里选服务器转码。" else "。"
+                } else if (vg.any { it.isSelected } && videoIssue?.startsWith("这台手机解不了") == true) videoIssue = null
                 if (hint == null) hint = DeviceCaps.hint(ctx, badges, dv)
                 // B35: P7 dual-layer on a non-DV phone — drop the EL track once per media item.
                 val mid = player.currentMediaItem?.mediaId.orEmpty()
@@ -543,7 +633,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         tv.activePath?.takeIf { it != curPath }?.let { old ->
             tv.stop()
             val idx = queue.indexOfFirst { it.path == old }
-            if (idx >= 0 && idx != player.currentMediaItemIndex) player.replaceMediaItem(idx, itemFor(queue[idx], urls[old].orEmpty(), subOffset))
+            if (idx >= 0 && idx != player.currentMediaItemIndex) player.replaceMediaItem(idx, itemFor(queue[idx], fileUrl(queue[idx]), subOffset))
         }
         val q = queue.firstOrNull { it.path == curPath } ?: return@LaunchedEffect
         val ep = item.episodes.firstOrNull { it.path == q.path }
@@ -861,6 +951,17 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
             }
         }
         if (!inPip) GestureHud(seekPreview, seekFrac, levelHud, fast, flash)
+        videoIssue?.takeIf { !inPip && error == null }?.let { msg ->
+            Column(Modifier.align(Alignment.TopCenter).padding(top = 72.dp, start = 32.dp, end = 32.dp)
+                .background(Color(0xCC000000), androidx.compose.foundation.shape.RoundedCornerShape(14.dp)).padding(horizontal = 16.dp, vertical = 12.dp)) {
+                Text(msg, color = Color.White, fontSize = 14.sp, lineHeight = 20.sp)
+                Row(Modifier.padding(top = 6.dp)) {
+                    TextButton(onClick = { openExternal(player.currentMediaItemIndex) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("用其他播放器打开", color = C.Accent) }
+                    if (isFn) TextButton(onClick = { panel = PlayerPanel.QUALITY; controls = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("选清晰度", color = Color.White) }
+                    TextButton(onClick = { videoIssue = null }, modifier = Modifier.heightIn(min = 48.dp)) { Text("只听声音", color = Color(0xB3FFFFFF)) }
+                }
+            }
+        }
         error?.takeIf { !inPip }?.let { e ->
             Column(Modifier.align(Alignment.Center).background(Color(0xCC000000), androidx.compose.foundation.shape.RoundedCornerShape(14.dp)).padding(20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally) {

@@ -268,6 +268,8 @@ fun ffmpegRenderersFactory(ctx: Context): DefaultRenderersFactory =
     DefaultRenderersFactory(ctx)
         .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
         .setEnableDecoderFallback(true)
+        // 用户 2026-11-02 反馈播放黑屏：杜比视界无原生解码器时用 HEVC/AVC 解基础层；本次播放里没出画面的解码器跳过（见 VideoDecoders）
+        .setMediaCodecSelector(VideoDecoders.selector)
 
 /**
  * 1.1.0：libVLC 已删除。Media3 放不了的格式（rmvb / rm / wmv / asf，ape / wma / DSD 等）改为「用其他播放器打开」。
