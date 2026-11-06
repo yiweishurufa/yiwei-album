@@ -60,7 +60,7 @@ fun SettingsScreen() {
     // 第 4 批：平板/折叠屏——内容区最大宽度 720dp 居中，宽屏不再通栏拉伸。
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
     Column(Modifier.widthIn(max = 720.dp).fillMaxHeight().appBackground().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(bottom = 110.dp)) {
-        if (Nav.stack.size > 1) Row(Modifier.statusBarsPadding().padding(start = 6.dp, top = 8.dp)) { IconButton(onClick = { Nav.pop() }) { Icon(LI.back(), null, tint = C.Text) } }
+        if (Nav.stack.size > 1) Row(Modifier.statusBarsPadding().padding(start = 6.dp, top = 8.dp)) { IconButton(onClick = { Nav.pop() }) { Icon(LI.back(), "返回", tint = C.Text) } }
         else TopSwitch(search = SearchScope.None, showDate = false)   // 审查 6：设置页不放照片搜索和日期筛选
         Text("设置", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = C.Text, letterSpacing = (-0.4).sp, modifier = Modifier.padding(start = 20.dp, top = 8.dp, bottom = 4.dp))
 

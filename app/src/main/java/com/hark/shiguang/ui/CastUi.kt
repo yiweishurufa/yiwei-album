@@ -84,11 +84,11 @@ fun CastDialog(media: CastMedia?, onDismiss: () -> Unit) {
                         colors = SliderDefaults.colors(thumbColor = C.Accent, activeTrackColor = C.Accent), modifier = Modifier.padding(top = 8.dp))
                     Text("${fmt(CastState.pos)} / ${if (d > 0) fmt(d) else "--:--"}", color = C.Sub, fontSize = 12.sp)
                     Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        IconButton(onClick = { val p = (CastState.pos - 30_000).coerceAtLeast(0); CastState.pos = p; act { Dlna.seek(it, p) } }) { Icon(Icons.Rounded.Replay30, null, tint = C.Text) }
+                        IconButton(onClick = { val p = (CastState.pos - 30_000).coerceAtLeast(0); CastState.pos = p; act { Dlna.seek(it, p) } }) { Icon(Icons.Rounded.Replay30, "后退 30 秒", tint = C.Text) }
                         IconButton(onClick = { val pl = CastState.playing; CastState.playing = !pl; act { if (pl) Dlna.pause(it) else Dlna.resume(it) } }) {
-                            Icon(if (CastState.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, tint = C.Accent, modifier = Modifier.size(34.dp))
+                            Icon(if (CastState.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (CastState.playing) "暂停" else "播放", tint = C.Accent, modifier = Modifier.size(34.dp))
                         }
-                        IconButton(onClick = { val p = CastState.pos + 30_000; CastState.pos = p; act { Dlna.seek(it, p) } }) { Icon(Icons.Rounded.Forward30, null, tint = C.Text) }
+                        IconButton(onClick = { val p = CastState.pos + 30_000; CastState.pos = p; act { Dlna.seek(it, p) } }) { Icon(Icons.Rounded.Forward30, "前进 30 秒", tint = C.Text) }
                     }
                 }
                 CastState.error?.let { Text(it, color = C.Danger, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp)) }

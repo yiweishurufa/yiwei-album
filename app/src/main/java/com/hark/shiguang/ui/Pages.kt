@@ -400,7 +400,7 @@ fun TransfersScreen() {
                         Text(st, color = if (t.state == TState.FAILED) C.Danger else C.Sub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         if (t.state == TState.RUNNING) LinearProgressIndicator(progress = { t.progress }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp), color = C.Accent, trackColor = C.Surface2)
                     }
-                    if (t.state == TState.FAILED) IconButton(onClick = { Transfers.retry(t) }) { Icon(Icons.Rounded.Refresh, null, tint = C.Accent) }
+                    if (t.state == TState.FAILED) IconButton(onClick = { Transfers.retry(t) }) { Icon(Icons.Rounded.Refresh, "重试", tint = C.Accent) }
                     if (t.state == TState.DONE) Icon(Icons.Rounded.CheckCircle, null, tint = C.Accent, modifier = Modifier.size(20.dp))
                 }
             }
@@ -556,8 +556,8 @@ fun DavAccountsScreen() {
                 val cur = a.id == Dav.current?.id
                 ListRow(LI.drive(), null, a.title + if (cur) "  · 当前" else "", a.url + if (a.user.isNotEmpty()) " · ${a.user}" else "",
                     trailing = { Row {
-                        IconButton(onClick = { editing = a }) { Icon(LI.settings(), null, tint = C.Sub, modifier = Modifier.size(20.dp)) }
-                        IconButton(onClick = { removing = a }) { Icon(LI.trash(), null, tint = C.Sub, modifier = Modifier.size(20.dp)) }
+                        IconButton(onClick = { editing = a }) { Icon(LI.settings(), "编辑账户", tint = C.Sub, modifier = Modifier.size(20.dp)) }
+                        IconButton(onClick = { removing = a }) { Icon(LI.trash(), "移除账户", tint = C.Sub, modifier = Modifier.size(20.dp)) }
                     } }) {
                     Dav.select(a.id); HomeState.useSource("dav"); Nav.reset(Route.Home); toast(ctx, "已切换到 ${a.title}")
                 }

@@ -35,7 +35,7 @@ fun AiSettingsScreen() {
     val prov = AiProviders.of(AiConfig.provider)
     Column(Modifier.fillMaxSize().appBackground().statusBarsPadding().navigationBarsPadding()) {
         Row(Modifier.padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { Nav.pop() }) { Icon(LI.back(), null, tint = C.Text) }
+            IconButton(onClick = { Nav.pop() }) { Icon(LI.back(), "返回", tint = C.Text) }
             Text("AI 大模型", style = MaterialTheme.typography.headlineSmall)
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {

@@ -357,7 +357,8 @@ private fun visibleDay(entries: List<Entry>, grid: LazyGridState, offset: Int): 
 private fun CompactBar(title: String) {
     Row(Modifier.fillMaxWidth().background(C.Bg.copy(alpha = 0.96f)).statusBarsPadding().padding(horizontal = 18.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = C.Text, modifier = Modifier.weight(1f))
-        Icon(LI.search(), null, tint = C.Text, modifier = Modifier.size(22.dp).clickable { Nav.push(Route.Search) })
+        // B12: was a 22 dp clickable icon without a label; IconButton gives a 48 dp touch target and TalkBack reads 「搜索」.
+        IconButton(onClick = { Nav.push(Route.Search) }, modifier = Modifier.size(40.dp)) { Icon(LI.search(), "搜索", tint = C.Text, modifier = Modifier.size(22.dp)) }
     }
 }
 

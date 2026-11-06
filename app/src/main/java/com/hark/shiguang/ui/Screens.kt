@@ -256,7 +256,7 @@ fun LoginScreen() {
     Box(Modifier.fillMaxSize().appBackground()) {
         Column(Modifier.fillMaxSize().systemBarsPadding().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
             Row(Modifier.padding(top = 8.dp).height(44.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (Nav.stack.size > 1) Icon(LI.back(), null, tint = C.Text, modifier = Modifier.size(24.dp).clickable { Nav.pop() })
+                if (Nav.stack.size > 1) IconButton(onClick = { Nav.pop() }, modifier = Modifier.offset(x = (-12).dp)) { Icon(LI.back(), "返回", tint = C.Text, modifier = Modifier.size(24.dp)) }
             }
             Spacer(Modifier.height(24.dp))
             Box(Modifier.size(60.dp).clip(RoundedCornerShape(18.dp)).background(C.Surface2), contentAlignment = Alignment.Center) {
@@ -548,7 +548,7 @@ fun SearchScreen() {
                         modifier = Modifier.fillMaxWidth().focusRequester(fr)
                     )
                 }
-                if (SearchState.query.isNotEmpty()) Icon(Icons.Rounded.Cancel, null, tint = C.Faint, modifier = Modifier.size(18.dp).clickable { SearchState.query = ""; SearchState.reset(); fr.requestFocus() })
+                if (SearchState.query.isNotEmpty()) Icon(Icons.Rounded.Cancel, "清除搜索", tint = C.Faint, modifier = Modifier.size(18.dp).clickable { SearchState.query = ""; SearchState.reset(); fr.requestFocus() })
             }
             Spacer(Modifier.width(12.dp))
             Text("取消", color = C.Text, fontSize = 15.sp, modifier = Modifier.clickable { Nav.pop() })

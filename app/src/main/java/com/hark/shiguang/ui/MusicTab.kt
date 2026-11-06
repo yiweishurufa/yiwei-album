@@ -250,7 +250,7 @@ private fun TrackRow(t: Track, sourceKey: String, showNo: Boolean = false, onCli
                 }
             }
             if (t.durationMs > 0) Text(Music.fmt(t.durationMs), color = C.Faint, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp))
-            IconButton(onClick = { menu = true }, modifier = Modifier.size(36.dp)) { Icon(Icons.Rounded.MoreVert, null, tint = C.Faint, modifier = Modifier.size(18.dp)) }
+            IconButton(onClick = { menu = true }, modifier = Modifier.size(36.dp)) { Icon(Icons.Rounded.MoreVert, "更多", tint = C.Faint, modifier = Modifier.size(18.dp)) }
         }
         DropdownMenu(menu, onDismissRequest = { menu = false }, modifier = Modifier.background(C.Surface)) {
             DropdownMenuItem(text = { Text("下一首播放", color = C.Text) }, onClick = { menu = false; MusicState.playNext(sourceKey, t); toast(ctx, "下一首播放") })
@@ -317,7 +317,7 @@ fun MusicListScreen(r: Route.MusicList) {
         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 110.dp)) {
             item {
                 Row(Modifier.statusBarsPadding().padding(start = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { Nav.pop() }) { Icon(LI.back(true), null, tint = C.Text) }
+                    IconButton(onClick = { Nav.pop() }) { Icon(LI.back(true), "返回", tint = C.Text) }
                 }
             }
             item {
@@ -410,7 +410,7 @@ fun MusicNowPlayingScreen() {
         }
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             Row(Modifier.padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { Nav.pop() }) { Icon(Icons.Rounded.KeyboardArrowDown, null, tint = C.Text, modifier = Modifier.size(30.dp)) }
+                IconButton(onClick = { Nav.pop() }) { Icon(Icons.Rounded.KeyboardArrowDown, "收起", tint = C.Text, modifier = Modifier.size(30.dp)) }
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("正在播放", color = C.Sub, fontSize = 12.sp)
                     if (t != null) Text(t.displayAlbum, color = C.Text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -454,14 +454,14 @@ fun MusicNowPlayingScreen() {
                     MusicState.repeat == Player.REPEAT_MODE_ALL -> Icons.Rounded.Repeat to C.Text
                     else -> Icons.Rounded.Repeat to C.Faint
                 }
-                IconButton(onClick = { cycleMode() }) { Icon(modeIcon, null, tint = modeTint, modifier = Modifier.size(24.dp)) }
-                IconButton(onClick = { MusicState.prev() }, modifier = Modifier.size(56.dp)) { Icon(Icons.Rounded.SkipPrevious, null, tint = C.Text, modifier = Modifier.size(38.dp)) }
+                IconButton(onClick = { cycleMode() }) { Icon(modeIcon, "播放模式", tint = modeTint, modifier = Modifier.size(24.dp)) }
+                IconButton(onClick = { MusicState.prev() }, modifier = Modifier.size(56.dp)) { Icon(Icons.Rounded.SkipPrevious, "上一首", tint = C.Text, modifier = Modifier.size(38.dp)) }
                 Box(Modifier.size(70.dp).clip(CircleShape).background(C.Text).clickable { MusicState.toggle() }, contentAlignment = Alignment.Center) {
                     if (MusicState.buffering && MusicState.isPlaying) CircularProgressIndicator(color = C.Bg, strokeWidth = 2.5.dp, modifier = Modifier.size(28.dp))
-                    else Icon(if (MusicState.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, tint = C.Bg, modifier = Modifier.size(40.dp))
+                    else Icon(if (MusicState.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (MusicState.isPlaying) "暂停" else "播放", tint = C.Bg, modifier = Modifier.size(40.dp))
                 }
-                IconButton(onClick = { MusicState.next() }, modifier = Modifier.size(56.dp)) { Icon(Icons.Rounded.SkipNext, null, tint = C.Text, modifier = Modifier.size(38.dp)) }
-                IconButton(onClick = { queueOpen = true }) { Icon(Icons.Rounded.QueueMusic, null, tint = C.Text, modifier = Modifier.size(24.dp)) }
+                IconButton(onClick = { MusicState.next() }, modifier = Modifier.size(56.dp)) { Icon(Icons.Rounded.SkipNext, "下一首", tint = C.Text, modifier = Modifier.size(38.dp)) }
+                IconButton(onClick = { queueOpen = true }) { Icon(Icons.Rounded.QueueMusic, "播放列表", tint = C.Text, modifier = Modifier.size(24.dp)) }
             }
             Text(modeText(), color = C.Faint, fontSize = 11.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp))
         }
