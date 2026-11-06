@@ -304,7 +304,8 @@ private fun ZoomImage(p: Photo, onTap: () -> Unit, onZoom: (Boolean) -> Unit, on
         AsyncImage(ImageRequest.Builder(ctx).data(p.thumbM).placeholderMemoryCacheKey(p.thumbS).build(), null, layer, contentScale = ContentScale.Fit)
         // Fetch the original once the user lingers or zooms in.
         LaunchedEffect(p.id) { kotlinx.coroutines.delay(600); hiRes = true }
-        if (hiRes && !p.fileName.endsWith(".dng", true) && !p.fileName.endsWith(".arw", true) && !p.fileName.endsWith(".cr2", true) && !p.fileName.endsWith(".nef", true)) {
+        // RAW / EXR / DPX / TIFF …: the phone cannot decode the original, stay on the NAS preview (PreviewOnly).
+        if (hiRes && !com.hark.shiguang.PreviewOnly.of(p.fileName)) {
             // H12: decode for the screen (longer side), not 4096 px — the pager keeps up to 3 pages alive. Zooming in
             // past 1.5× switches to 2× the screen (≤ 4096) and the screen-sized copy stays as the placeholder.
             val cfg = androidx.compose.ui.platform.LocalConfiguration.current

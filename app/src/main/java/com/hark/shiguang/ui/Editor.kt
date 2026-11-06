@@ -216,6 +216,8 @@ private fun render(b: Bitmap, crop: RectF, bright: Float, contrast: Float): Bitm
  * `inSampleSize`), with EXIF read from the file too.
  */
 private suspend fun loadOriginal(p: Photo): Bitmap {
+    // Do not download tens of MB only to fail decoding (RAW, EXR, DPX, TIFF …).
+    if (com.hark.shiguang.PreviewOnly.of(p.fileName)) error("这个格式（${com.hark.shiguang.PreviewOnly.ext(p.fileName).uppercase()}）暂不支持编辑")
     val (url, headers) = if (p.isCloud) {
         val s = CloudPhotos.source(p.source) ?: error("网盘账户已移除")
         val e = CloudPhotos.entryOf(p) ?: CloudEntry(p.fileName, p.cloudPath, false, p.size, 0, null, true, false)
