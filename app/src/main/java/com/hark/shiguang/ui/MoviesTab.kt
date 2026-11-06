@@ -75,6 +75,8 @@ fun MoviesTab() {
     val counts = remember(v, lib.items.size) { lib.items.count { it.kind == "movie" } to lib.items.count { it.kind == "tv" } }
 
     // 第 4 批：平板/折叠屏——Adaptive 替代 Fixed(3)：手机上仍约 3 列（110dp 下限），平板自动变多列；通栏行用 maxLineSpan。
+    // B7：下拉刷新 = 后台增量扫描（和右上角刷新一样只扫新文件），有缓存时只显示一行「正在更新」
+    PullRefreshBox(enabled = lib.ready && lib.dirs.isNotEmpty() && !lib.scanning, onRefresh = { lib.scan(quiet = true); ScanService.ensure(App.ctx) }) {
     LazyVerticalGrid(GridCells.Adaptive(110.dp), state = grid, modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = 120.dp + miniPlayerPad), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item(span = { GridItemSpan(maxLineSpan) }) {
@@ -122,6 +124,7 @@ fun MoviesTab() {
                 }
             }
         } else items(shown, key = { it.first().id }) { g -> val m = g.first(); PosterCard(m, lib, versions = g.sumOf { it.files.size }) { Nav.push(Route.MovieDetail(key, m.id)) } }
+    }
     }
 }
 

@@ -100,6 +100,8 @@ fun MusicTab() {
     val list = rememberMemList("music-$key-${MusicUi.sub}")
 
     val albumCols = adaptiveCols(2)
+    // B7：下拉刷新 = 后台增量扫描（没变的文件夹不重列），有缓存时只显示一行「正在更新」
+    PullRefreshBox(enabled = lib.ready && lib.dirs.isNotEmpty() && !lib.scanning, onRefresh = { lib.scan(quiet = true); ScanService.ensure(App.ctx) }) {
     LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 170.dp)) {
         item { MediaHeader("音乐", SearchScope.None, lib.scanning, lib.dirs.isNotEmpty(), "重新扫描音乐") { lib.scan(); ScanService.ensure(App.ctx) } }
         if (!lib.ready) { item { Box(Modifier.fillMaxWidth().height(440.dp)) { LibLoading() } }; return@LazyColumn }
@@ -156,6 +158,7 @@ fun MusicTab() {
             2 -> items(artists, key = { "a" + it.key }) { g -> GroupRow(g, round = true) { Nav.push(Route.MusicList("artist", g.key, g.title)) } }
             else -> items(folders, key = { "f" + it.key }) { g -> GroupRow(g) { Nav.push(Route.MusicList("folder", g.key, g.title)) } }
         }
+    }
     }
 }
 
