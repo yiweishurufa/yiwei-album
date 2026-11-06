@@ -165,6 +165,14 @@ object MusicState {
     fun enqueue(sourceKey: String, t: Track) = with { c -> if (c.mediaItemCount == 0) play(sourceKey, listOf(t), 0) else c.addMediaItem(MusicPlayer.item(sourceKey, t)) }
     fun toggle() = with { if (it.isPlaying || it.playWhenReady) it.pause() else { if (it.playbackState == Player.STATE_IDLE) it.prepare(); it.play() } }
     fun pause() { controller?.takeIf { it.isConnected }?.pause() }
+    /** 影视播放器打开时暂停音乐，并记住是不是它暂停的；退出时 [resumeAfterVideo] 接着放（参考飞牛 App v1.37.0 Android 修复）。 */
+    private var pausedByVideo = false
+    fun pauseForVideo() { pausedByVideo = isPlaying; pause() }
+    fun resumeAfterVideo() {
+        val resume = pausedByVideo && active && !isPlaying
+        pausedByVideo = false
+        if (resume) controller?.takeIf { it.isConnected }?.play()
+    }
     fun next() = with { it.seekToNextMediaItem() }
     fun prev() = with { if (it.currentPosition > 3000) it.seekTo(0) else it.seekToPreviousMediaItem() }
     fun seek(ms: Long) = with { it.seekTo(ms) }

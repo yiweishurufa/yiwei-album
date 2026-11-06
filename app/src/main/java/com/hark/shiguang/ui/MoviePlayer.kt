@@ -107,7 +107,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
 
     // landscape + immersive while playing
     DisposableEffect(Unit) {
-        MusicState.pause()   // 1.0.3 #4: a video stops the music (the music player is its own ExoPlayer)
+        MusicState.pauseForVideo()   // 1.0.3 #4: a video stops the music (the music player is its own ExoPlayer); resumed on exit
         Analyzer.videoPlaying = true   // 2026-10-22: background WebDAV duration reads wait until the player closes
         Diag.log("PLAY", "open ${if (lib.kind == "dav") "WebDAV" else "飞牛"} video")
         val old = act?.requestedOrientation
@@ -119,6 +119,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         w?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose {
             Analyzer.videoPlaying = false
+            MusicState.resumeAfterVideo()   // 退出影视后，被它暂停的音乐接着放
             act?.requestedOrientation = old ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             ctl?.show(WindowInsetsCompat.Type.systemBars())
             w?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
