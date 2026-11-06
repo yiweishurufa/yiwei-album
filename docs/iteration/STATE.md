@@ -75,3 +75,8 @@
   逐条状态和提交见 next-version-user-requests.md「用户反馈 2026-11-02」末尾。本地 assembleDebug + testDebugUnitTest 通过后推送，未真机验证。
 - 构建注意（2026-11-02）：/tmp 在内存里，/tmp/gradle-home（约 2 GB）+ 全量构建会被 OOM 杀掉；全量构建改用 /workspace/work/build-full.sh
   （GRADLE_USER_HOME 用 /workspace/tools/gradle-home、-Xmx2560m、单 worker），compileDebugKotlin 约 4–6 分钟。
+- 1.5.0 / 35（2026-11-06 补跑，用户不满当天定时运行空转后要求真正上线）：fnOS 1.2.1000 EXR/DPX 等只看预览（bc8a2e0）、B6 友好错误提示（b877283）、
+  B12 读屏标签 + 吸顶搜索按钮（f59ecc9）、A2 音乐我喜欢 / 最近播放（6e83952）、退出影视恢复音乐（9bcf38d）、B7 影视 / 音乐下拉刷新（0bde476）。
+  清单 daily/2026-11-06.md（22 条，未做的滚入 11-07）。未真机验证。
+- next-version-user-requests.md「仍未做」更新：A2 B6 B12 已完成；B7 影视 / 音乐已完成、飞牛照片页未做。
+
