@@ -136,6 +136,8 @@ object MusicState {
         val newId = c.currentMediaItem?.mediaId
         // 本首播完：切到下一首（或播放结束）时暂停
         sleepAfterTrack?.let { s -> if (newId != s || c.playbackState == Player.STATE_ENDED) { sleepAfterTrack = null; c.pause(); toast("定时关闭：本首已播完，已暂停") } }
+        // A2：切到新的一首就记进这个来源的「最近播放」
+        if (newId != null && newId != mediaId) runCatching { Music.lib(newId.substringBefore('|')).markPlayed(newId.substringAfter('|')) }
         mediaId = newId
         isPlaying = c.isPlaying || (c.playWhenReady && c.playbackState == Player.STATE_BUFFERING)
         buffering = c.playbackState == Player.STATE_BUFFERING

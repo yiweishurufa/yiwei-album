@@ -85,6 +85,9 @@ class MusicLib(val sourceKey: String) {
     var found by mutableIntStateOf(0)
     var error by mutableStateOf<String?>(null)
     var version by mutableIntStateOf(0)
+    /** A2：「我喜欢」「最近播放」的曲目 id，新的在前（[MusicMarks]）。随库在 IO 线程读入，改动后在 IO 线程写盘。 */
+    val favs = mutableStateListOf<String>()
+    val recent = mutableStateListOf<String>()
     /** 用户 2026-10-22 反馈 #2 / H4 / H5：库文件在 IO 线程读完、在主线程装进 [tracks] 后才置 true（加载完成才置位，线程安全）。 */
     var ready by mutableStateOf(false)
         private set
@@ -110,9 +113,12 @@ class MusicLib(val sourceKey: String) {
             val d = runCatching { JSONObject(File(dir, "config.json").readText()).optJSONArray("dirs")?.objs().orEmpty().map { MusicDir(it.optString("path"), it.optString("name")) } }.getOrNull()
             // H1: older libraries may hold the same song twice (nested music folders) — duplicate ids crash the LazyColumn keys.
             val l = runCatching { JSONArray(File(dir, "library.json").readText()).objs().map(Track::of).distinctBy { it.id } }.getOrDefault(emptyList())
+            val fv = readIds("favorites.json"); val rc = readIds("recent.json")
             withContext(Dispatchers.Main) {
                 if (d != null && !dirsTouched) dirs = d
                 if (tracks.isEmpty()) tracks.addAll(l)
+                if (favs.isEmpty()) favs.addAll(fv)
+                if (recent.isEmpty()) recent.addAll(rc)
                 needsRetag = l.any { it.staleTags }
                 version++; ready = true
             }
@@ -136,6 +142,29 @@ class MusicLib(val sourceKey: String) {
     @Synchronized private fun saveLib() { runCatching { File(dir, "library.json").writeText(JSONArray().apply { tracks.toList().forEach { put(it.json()) } }.toString()) } }
 
     fun track(id: String): Track? = tracks.firstOrNull { it.id == id }
+
+    // ------------------------------------------------------------------ A2 我喜欢 / 最近播放
+
+    private fun readIds(name: String): List<String> =
+        runCatching { JSONArray(File(dir, name).readText()).let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotEmpty() } } }.getOrDefault(emptyList())
+    /** Writes the list as it is when the write runs, so an older write finishing late never leaves stale ids on disk. */
+    private fun writeIds(name: String, ids: () -> List<String>) {
+        scope.launch { synchronized(this@MusicLib) { runCatching { File(dir, name).writeText(JSONArray(ids()).toString()) }.onFailure { Diag.e("MUSIC", it) } } }
+    }
+    fun isFav(id: String): Boolean = id in favs
+    /** Main thread. Returns true when the track is now a favourite. */
+    fun toggleFav(id: String): Boolean {
+        val n = MusicMarks.toggle(favs.toList(), id)
+        favs.clear(); favs.addAll(n); writeIds("favorites.json") { favs.toList() }
+        return id in n
+    }
+    /** Main thread: the player moved to [id]. */
+    fun markPlayed(id: String) {
+        if (recent.firstOrNull() == id) return
+        val n = MusicMarks.push(recent.toList(), id)
+        recent.clear(); recent.addAll(n); writeIds("recent.json") { recent.toList() }
+    }
+    fun clearRecent() { recent.clear(); writeIds("recent.json") { recent.toList() } }
 
     /**
      * 第 4 批：封面/歌词缓存上限 + LRU 清理。封面 art/ 200MB、歌词 lyrics/ 50MB（软上限）。

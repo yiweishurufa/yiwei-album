@@ -128,6 +128,8 @@ fun MusicTab() {
                 }
             }
         }
+        // A2：「我喜欢」「最近播放」入口（搜索时不显示）
+        if (q.isEmpty()) item { MarkCards(lib) }
         item {
             Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Segmented(listOf("歌曲 ${shown.size.takeIf { it > 0 } ?: ""}".trim(), "专辑", "歌手", "文件夹"), MusicUi.sub) { MusicUi.sub = it; Store.putStr("music.sub", "$it") }
@@ -183,6 +185,29 @@ private fun buildMusicView(all: List<Track>, q: String, sub: Int, sort: Int = 0)
     return MusicView(shown, albums, artists, folders)
 }
 
+/** A2：歌曲页上方两张小卡片，点开是「我喜欢」/「最近播放」列表。 */
+@Composable
+private fun MarkCards(lib: MusicLib) {
+    Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        MarkCard(Icons.Rounded.Favorite, "我喜欢", lib.favs.size, Modifier.weight(1f)) { Nav.push(Route.MusicList("fav", "", "我喜欢")) }
+        MarkCard(Icons.Rounded.History, "最近播放", lib.recent.size, Modifier.weight(1f)) { Nav.push(Route.MusicList("recent", "", "最近播放")) }
+    }
+}
+
+@Composable
+private fun MarkCard(icon: ImageVector, title: String, count: Int, modifier: Modifier, onClick: () -> Unit) {
+    Row(modifier.height(56.dp).clip(RoundedCornerShape(14.dp)).background(C.Surface).clickable(onClick = onClick).padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(32.dp).clip(RoundedCornerShape(10.dp)).background(C.Accent.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
+            Icon(icon, null, tint = C.Accent, modifier = Modifier.size(18.dp))
+        }
+        Column(Modifier.weight(1f).padding(start = 10.dp)) {
+            Text(title, color = C.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(if (count > 0) fmtCount(count) else "还没有", color = C.Sub, fontSize = 12.sp, maxLines = 1)
+        }
+    }
+}
+
 @Composable
 private fun SearchBox() {
     Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth().height(48.dp).clip(RoundedCornerShape(14.dp)).background(C.Surface).padding(horizontal = 12.dp),
@@ -234,6 +259,8 @@ private fun badge(t: Track): String? = when (t.ext) {
 private fun TrackRow(t: Track, sourceKey: String, showNo: Boolean = false, onClick: () -> Unit) {
     val ctx = LocalContext.current
     val playing = MusicState.mediaId == "$sourceKey|${t.id}"
+    val lib = remember(sourceKey) { Music.lib(sourceKey) }
+    val fav = t.id in lib.favs
     var menu by remember { mutableStateOf(false) }
     Box {
         Row(Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = { menu = true }).padding(horizontal = 16.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -243,6 +270,7 @@ private fun TrackRow(t: Track, sourceKey: String, showNo: Boolean = false, onCli
                 Text(t.title.ifBlank { t.name }, color = if (playing) C.Accent else C.Text, fontSize = 15.sp, fontWeight = if (playing) FontWeight.SemiBold else FontWeight.Normal,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (fav) Icon(Icons.Rounded.Favorite, "已喜欢", tint = C.Accent, modifier = Modifier.padding(end = 4.dp).size(12.dp))
                     badge(t)?.let { b ->
                         Text(b, color = C.Sub, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 5.dp).clip(RoundedCornerShape(3.dp)).background(C.Chip).padding(horizontal = 3.dp, vertical = 1.dp))
                     }
@@ -253,6 +281,9 @@ private fun TrackRow(t: Track, sourceKey: String, showNo: Boolean = false, onCli
             IconButton(onClick = { menu = true }, modifier = Modifier.size(36.dp)) { Icon(Icons.Rounded.MoreVert, "更多", tint = C.Faint, modifier = Modifier.size(18.dp)) }
         }
         DropdownMenu(menu, onDismissRequest = { menu = false }, modifier = Modifier.background(C.Surface)) {
+            DropdownMenuItem(text = { Text(if (fav) "取消喜欢" else "加入我喜欢", color = C.Text) }, onClick = {
+                menu = false; toast(ctx, if (lib.toggleFav(t.id)) "已加入我喜欢" else "已取消喜欢")
+            })
             DropdownMenuItem(text = { Text("下一首播放", color = C.Text) }, onClick = { menu = false; MusicState.playNext(sourceKey, t); toast(ctx, "下一首播放") })
             DropdownMenuItem(text = { Text("加到播放列表", color = C.Text) }, onClick = { menu = false; MusicState.enqueue(sourceKey, t); toast(ctx, "已加到播放列表") })
             // 1.1.0: libVLC removed — ape / wma / DSD etc. go to another app (auth through the loopback proxy)
@@ -304,8 +335,11 @@ fun MusicListScreen(r: Route.MusicList) {
     val key = Movies.keyOf() ?: return Page(r.title) { StateMessage(Icons.Rounded.MusicNote, "先添加一个来源", "") }
     val lib = remember(key) { Music.lib(key) }
     val v = lib.version
-    val tracks = remember(v, lib.tracks.size, r) {
+    // A2：「我喜欢」「最近播放」按记录的顺序（新的在前），库里已不存在的歌跳过
+    val marks = when (r.kind) { "fav" -> lib.favs.toList(); "recent" -> lib.recent.toList(); else -> null }
+    val tracks = remember(v, lib.tracks.size, r, marks) {
         when (r.kind) {
+            "fav", "recent" -> { val byId = lib.tracks.associateBy { it.id }; marks.orEmpty().mapNotNull { byId[it] } }
             "album" -> lib.tracks.filter { it.albumKey == r.key }.sortedWith(compareBy({ it.discNo }, { it.trackNo }, { it.name }))
             "artist" -> lib.tracks.filter { r.key in it.artists }.sortedWith(Comparator<Track> { a, b -> collator.compare(a.album, b.album) }.thenBy { it.discNo }.thenBy { it.trackNo })
             else -> lib.tracks.filter { it.folder == r.key }.sortedWith(compareBy({ it.discNo }, { it.trackNo }, { it.name }))
@@ -318,17 +352,24 @@ fun MusicListScreen(r: Route.MusicList) {
             item {
                 Row(Modifier.statusBarsPadding().padding(start = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { Nav.pop() }) { Icon(LI.back(true), "返回", tint = C.Text) }
+                    Spacer(Modifier.weight(1f))
+                    if (r.kind == "recent" && tracks.isNotEmpty()) TextButton(onClick = { lib.clearRecent() }) { Text("清空", color = C.Sub, fontSize = 14.sp) }
                 }
             }
             item {
                 Row(Modifier.padding(horizontal = 18.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (r.kind == "folder") Box(Modifier.size(110.dp).clip(RoundedCornerShape(14.dp)).background(C.Surface2), contentAlignment = Alignment.Center) { Icon(LI.folder(), null, tint = C.Text, modifier = Modifier.size(40.dp)) }
+                    if (r.kind == "fav" || r.kind == "recent") Box(Modifier.size(110.dp).clip(RoundedCornerShape(14.dp)).background(C.Accent.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
+                        Icon(if (r.kind == "fav") Icons.Rounded.Favorite else Icons.Rounded.History, null, tint = C.Accent, modifier = Modifier.size(44.dp))
+                    }
+                    else if (r.kind == "folder") Box(Modifier.size(110.dp).clip(RoundedCornerShape(14.dp)).background(C.Surface2), contentAlignment = Alignment.Center) { Icon(LI.folder(), null, tint = C.Text, modifier = Modifier.size(40.dp)) }
                     else MusicArt(art, Modifier.size(110.dp), corner = if (r.kind == "artist") 55.dp else 14.dp)
                     Column(Modifier.padding(start = 16.dp).weight(1f)) {
                         Text(r.title, color = C.Text, fontSize = 21.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         val sub = when (r.kind) {
                             "album" -> listOfNotNull(first?.albumArtist?.ifBlank { first.displayArtist }, first?.year?.takeIf { it > 0 }?.toString()).joinToString(" · ")
                             "folder" -> r.key.removePrefix("fm:")
+                            "fav" -> "长按歌曲选「加入我喜欢」，或在正在播放页点 ♡"
+                            "recent" -> "最近听过的 ${MusicMarks.RECENT_MAX} 首以内"
                             else -> "${tracks.map { it.albumKey }.distinct().size} 张专辑"
                         }
                         if (sub.isNotBlank()) Text(sub, color = C.Sub, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
@@ -341,6 +382,10 @@ fun MusicListScreen(r: Route.MusicList) {
                     PillButton(Icons.Rounded.PlayArrow, "全部播放", Modifier.weight(1f), primary = true) { MusicState.play(key, tracks, 0, shuffled = false) }
                     PillButton(Icons.Rounded.Shuffle, "随机播放", Modifier.weight(1f)) { MusicState.play(key, tracks, -1, shuffled = true) }
                 }
+            }
+            if (tracks.isEmpty() && (r.kind == "fav" || r.kind == "recent")) item {
+                Text(if (r.kind == "fav") "还没有喜欢的歌" else "还没有播放记录", style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp, horizontal = 24.dp))
             }
             itemsIndexed(tracks, key = { _, t -> t.id }) { i, t -> TrackRow(t, key, showNo = r.kind == "album") { MusicState.play(key, tracks, i) } }
         }
@@ -414,6 +459,13 @@ fun MusicNowPlayingScreen() {
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("正在播放", color = C.Sub, fontSize = 12.sp)
                     if (t != null) Text(t.displayAlbum, color = C.Text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                // A2：喜欢当前这首
+                if (t != null && lib != null) {
+                    val fav = t.id in lib.favs
+                    IconButton(onClick = { lib.toggleFav(t.id) }) {
+                        Icon(if (fav) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, if (fav) "取消喜欢" else "喜欢", tint = if (fav) C.Accent else C.Text, modifier = Modifier.size(24.dp))
+                    }
                 }
                 SleepButton()
                 IconButton(onClick = { showLyrics = !showLyrics; Store.putStr("music.showLyrics", if (showLyrics) "1" else "") }) {
