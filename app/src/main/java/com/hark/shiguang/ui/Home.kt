@@ -189,7 +189,7 @@ fun HomeScreen() {
         val ctx = LocalContext.current
         InputDialog("给人物命名", p.name, "名字", "保存", onDismiss = { HomeState.renamePerson = null }) { v ->
             HomeState.renamePerson = null
-            Ops.launch { runCatching { Repo.renamePerson(p.id, v.trim()); HomeState.persons = Repo.persons() }.onSuccess { toast(ctx, "已命名") }.onFailure { toast(ctx, it.message ?: "失败") } }
+            Ops.launch { runCatching { Repo.renamePerson(p.id, v.trim()); HomeState.persons = Repo.persons() }.onSuccess { toast(ctx, "已命名") }.onFailure { failToast(ctx, it, "失败") } }
         }
     }
 }

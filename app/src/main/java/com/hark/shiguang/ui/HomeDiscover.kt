@@ -389,7 +389,7 @@ private fun makeDavAlbum(ctx: android.content.Context, lib: DavLib, name: String
         runCatching {
             if (existing != null) lib.addTo(existing.id, photos.map { it.cloudPath }) else lib.createAlbum(name, photos.map { it.cloudPath })
         }.onSuccess { toast(ctx, if (existing != null) "已把 ${photos.size} 张加入「$name」" else "已创建相册「$name」，${photos.size} 张") }
-            .onFailure { toast(ctx, it.message ?: "创建失败") }
+            .onFailure { failToast(ctx, it, "创建失败") }
     }
 }
 
@@ -404,7 +404,7 @@ private fun makeNasAlbum(ctx: android.content.Context, name: String, load: suspe
             ids.chunked(200).forEach { NasX.addToAlbum(id, it, name) }
             HomeState.albums = null
             ids.size
-        }.onSuccess { toast(ctx, "已创建相册「$name」，$it 张") }.onFailure { toast(ctx, it.message ?: "创建失败") }
+        }.onSuccess { toast(ctx, "已创建相册「$name」，$it 张") }.onFailure { failToast(ctx, it, "创建失败") }
     }
 }
 

@@ -151,7 +151,7 @@ internal fun AlbumsTab(dav: Boolean, onBack: (() -> Unit)? = null) {
         creating = false
         Ops.launch {
             runCatching { if (dav) { lib?.createAlbum(name) ?: error("没有 WebDAV 账户") } else { NasX.createAlbum(name); HomeState.albums = Repo.albums() } }
-                .onSuccess { toast(ctx, "已创建「$name」") }.onFailure { toast(ctx, it.message ?: "创建失败") }
+                .onSuccess { toast(ctx, "已创建「$name」") }.onFailure { failToast(ctx, it, "创建失败") }
         }
     }
     menuFor?.let { m ->
@@ -166,13 +166,13 @@ internal fun AlbumsTab(dav: Boolean, onBack: (() -> Unit)? = null) {
     renaming?.let { m ->
         InputDialog("重命名相册", m.second, "相册名称", onDismiss = { renaming = null }) { name ->
             renaming = null
-            Ops.launch { runCatching { AlbumOps.rename(m.first, name); if (!dav) HomeState.albums = Repo.albums() }.onFailure { toast(ctx, it.message ?: "失败") } }
+            Ops.launch { runCatching { AlbumOps.rename(m.first, name); if (!dav) HomeState.albums = Repo.albums() }.onFailure { failToast(ctx, it, "失败") } }
         }
     }
     deleting?.let { m ->
         ConfirmDialog("删除相册「${m.second}」？", "只删除相册，照片本身不会被删除。", "删除", onDismiss = { deleting = null }) {
             deleting = null
-            Ops.launch { runCatching { AlbumOps.delete(m.first); if (!dav) HomeState.albums = Repo.albums() }.onFailure { toast(ctx, it.message ?: "失败") } }
+            Ops.launch { runCatching { AlbumOps.delete(m.first); if (!dav) HomeState.albums = Repo.albums() }.onFailure { failToast(ctx, it, "失败") } }
         }
     }
 }

@@ -276,7 +276,7 @@ private fun PendingCard(lib: MovieLib, m: MovieItem, g: Tmdb.Hit, onOther: () ->
         }
         TextButton(onClick = {
             busy = true
-            Ops.launch { runCatching { lib.applyMatch(m, g) }.onSuccess { toast(ctx, "已确认「${g.title}」") }.onFailure { toast(ctx, it.message ?: "失败") }; busy = false }
+            Ops.launch { runCatching { lib.applyMatch(m, g) }.onSuccess { toast(ctx, "已确认「${g.title}」") }.onFailure { failToast(ctx, it, "失败") }; busy = false }
         }, enabled = !busy) { Text(if (busy) "…" else "是它", color = C.Accent) }
         TextButton(onClick = onOther) { Text("不是", color = C.Sub) }
     }
@@ -316,7 +316,7 @@ private fun FixMatchDialog(lib: MovieLib, m: MovieItem, onDismiss: () -> Unit) {
                     onDismiss()
                     Ops.launch {
                         runCatching { lib.rematch(m) }.onSuccess { n -> toast(ctx, when { n.matched -> "已识别为「${n.title}」"; n.pending -> "把握不大，已标为待确认"; else -> "没有识别出来，试试手动搜索" }) }
-                            .onFailure { toast(ctx, it.message ?: "识别失败") }
+                            .onFailure { failToast(ctx, it, "识别失败") }
                     }
                 }, enabled = !busy) { Text("自动重新识别", color = C.Sub) }
             }
@@ -326,7 +326,7 @@ private fun FixMatchDialog(lib: MovieLib, m: MovieItem, onDismiss: () -> Unit) {
                 items(hits.orEmpty(), key = { it.kind + it.id }) { h ->
                     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable {
                         onDismiss()
-                        Ops.launch { runCatching { lib.applyMatch(m, h) }.onSuccess { toast(ctx, "已匹配「${h.title}」") }.onFailure { toast(ctx, it.message ?: "匹配失败") } }
+                        Ops.launch { runCatching { lib.applyMatch(m, h) }.onSuccess { toast(ctx, "已匹配「${h.title}」") }.onFailure { failToast(ctx, it, "匹配失败") } }
                     }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.width(44.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(5.dp)).background(C.Surface2)) { posterModel(Tmdb.image(h.poster, "w92"))?.let { NetImage(it, Modifier.fillMaxSize()) } }
                         Column(Modifier.padding(start = 10.dp)) {

@@ -174,7 +174,7 @@ fun RecycleScreen() {
                 val ids = sel.toList()
                 scope.launch {
                     runCatching { NasX.recycleRestore(ids) }.onSuccess { toast(ctx, "已恢复 ${ids.size} 项"); photos.removeAll { it.id in ids }; sel = emptySet(); HomeState.dirty = true }
-                        .onFailure { toast(ctx, it.message ?: "恢复失败") }
+                        .onFailure { failToast(ctx, it, "恢复失败") }
                 }
             }, colors = ButtonDefaults.buttonColors(containerColor = C.Accent, contentColor = C.OnAccent), modifier = Modifier.weight(1f)) { Text("恢复 ${sel.size} 项") }
             OutlinedButton(onClick = { confirm = "forever" }, modifier = Modifier.weight(1f)) { Text("彻底删除", color = C.Danger) }
@@ -183,12 +183,12 @@ fun RecycleScreen() {
     when (confirm) {
         "clear" -> ConfirmDialog("清空回收站？", "所有照片会被永久删除，无法恢复。", "清空", onDismiss = { confirm = null }) {
             confirm = null
-            scope.launch { runCatching { NasX.recycleClear() }.onSuccess { photos.clear(); more = false }.onFailure { toast(ctx, it.message ?: "失败") } }
+            scope.launch { runCatching { NasX.recycleClear() }.onSuccess { photos.clear(); more = false }.onFailure { failToast(ctx, it, "失败") } }
         }
         "forever" -> ConfirmDialog("彻底删除 ${sel.size} 项？", "删除后无法恢复。", "彻底删除", onDismiss = { confirm = null }) {
             confirm = null
             val ids = sel.toList()
-            scope.launch { runCatching { NasX.recycleDeleteForever(ids) }.onSuccess { photos.removeAll { it.id in ids }; sel = emptySet() }.onFailure { toast(ctx, it.message ?: "失败") } }
+            scope.launch { runCatching { NasX.recycleDeleteForever(ids) }.onSuccess { photos.removeAll { it.id in ids }; sel = emptySet() }.onFailure { failToast(ctx, it, "失败") } }
         }
     }
 }
@@ -315,10 +315,10 @@ fun DuplicatesScreen() {
                         Spacer(Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             TextButton(onClick = {
-                                scope.launch { runCatching { NasX.repeatMerge(g.id) }.onSuccess { groups.remove(g); total--; HomeState.dirty = true; toast(ctx, "其余照片已移到回收站") }.onFailure { toast(ctx, it.message ?: "失败") } }
+                                scope.launch { runCatching { NasX.repeatMerge(g.id) }.onSuccess { groups.remove(g); total--; HomeState.dirty = true; toast(ctx, "其余照片已移到回收站") }.onFailure { failToast(ctx, it, "失败") } }
                             }) { Text("保留推荐，清理其余", color = C.Accent) }
                             TextButton(onClick = {
-                                scope.launch { runCatching { NasX.repeatExcludeGroup(g.id) }.onSuccess { groups.remove(g); total-- }.onFailure { toast(ctx, it.message ?: "失败") } }
+                                scope.launch { runCatching { NasX.repeatExcludeGroup(g.id) }.onSuccess { groups.remove(g); total-- }.onFailure { failToast(ctx, it, "失败") } }
                             }) { Text("都保留", color = C.Sub) }
                         }
                     }
@@ -328,7 +328,7 @@ fun DuplicatesScreen() {
     }
     if (confirmAll) ConfirmDialog("清理全部 $total 组？", "每组保留推荐的一张，其余移到回收站。", "清理", onDismiss = { confirmAll = false }) {
         confirmAll = false
-        scope.launch { runCatching { NasX.repeatMerge(null) }.onSuccess { groups.clear(); total = 0; HomeState.dirty = true }.onFailure { toast(ctx, it.message ?: "失败") } }
+        scope.launch { runCatching { NasX.repeatMerge(null) }.onSuccess { groups.clear(); total = 0; HomeState.dirty = true }.onFailure { failToast(ctx, it, "失败") } }
     }
 }
 
@@ -519,7 +519,7 @@ fun BackupScreen() {
                             r.failures.isNotEmpty() -> "已加入 ${r.enqueued} 项，${r.failures.size} 项入队失败"
                             else -> "已加入 ${r.enqueued} 项到传输队列"
                         }) }
-                            .onFailure { toast(ctx, it.message ?: "失败") }
+                            .onFailure { failToast(ctx, it, "失败") }
                         running = false; refreshPending()
                     }
                 }

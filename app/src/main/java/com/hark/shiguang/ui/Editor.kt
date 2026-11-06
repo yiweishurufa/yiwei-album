@@ -77,7 +77,7 @@ fun EditScreen(p: Photo) {
                 Ops.launch {
                     runCatching { withContext(Dispatchers.IO) { save(p, render(r, crop, bright, contrast)) } }
                         .onSuccess { toast(ctx, "已另存为 $it"); Nav.pop() }
-                        .onFailure { toast(ctx, it.message ?: "保存失败") }
+                        .onFailure { failToast(ctx, it, "保存失败") }
                     saving = false
                 }
             }.padding(horizontal = 16.dp, vertical = 8.dp)) {

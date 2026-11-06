@@ -443,11 +443,11 @@ fun CollectionScreen(r: Route.Collection) {
     val al = r.album
     if (renaming && al != null) InputDialog("重命名相册", title, "相册名称", onDismiss = { renaming = false }) { name ->
         renaming = false
-        Ops.launch { runCatching { AlbumOps.rename(al, name) }.onSuccess { title = name; toast(ctx, "已重命名") }.onFailure { toast(ctx, it.message ?: "失败") } }
+        Ops.launch { runCatching { AlbumOps.rename(al, name) }.onSuccess { title = name; toast(ctx, "已重命名") }.onFailure { failToast(ctx, it, "失败") } }
     }
     if (deleting && al != null) ConfirmDialog("删除相册「$title」？", "只删除相册，照片本身不会被删除。", "删除", onDismiss = { deleting = false }) {
         deleting = false
-        Ops.launch { runCatching { AlbumOps.delete(al) }.onSuccess { toast(ctx, "相册已删除"); Nav.pop() }.onFailure { toast(ctx, it.message ?: "失败") } }
+        Ops.launch { runCatching { AlbumOps.delete(al) }.onSuccess { toast(ctx, "相册已删除"); Nav.pop() }.onFailure { failToast(ctx, it, "失败") } }
     }
 }
 

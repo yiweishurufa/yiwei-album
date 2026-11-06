@@ -7,6 +7,7 @@ import com.hark.shiguang.data.NasX
 import com.hark.shiguang.data.Photo
 import com.hark.shiguang.ui.CloudPhotos
 import com.hark.shiguang.ui.toast
+import com.hark.shiguang.ui.failToast
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -155,6 +156,6 @@ object LiveMotion {
                 Transfers.saveFile(c, f, "$name.mp4", true)
             }
             withContext(Dispatchers.Main) { toast(c, "已加入传输队列") }
-        }.onFailure { withContext(Dispatchers.Main) { toast(c, it.message ?: "失败") } }
+        }.onFailure { withContext(Dispatchers.Main) { failToast(c, it, "失败") } }
     }
 }

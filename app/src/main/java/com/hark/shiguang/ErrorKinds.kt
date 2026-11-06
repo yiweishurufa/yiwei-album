@@ -35,3 +35,25 @@ enum class ErrorKind(val title: String, val hint: String, val action: String) {
         }
     }
 }
+
+/**
+ * B6：操作失败的 toast 只说一句中文，不再直接显示 timeout、Unable to resolve host 这类原文（原文另写进诊断日志）。
+ * - 能归类的（网络 / 账号 / 证书 / 空间 / 找不到）→「删除失败：连不上服务器」
+ * - 我们自己抛出的中文短句（如「网盘账户已移除」）→ 原样显示
+ * - 其它（英文、异常类名、空）→「删除失败，可以重试一次」
+ * [action] 是这次操作的失败说法，如「删除失败」；只写了「失败」时用「操作失败」。纯逻辑（单元测试：ErrorKindsTest）。
+ */
+object FriendlyError {
+    private val CJK = Regex("[\\u4e00-\\u9fff]")
+    private val TECH = Regex("(?i)exception|error:|\\bat [a-z]+\\.|http\\s?\\d{3}|java\\.|kotlin\\.|okhttp|null")
+
+    fun message(raw: String?, action: String): String {
+        val act = action.trim().ifEmpty { "操作失败" }.let { if (it == "失败") "操作失败" else it }
+        val m = raw?.trim().orEmpty()
+        val kind = ErrorKind.of(m)
+        if (kind != ErrorKind.OTHER) return "$act：${kind.title}"
+        if (m.isNotEmpty() && CJK.containsMatchIn(m) && m.length <= 40 && !TECH.containsMatchIn(m)) return m
+        return "$act，可以重试一次"
+    }
+}
+

@@ -189,7 +189,7 @@ fun ViewerScreen(photosIn: List<Photo>, start: Int, slideshowStart: Boolean = fa
                     val i = pager.currentPage; photos.removeAt(i)
                     if (photos.isEmpty()) Nav.pop()
                     HomeState.dirty = true
-                }.onFailure { toast(ctx, it.message ?: "删除失败") }
+                }.onFailure { failToast(ctx, it, "删除失败") }
             }
         }
     }
@@ -222,11 +222,11 @@ fun AddToAlbumFlow(p: Photo, onDone: () -> Unit) {
         val lib = com.hark.shiguang.Dav.lib(p.source)
         DavAlbumPicker(lib, onDismiss = onDone) { a ->
             onDone()
-            Ops.launch { runCatching { lib.addTo(a.id, listOf(p.cloudPath)) }.onSuccess { toast(ctx, "已加入「${a.name}」") }.onFailure { toast(ctx, it.message ?: "失败") } }
+            Ops.launch { runCatching { lib.addTo(a.id, listOf(p.cloudPath)) }.onSuccess { toast(ctx, "已加入「${a.name}」") }.onFailure { failToast(ctx, it, "失败") } }
         }
     } else AlbumPicker(onDismiss = onDone) { a ->
         onDone()
-        Ops.launch { runCatching { Ops.addToAlbum(a, listOf(p)) }.onSuccess { toast(ctx, "已加入「${a.name}」") }.onFailure { toast(ctx, it.message ?: "失败") } }
+        Ops.launch { runCatching { Ops.addToAlbum(a, listOf(p)) }.onSuccess { toast(ctx, "已加入「${a.name}」") }.onFailure { failToast(ctx, it, "失败") } }
     }
 }
 

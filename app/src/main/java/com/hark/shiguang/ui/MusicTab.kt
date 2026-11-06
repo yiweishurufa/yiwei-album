@@ -264,7 +264,7 @@ private fun TrackRow(t: Track, sourceKey: String, showNo: Boolean = false, onCli
                         val raw = fs.playUrl(MediaFile(t.path, t.name, t.size)) ?: error("读不到播放地址")
                         raw to fs.headers(raw)
                     } }
-                    r.onSuccess { (u, h) -> ExternalPlayer.open(ctx, u, h, t.name, audio = true)?.let { toast(ctx, it) } }.onFailure { toast(ctx, it.message ?: "打开失败") }
+                    r.onSuccess { (u, h) -> ExternalPlayer.open(ctx, u, h, t.name, audio = true)?.let { toast(ctx, it) } }.onFailure { failToast(ctx, it, "打开失败") }
                 }
             })
             if (t.album.isNotBlank()) DropdownMenuItem(text = { Text("查看专辑", color = C.Text) }, onClick = { menu = false; Nav.push(Route.MusicList("album", t.albumKey, t.displayAlbum)) })

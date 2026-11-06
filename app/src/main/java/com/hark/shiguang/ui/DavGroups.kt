@@ -170,7 +170,7 @@ private fun DavGroupsBody(r: Route.DavGroups, overrides: MutableMap<String, Bool
                 lib.photos.removeAll { it.key in keys }
                 keys.forEach { overrides.remove(it) }
                 after(keys); DavGroupsCache.map[cacheKey] = groups.toList(); toast(ctx, "已删除 ${verified.size} 张")
-            }.onFailure { toast(ctx, it.message ?: "删除失败") }
+            }.onFailure { failToast(ctx, it, "删除失败") }
             busy = false
         }
     }

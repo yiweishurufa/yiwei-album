@@ -38,7 +38,7 @@ fun DavRecycleScreen(r: Route.DavRecycle) {
     LaunchedEffect(Unit) { if (src != null) { busy = true; runCatching { DavRecycle.purgeExpired(r.accountId, src) }; busy = false; refresh() } }
     fun act(f: suspend () -> Unit, ok: String) {
         if (src == null) { toast(ctx, "网盘账户不可用"); return }
-        scope.launch { busy = true; runCatching { f() }.onSuccess { toast(ctx, ok); HomeState.dirty = true }.onFailure { toast(ctx, it.message ?: "失败") }; busy = false; refresh() }
+        scope.launch { busy = true; runCatching { f() }.onSuccess { toast(ctx, ok); HomeState.dirty = true }.onFailure { failToast(ctx, it, "失败") }; busy = false; refresh() }
     }
     Page("最近删除", if (list.isNotEmpty()) "${list.size} 项 · 删除 30 天后自动清除" else "", actions = {
         if (list.isNotEmpty()) TextButton(onClick = { clearAll = true }, enabled = !busy) { Text("清空", color = C.Danger) }

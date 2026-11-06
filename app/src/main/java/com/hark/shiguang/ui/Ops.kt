@@ -55,6 +55,12 @@ import java.util.concurrent.ConcurrentHashMap
 
 fun toast(ctx: Context, msg: String) = Toast.makeText(ctx.applicationContext, msg, Toast.LENGTH_SHORT).show()
 
+/** B6: a failed action as one plain Chinese line (FriendlyError); the raw message goes to the diagnostic log. */
+fun failToast(ctx: Context, e: Throwable, action: String) {
+    com.hark.shiguang.Diag.log("FAIL", "$action: ${e.javaClass.simpleName}: ${e.message}")
+    toast(ctx, com.hark.shiguang.FriendlyError.message(e.message, action))
+}
+
 /** Bridge between cloud drive entries and the app's Photo model. */
 object CloudPhotos {
     private val sources = ConcurrentHashMap<String, CloudSource>()
@@ -192,7 +198,7 @@ object Ops {
                     val e = CloudPhotos.entryOf(p) ?: error("文件信息丢失，请刷新后再试")
                     val url = withContext(Dispatchers.IO) { src.rawUrl(e) }
                     Transfers.download(c, url, p.fileName, src.headers(url), p.isVideo)
-                }.onFailure { toast(c, it.message ?: "下载失败") }
+                }.onFailure { failToast(c, it, "下载失败") }
             }
         }
         if (photos.isNotEmpty()) toast(c, "已加入传输队列（${photos.size}）")
@@ -220,7 +226,7 @@ object Ops {
                 else Intent(Intent.ACTION_SEND_MULTIPLE).putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
                 i.type = mime; i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 ctx.startActivity(Intent.createChooser(i, "分享").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            }.onFailure { Diag.e("SHARE", it); toast(ctx, it.message ?: "分享失败") }
+            }.onFailure { Diag.e("SHARE", it); failToast(ctx, it, "分享失败") }
         }
     }
 
@@ -443,7 +449,7 @@ fun <T> CreateAlbumDialog(onDismiss: () -> Unit, create: suspend (String) -> T, 
     val ctx = androidx.compose.ui.platform.LocalContext.current
     InputDialog("新建相册", "", "相册名称", "创建", onDismiss = onDismiss) { name ->
         onDismiss()
-        Ops.launch { runCatching { create(name) }.onSuccess { onPick(it) }.onFailure { toast(ctx, it.message ?: "创建失败") } }
+        Ops.launch { runCatching { create(name) }.onSuccess { onPick(it) }.onFailure { failToast(ctx, it, "创建失败") } }
     }
 }
 
@@ -502,7 +508,7 @@ fun SelectionBar(modifier: Modifier = Modifier, onChanged: () -> Unit = {}) {
         Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(bottom = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
             if (anyNas) SelAction(Icons.Rounded.FavoriteBorder, "收藏") {
                 val l = Selection.list
-                Ops.launch { runCatching { Ops.collect(l, true) }.onSuccess { toast(ctx, "已收藏 ${l.size} 项"); Selection.clear() }.onFailure { toast(ctx, it.message ?: "失败") } }
+                Ops.launch { runCatching { Ops.collect(l, true) }.onSuccess { toast(ctx, "已收藏 ${l.size} 项"); Selection.clear() }.onFailure { failToast(ctx, it, "失败") } }
             }
             SelAction(Icons.Rounded.Download, "下载") { Ops.download(ctx, Selection.list); Selection.clear() }
             SelAction(Icons.Rounded.Share, "分享") { Ops.share(ctx, Selection.list) }
@@ -511,11 +517,11 @@ fun SelectionBar(modifier: Modifier = Modifier, onChanged: () -> Unit = {}) {
             if (inAlbum != null) {
                 if (sel.size == 1) SelAction(Icons.Rounded.Image, "设为封面") {
                     val p = sel.first()
-                    Ops.launch { runCatching { AlbumOps.setCover(inAlbum, p) }.onSuccess { toast(ctx, "已设为封面"); Selection.clear() }.onFailure { toast(ctx, it.message ?: "失败") } }
+                    Ops.launch { runCatching { AlbumOps.setCover(inAlbum, p) }.onSuccess { toast(ctx, "已设为封面"); Selection.clear() }.onFailure { failToast(ctx, it, "失败") } }
                 }
                 SelAction(Icons.Rounded.RemoveCircleOutline, "移出相册") {
                     val l = Selection.list
-                    Ops.launch { runCatching { AlbumOps.remove(inAlbum, l) }.onSuccess { toast(ctx, "已移出 ${l.size} 项"); Selection.clear(); onChanged() }.onFailure { toast(ctx, it.message ?: "失败") } }
+                    Ops.launch { runCatching { AlbumOps.remove(inAlbum, l) }.onSuccess { toast(ctx, "已移出 ${l.size} 项"); Selection.clear(); onChanged() }.onFailure { failToast(ctx, it, "失败") } }
                 }
             }
             SelExtra.actions.forEach { a -> SelAction(a.icon, a.label, if (a.danger) C.Danger else C.Text) { a.run(Selection.list) } }
@@ -529,14 +535,14 @@ fun SelectionBar(modifier: Modifier = Modifier, onChanged: () -> Unit = {}) {
     if (albumPick) AlbumPicker(onDismiss = { albumPick = false }) { a ->
         albumPick = false
         val l = Selection.list
-        Ops.launch { runCatching { Ops.addToAlbum(a, l) }.onSuccess { toast(ctx, "已加入「${a.name}」"); Selection.clear() }.onFailure { toast(ctx, it.message ?: "失败") } }
+        Ops.launch { runCatching { Ops.addToAlbum(a, l) }.onSuccess { toast(ctx, "已加入「${a.name}」"); Selection.clear() }.onFailure { failToast(ctx, it, "失败") } }
     }
     if (davPick) {
         val lib = com.hark.shiguang.Dav.lib(sel.first().source)
         DavAlbumPicker(lib, onDismiss = { davPick = false }) { a ->
             davPick = false
             val l = Selection.list
-            Ops.launch { runCatching { lib.addTo(a.id, l.map { it.cloudPath }) }.onSuccess { toast(ctx, "已加入「${a.name}」"); Selection.clear() }.onFailure { toast(ctx, it.message ?: "失败") } }
+            Ops.launch { runCatching { lib.addTo(a.id, l.map { it.cloudPath }) }.onSuccess { toast(ctx, "已加入「${a.name}」"); Selection.clear() }.onFailure { failToast(ctx, it, "失败") } }
         }
     }
     if (confirm) {
@@ -546,7 +552,7 @@ fun SelectionBar(modifier: Modifier = Modifier, onChanged: () -> Unit = {}) {
             confirm = false
             val l = Selection.list
             // 部分删除失败时，已删掉的那些也要从列表里消失：以前失败只弹提示，不刷新，已删的照片还留在网格和选择里
-            Ops.launch { runCatching { Ops.delete(l) }.onSuccess { toast(ctx, "已删除 ${l.size} 项"); Selection.clear(); onChanged() }.onFailure { toast(ctx, it.message ?: "删除失败"); Selection.clear(); onChanged() } }
+            Ops.launch { runCatching { Ops.delete(l) }.onSuccess { toast(ctx, "已删除 ${l.size} 项"); Selection.clear(); onChanged() }.onFailure { failToast(ctx, it, "删除失败"); Selection.clear(); onChanged() } }
         }
     }
 }
