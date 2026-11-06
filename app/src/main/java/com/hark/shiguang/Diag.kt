@@ -79,6 +79,10 @@ object Diag {
         val out = File(dir, "shiguang-diag-${SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())}.txt")
         val sb = StringBuilder()
         sb.append("一维相册 诊断日志 v${BuildInfo.version}\n设备 ${Build.MANUFACTURER} ${Build.MODEL} Android ${Build.VERSION.RELEASE}\n\n")
+        val logs = listOf("previous.log", "current.log").mapNotNull { File(dir, it).takeIf { f -> f.exists() }?.readText() }
+        val errCount = logs.sumOf { t -> t.lineSequence().count { it.contains("ERROR ") } }
+        val crashCount = logs.sumOf { t -> t.lineSequence().count { it.contains("[CRASH]") } }
+        sb.append("摘要：崩溃 $crashCount 次，错误 $errCount 条\n\n")
         File(dir, "previous.log").takeIf { it.exists() }?.let { sb.append("==== 上次运行 ====\n").append(it.readText().takeLast(200_000)).append("\n") }
         File(dir, "current.log").takeIf { it.exists() }?.let { sb.append("==== 本次运行 ====\n").append(it.readText().takeLast(200_000)) }
         out.writeText(mask(sb.toString()))
