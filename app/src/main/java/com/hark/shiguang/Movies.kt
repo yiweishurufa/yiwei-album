@@ -130,6 +130,13 @@ class MovieLib(val sourceKey: String) {
         Store.putStr(cwHideKey, m.entries.toList().takeLast(200).joinToString("\n") { "${it.key}=${it.value}" }); version++
     }
 
+    /** A6：影视「想看 / 收藏」。id 列表存在 Store（新的在前），不动 progress.json。 */
+    private val wishKey get() = "movies.wish.$sourceKey"
+    private fun wishIds(): List<String> = Store.getStr(wishKey).split('\n').filter { it.isNotEmpty() }
+    fun isWish(id: String): Boolean { version; return id in wishIds() }
+    fun toggleWish(id: String) { Store.putStr(wishKey, MusicMarks.toggle(wishIds(), id).take(500).joinToString("\n")); version++ }
+    fun wishItems(): List<MovieItem> { val byId = items.associateBy { it.id }; return wishIds().mapNotNull { byId[it] } }
+
     /** 1.1.0: remembers which episode of show [showId] was played last (separate file, progress.json keeps its format). */
     fun setLastEpisode(showId: String, path: String) {
         if (showId.isEmpty() || path.isEmpty() || lastEp[showId] == path) return

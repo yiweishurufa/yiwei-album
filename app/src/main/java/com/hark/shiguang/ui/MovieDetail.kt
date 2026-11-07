@@ -100,6 +100,7 @@ fun MovieDetailScreen(r: Route.MovieDetail) {
                             Text(label, color = C.OnAccent, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 8.dp), maxLines = 1)
                         }
                         if (m.kind == "movie" && allVersions.size > 1) GhostButton("版本 ${allVersions.size}") { versions = true }
+                        GhostButton(if (lib.isWish(m.id)) "已收藏" else "收藏") { val w = lib.isWish(m.id); lib.toggleWish(m.id); toast(ctx, if (w) "已取消收藏" else "已收藏，影视页顶部可以找到") }
                         GhostButton("重新识别") { fixing = true }
                         GhostButton(if (CastState.device != null) "投屏中" else "投屏") { casting = true }
                     }

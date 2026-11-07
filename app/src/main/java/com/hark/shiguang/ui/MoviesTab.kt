@@ -72,6 +72,7 @@ fun MoviesTab() {
     // 优化 14：同一部电影的多个版本（不同文件夹 / 清晰度）合并成一张海报，详情页里选版本
     val shown = remember(v, lib.items.size, kind, MoviesState.sort) { MovieMerge.group(sorted(lib.items.filter { it.kind == kind }, MoviesState.sort)) }
     val cont = remember(v, lib.items.size) { lib.continueWatching() }
+    val wish = remember(v, lib.items.size) { lib.wishItems() }
     val counts = remember(v, lib.items.size) { lib.items.count { it.kind == "movie" } to lib.items.count { it.kind == "tv" } }
 
     // 第 4 批：平板/折叠屏——Adaptive 替代 Fixed(3)：手机上仍约 3 列（110dp 下限），平板自动变多列；通栏行用 maxLineSpan。
@@ -109,6 +110,16 @@ fun MoviesTab() {
                     Text("继续观看", color = C.Text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 2.dp, bottom = 10.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(cont, key = { it.first.id }) { (m, ep) -> ContinueCard(lib, m, ep) }
+                    }
+                }
+            }
+        }
+        if (wish.isNotEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Column {
+                    Text("我的收藏", color = C.Text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 2.dp, bottom = 10.dp))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        items(wish, key = { it.id }) { m -> Box(Modifier.width(110.dp)) { PosterCard(m, lib) { Nav.push(Route.MovieDetail(key, m.id)) } } }
                     }
                 }
             }
