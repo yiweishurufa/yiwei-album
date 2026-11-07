@@ -395,7 +395,8 @@ private fun PhotosTab() {
     val (mt, yt) = monthTitle(day)
     val (pc, vc) = tl.stats
     val sub = listOf(yt, if (filter == 2) (if (vc > 0) "${n(vc)} 个视频" else "") else if (pc > 0) "${n(pc)} 张照片" else "").filter { it.isNotEmpty() }.joinToString(" · ")
-    Box(Modifier.fillMaxSize()) {
+    // B7：飞牛照片页下拉刷新（重新拉时间线）
+    PullRefreshBox(enabled = !tl.loading, onRefresh = { scope.launch { runCatching { Endpoint.autoSelect() }; tl.refresh() } }) {
         val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
         when {
             tl.photos.isEmpty() && tl.loading -> Column { TopSwitch(); SkeletonGrid(4, 20.dp) }
