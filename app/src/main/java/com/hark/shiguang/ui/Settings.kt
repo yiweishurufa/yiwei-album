@@ -140,7 +140,7 @@ fun SettingsScreen() {
                 if (lockOk) { lockOn = it; Store.lockOn = it }
             }
             Div()
-            NavRow(LI.layers(), "清理缓存", value = if (cacheSize >= 0) "${"%.0f".format(cacheSize / 1048576.0)} MB" else null) {
+            NavRow(LI.layers(), "清理缓存", value = if (cacheSize >= 0) sizeLabel(cacheSize) else null) {
                 scope.launch {
                     // B38: never delete the diagnostic log, downloaded update packages, or crash reports —
                     // they are the evidence when something goes wrong, and the update would need re-downloading.
@@ -153,7 +153,7 @@ fun SettingsScreen() {
                     }
                     val freed = (cacheSize - left).coerceAtLeast(0L)
                     cacheSize = left
-                    Toast.makeText(ctx, if (freed > 0) "缓存已清理，释放 ${"%.1f".format(freed / 1048576.0)} MB" else "缓存已清理", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(ctx, if (freed > 0) "缓存已清理，释放 ${sizeLabel(freed)}" else "缓存已清理", Toast.LENGTH_SHORT).show()
                 }
             }
             Div()
@@ -550,4 +550,11 @@ private fun ocrStatus(lib: DavLib?): String? {
     val cur = lib != null && OcrRunner.countsFor == lib.accountId
     if (!cur || OcrRunner.total == 0) return null
     return "已识别 ${OcrRunner.done.coerceAtMost(OcrRunner.total)} / ${OcrRunner.total}" + if (OcrRunner.running) " · 识别中" else ""
+}
+
+/** 缓存大小显示：不足 1 MB 用 KB，不再显示「0 MB」；1 GB 以上用 GB。 */
+private fun sizeLabel(bytes: Long): String = when {
+    bytes < 1024L * 1024 -> "${bytes / 1024} KB"
+    bytes < 1024L * 1024 * 1024 -> "${"%.1f".format(bytes / 1048576.0)} MB"
+    else -> "${"%.2f".format(bytes / 1073741824.0)} GB"
 }
