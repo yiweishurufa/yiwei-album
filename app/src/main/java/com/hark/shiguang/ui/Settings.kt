@@ -151,8 +151,9 @@ fun SettingsScreen() {
                         runCatching { CloudPhotos.trimTo(Dav.loadedLibs().flatMap { it.photos.toList() }) }.onFailure { Diag.e("CACHE", it) }
                         ctx.cacheDir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
                     }
+                    val freed = (cacheSize - left).coerceAtLeast(0L)
                     cacheSize = left
-                    Toast.makeText(ctx, "缓存已清理", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(ctx, if (freed > 0) "缓存已清理，释放 ${"%.1f".format(freed / 1048576.0)} MB" else "缓存已清理", Toast.LENGTH_SHORT).show()
                 }
             }
             Div()
