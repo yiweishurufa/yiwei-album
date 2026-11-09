@@ -46,6 +46,8 @@ fun SettingsScreen() {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var cacheSize by remember { mutableLongStateOf(-1L) }
+    // 清理进行中：防止连点触发并发清理，并在右侧显示「清理中…」
+    var clearing by remember { mutableStateOf(false) }
     var lockOn by remember { mutableStateOf(Store.lockOn) }
     LaunchedEffect(Unit) { cacheSize = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { ctx.cacheDir.walkTopDown().filter { it.isFile }.sumOf { it.length() } } }
     val nas = NasAccounts.current
@@ -140,8 +142,11 @@ fun SettingsScreen() {
                 if (lockOk) { lockOn = it; Store.lockOn = it }
             }
             Div()
-            NavRow(LI.layers(), "清理缓存", value = if (cacheSize >= 0) sizeLabel(cacheSize) else null) {
+            NavRow(LI.layers(), "清理缓存", value = if (clearing) "清理中…" else if (cacheSize >= 0) sizeLabel(cacheSize) else null) {
+                if (clearing) return@NavRow
+                clearing = true
                 scope.launch {
+                  try {
                     // B38: never delete the diagnostic log, downloaded update packages, or crash reports —
                     // they are the evidence when something goes wrong, and the update would need re-downloading.
                     val left = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -154,6 +159,7 @@ fun SettingsScreen() {
                     val freed = (cacheSize - left).coerceAtLeast(0L)
                     cacheSize = left
                     Toast.makeText(ctx, if (freed > 0) "缓存已清理，释放 ${sizeLabel(freed)}" else "缓存已清理", Toast.LENGTH_SHORT).show()
+                  } finally { clearing = false }
                 }
             }
             Div()
