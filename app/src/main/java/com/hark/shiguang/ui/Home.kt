@@ -468,8 +468,8 @@ private fun DavPhotosTab() {
     }
     LaunchedEffect(lib) { lib.ensure(); if (!ScanPolicy.paused) { Analyzer.start(ctx, lib, false); if (AiRunner.on) AiRunner.startDav(ctx, lib) } }
     val grid = rememberMemGrid("dav-photos-" + lib.accountId)
-    var level by remember { mutableStateOf(Level.DAY4) }
-    fun pinch(zoomIn: Boolean) { val i = level.ordinal + if (zoomIn) 1 else -1; if (i in 1..4) level = Level.values()[i] }
+    var level by remember { mutableStateOf(Level.values()[Store.timelineLevel.coerceIn(1, 4)]) }
+    fun pinch(zoomIn: Boolean) { val i = level.ordinal + if (zoomIn) 1 else -1; if (i in 1..4) { level = Level.values()[i]; Store.timelineLevel = i } }
     val stills by remember(lib) { derivedStateOf { MediaIsolation.version; Hidden.visible(MediaIsolation.davVisible(lib.accountId, lib.photos.filter { !it.isVideo })) } }
     val filter = HomeState.photoFilter
     val shown by remember(lib, filter) { derivedStateOf { if (filter == 1) stills else { MediaIsolation.version; Hidden.visible(MediaIsolation.davVisible(lib.accountId, lib.photos.filter { HomeState.accepts(it, filter) })) } } }
