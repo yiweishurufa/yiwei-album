@@ -560,6 +560,7 @@ private fun ocrStatus(lib: DavLib?): String? {
 
 /** 缓存大小显示：不足 1 MB 用 KB，不再显示「0 MB」；1 GB 以上用 GB。 */
 private fun sizeLabel(bytes: Long): String = when {
+    bytes < 1024L -> "${bytes.coerceAtLeast(0L)} B"
     bytes < 1024L * 1024 -> "${bytes / 1024} KB"
     bytes < 1024L * 1024 * 1024 -> "${"%.1f".format(bytes / 1048576.0)} MB"
     else -> "${"%.2f".format(bytes / 1073741824.0)} GB"
