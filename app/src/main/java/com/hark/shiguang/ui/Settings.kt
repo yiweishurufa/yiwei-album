@@ -163,7 +163,7 @@ fun SettingsScreen() {
                 }
             }
             Div()
-            NavRow(LI.layers(), "缩略图缓存上限", value = CacheLimit.label(limitMb)) { limitOpen = true }
+            NavRow(Icons.Rounded.Storage, "缩略图缓存上限", value = CacheLimit.label(limitMb)) { limitOpen = true }
         }
 
         // ---- 通用
