@@ -142,7 +142,7 @@ fun SettingsScreen() {
                 if (lockOk) { lockOn = it; Store.lockOn = it }
             }
             Div()
-            NavRow(LI.layers(), "清理缓存", value = if (clearing) "清理中…" else if (cacheSize == 0L) "无缓存" else if (cacheSize >= 0) sizeLabel(cacheSize) else null) {
+            NavRow(Icons.Rounded.DeleteSweep, "清理缓存", value = if (clearing) "清理中…" else if (cacheSize == 0L) "无缓存" else if (cacheSize >= 0) sizeLabel(cacheSize) else null) {
                 if (clearing) return@NavRow
                 if (cacheSize == 0L) { Toast.makeText(ctx, "没有可清理的缓存", Toast.LENGTH_SHORT).show(); return@NavRow }
                 clearing = true
