@@ -154,6 +154,12 @@ private fun CoverTile(title: String, sub: String, cover: String?, icon: ImageVec
     }
 }
 
+/** 横滑卡片加载中的占位块。 */
+@Composable
+private fun TileSkeleton() {
+    Box(Modifier.size(128.dp).clip(RoundedCornerShape(C.Card)).background(shimmerBrush()))
+}
+
 @Composable
 private fun FnAlbumsRow() {
     val albums = HomeState.albums
@@ -163,7 +169,7 @@ private fun FnAlbumsRow() {
             Nav.push(Route.Collection("最近添加", "", PhotoSource(grouped = false) { o, l -> Repo.photos(Repo.FAR_START, Repo.FAR_END, o, l, mode = "createdAt") }))
         } }
         item(key = "hidden") { CoverTile("隐藏相册", "", null, LI.lock()) { Nav.push(Route.X(ExtScreen.HiddenAlbum)) } }
-        if (albums == null) items(3) { Box(Modifier.size(128.dp).clip(RoundedCornerShape(C.Card)).background(shimmerBrush())) }
+        if (albums == null) items(3) { TileSkeleton() }
         else items(albums, key = { "a" + it.id }) { a -> CoverTile(a.name, if (a.photos + a.videos > 0) "${a.photos + a.videos} 项" else "空相册", a.poster) { openAlbum(a) } }
     }
 }
@@ -174,7 +180,7 @@ private fun DavAlbumsRow(lib: DavLib?) {
     val als = lib.albums
     LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         item(key = "hidden") { CoverTile("隐藏相册", "", null, LI.lock()) { Nav.push(Route.X(ExtScreen.HiddenAlbum)) } }
-        if (als == null) items(2) { Box(Modifier.size(128.dp).clip(RoundedCornerShape(C.Card)).background(shimmerBrush())) }
+        if (als == null) items(2) { TileSkeleton() }
         else items(als, key = { "v" + it.id }) { a ->
             val cover = (lib.photoAt(a.cover) ?: lib.photosOf(a).firstOrNull())?.thumbM
             CoverTile(a.name, "${a.items.size} 项", cover) { openDavAlbum(lib, a) }
@@ -203,7 +209,7 @@ private fun PlacesRow() {
     val places = HomeState.places
     if (places != null && places.isEmpty()) { EmptyCard("带拍摄地点的照片会按城市归到这里。"); return }
     LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (places == null) items(3) { Box(Modifier.size(128.dp).clip(RoundedCornerShape(C.Card)).background(shimmerBrush())) }
+        if (places == null) items(3) { TileSkeleton() }
         else items(places) { pl ->
             CoverTile(pl.city.ifEmpty { pl.country }, "${pl.count} 张", pl.poster) {
                 Nav.push(Route.Collection(pl.city.ifEmpty { pl.country }, pl.country, PhotoSource(pageSize = 200, grouped = true) { o, l -> Repo.placePhotos(pl, o, l) }))
@@ -216,7 +222,7 @@ private fun PlacesRow() {
 private fun CategoryRow(cats: List<SmartCategory>?, empty: String) {
     if (cats != null && cats.isEmpty()) { EmptyCard(empty); return }
     LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (cats == null) items(3) { Box(Modifier.size(128.dp).clip(RoundedCornerShape(C.Card)).background(shimmerBrush())) }
+        if (cats == null) items(3) { TileSkeleton() }
         else items(cats, key = { it.name }) { c ->
             CoverTile(c.name, "${c.count} 张", c.cover) {
                 Nav.push(Route.Collection(c.name, "${c.count} 项", PhotoSource(pageSize = 100) { o, l -> val r = NasX.categoryPhotos(c.name, o, l); r to (r.size >= l) }))
