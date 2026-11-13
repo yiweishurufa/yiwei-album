@@ -49,7 +49,7 @@ fun SettingsScreen() {
     // 清理进行中：防止连点触发并发清理，并在右侧显示「清理中…」
     var clearing by remember { mutableStateOf(false) }
     var lockOn by remember { mutableStateOf(Store.lockOn) }
-    LaunchedEffect(Unit) { cacheSize = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { ctx.cacheDir.walkTopDown().filter { it.isFile }.sumOf { it.length() } } }
+    LaunchedEffect(Unit) { cacheSize = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { clearableCacheSize(ctx.cacheDir) } }
     val nas = NasAccounts.current
     val dav = HomeState.source == "dav"
     val davAcc = Dav.current
@@ -155,7 +155,7 @@ fun SettingsScreen() {
                         // H13: the in-memory url tables go too (redirect targets + entries of photos no longer in any library)
                         DavThumb.clearUrlCache(); PlayHttp.resolved.clear()
                         runCatching { CloudPhotos.trimTo(Dav.loadedLibs().flatMap { it.photos.toList() }) }.onFailure { Diag.e("CACHE", it) }
-                        ctx.cacheDir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+                        clearableCacheSize(ctx.cacheDir)
                     }
                     val freed = (cacheSize - left).coerceAtLeast(0L)
                     cacheSize = left
@@ -566,3 +566,8 @@ private fun sizeLabel(bytes: Long): String = when {
     bytes < 1024L * 1024 * 1024 -> "${"%.1f".format(bytes / 1048576.0)} MB"
     else -> "${"%.2f".format(bytes / 1073741824.0)} GB"
 }
+
+/** 可清理缓存大小：与「清理缓存」保留的诊断日志、更新包、崩溃记录保持一致，避免清完仍显示有缓存。 */
+private fun clearableCacheSize(dir: java.io.File): Long =
+    dir.listFiles()?.filter { it.name != "diag" && it.name != "update" && !it.name.startsWith("crash") }
+        ?.sumOf { c -> if (c.isFile) c.length() else c.walkTopDown().filter { it.isFile }.sumOf { it.length() } } ?: 0L
