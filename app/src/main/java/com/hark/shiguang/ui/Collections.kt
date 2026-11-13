@@ -160,6 +160,12 @@ private fun TileSkeleton() {
     Box(Modifier.size(128.dp).clip(RoundedCornerShape(C.Card)).background(shimmerBrush()))
 }
 
+/** 人物行加载中的圆形占位。 */
+@Composable
+private fun PersonSkeleton() {
+    Box(Modifier.size(68.dp).clip(CircleShape).background(shimmerBrush()))
+}
+
 @Composable
 private fun FnAlbumsRow() {
     val albums = HomeState.albums
@@ -194,7 +200,7 @@ private fun PeopleRow() {
     val ps = HomeState.persons?.filter { it.id !in hidden }
     if (ps != null && ps.isEmpty()) { EmptyCard("飞牛相册识别出人脸后，人物会出现在这里。"); return }
     LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        if (ps == null) items(5) { Box(Modifier.size(68.dp).clip(CircleShape).background(shimmerBrush())) }
+        if (ps == null) items(5) { PersonSkeleton() }
         else items(ps, key = { it.id }) { p ->
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(72.dp).clickable { openPerson(p) }) {
                 Box(Modifier.size(68.dp).clip(CircleShape).background(C.Surface2)) { NetImage(FnClient.abs("/p/api/v1/stream/face/${p.faceId}"), Modifier.fillMaxSize()) }
