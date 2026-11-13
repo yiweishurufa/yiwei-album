@@ -12,8 +12,8 @@ android {
         applicationId = "com.hark.shiguang"
         minSdk = 26
         targetSdk = 34
-        versionCode = 49
-        versionName = "1.5.14"
+        versionCode = 50
+        versionName = "1.5.15"
         // GitHub Actions passes -PciRun=<run number>; the in-app updater compares it when versionCode is equal
         buildConfigField("int", "CI_RUN", ((project.findProperty("ciRun") as String?)?.toIntOrNull() ?: 0).toString())
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
@@ -50,7 +50,7 @@ android {
     testOptions { unitTests.isReturnDefaultValues = true }
     // lint 先只出报告不阻断（CI 里上传 lint 报告），等存量问题清完再改成阻断
     lint { abortOnError = false; checkReleaseBuilds = false }
-    composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
+    composeOptions { kotlinCompilerExtensionVersion = "1.5.15" }
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
         jniLibs {
