@@ -50,7 +50,7 @@ android {
     testOptions { unitTests.isReturnDefaultValues = true }
     // lint 先只出报告不阻断（CI 里上传 lint 报告），等存量问题清完再改成阻断
     lint { abortOnError = false; checkReleaseBuilds = false }
-    composeOptions { kotlinCompilerExtensionVersion = "1.5.15" }
+    composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
         jniLibs {
