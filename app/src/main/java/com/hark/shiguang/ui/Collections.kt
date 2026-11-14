@@ -1,5 +1,7 @@
 package com.hark.shiguang.ui
 
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -144,7 +146,7 @@ private fun EmptyCard(text: String) {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun CoverTile(title: String, sub: String, cover: String?, icon: ImageVector? = null, onClick: () -> Unit) {
-    Column(Modifier.width(128.dp).clickable(onClick = onClick)) {
+    Column(Modifier.width(128.dp).semantics(mergeDescendants = true) { contentDescription = if (sub.isEmpty()) title else "$title，$sub" }.clickable(onClick = onClick)) {
         Box(Modifier.size(128.dp).clip(RoundedCornerShape(C.Card)).background(C.Surface2), contentAlignment = Alignment.Center) {
             if (cover != null) NetImage(cover, Modifier.fillMaxSize())
             else if (icon != null) Icon(icon, null, tint = C.Accent, modifier = Modifier.size(32.dp))
