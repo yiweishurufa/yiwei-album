@@ -202,7 +202,7 @@ private fun PeopleRow() {
     LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         if (ps == null) items(5) { PersonSkeleton() }
         else items(ps, key = { it.id }) { p ->
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(72.dp).clickable { openPerson(p) }) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(72.dp).clickable(onClickLabel = "查看${p.name.ifEmpty { "未命名人物" }}的照片") { openPerson(p) }) {
                 Box(Modifier.size(68.dp).clip(CircleShape).background(C.Surface2)) { NetImage(FnClient.abs("/p/api/v1/stream/face/${p.faceId}"), Modifier.fillMaxSize()) }
                 Text(p.name.ifEmpty { "未命名" }, fontSize = 12.sp, color = C.Sub, maxLines = 1, modifier = Modifier.padding(top = 6.dp))
             }
