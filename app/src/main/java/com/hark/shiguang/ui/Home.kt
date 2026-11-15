@@ -41,6 +41,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hark.shiguang.*
@@ -232,7 +234,7 @@ private fun BottomBar(modifier: Modifier) {
         tabs.forEach { t ->
             val i = t.index
             val sel = HomeState.tab == i || (i == 0 && HomeState.tab == 2)
-            Column(Modifier.clickable(remember { MutableInteractionSource() }, null) { onTabTap(i, sel) }.padding(horizontal = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(Modifier.clickable(remember { MutableInteractionSource() }, null, role = androidx.compose.ui.semantics.Role.Tab) { onTabTap(i, sel) }.semantics { selected = sel }.padding(horizontal = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 // 拟物：选中的标签像被按下去一样（内凹的小槽），其余平放
                 Box(Modifier.width(52.dp).height(32.dp).then(if (sel && Skeuo.on) Modifier.skeuoInset(RoundedCornerShape(12.dp), C.Accent.copy(alpha = 0.14f))
                     else Modifier.clip(RoundedCornerShape(12.dp)).background(if (sel) C.Accent.copy(alpha = 0.16f) else Color.Transparent)), contentAlignment = Alignment.Center) {
