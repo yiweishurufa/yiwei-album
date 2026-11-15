@@ -41,6 +41,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import coil.request.ImageRequest
 import com.hark.shiguang.data.Photo
 import java.time.LocalDate
@@ -77,7 +79,10 @@ fun fmtDuration(sec: Int): String = if (sec >= 3600) "%d:%02d:%02d".format(sec /
 @Composable
 fun Thumb(p: Photo, corner: Dp, small: Boolean = false, onClick: () -> Unit) {
     Box(
-        Modifier.aspectRatio(1f).clip(RoundedCornerShape(corner)).background(C.Surface).clickable(onClick = onClick)
+        Modifier.aspectRatio(1f).clip(RoundedCornerShape(corner)).background(C.Surface).clickable(onClickLabel = "查看", onClick = onClick)
+            .semantics(mergeDescendants = true) {
+                contentDescription = (if (p.isVideo) "视频" else if (p.isLive) "实况照片" else "照片") + (if (p.collected) "，已收藏" else "")
+            }
     ) {
         NetImage(p.thumbS, Modifier.fillMaxSize(), crossfade = !small)
         if (!small && (p.isVideo || p.isLive || p.collected)) {
