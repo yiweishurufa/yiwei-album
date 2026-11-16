@@ -27,6 +27,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -398,7 +400,7 @@ fun TransfersScreen() {
                             TState.DONE -> "完成 · ${t.target}"; TState.FAILED -> t.error ?: "失败"
                         }
                         Text(st, color = if (t.state == TState.FAILED) C.Danger else C.Sub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        if (t.state == TState.RUNNING) LinearProgressIndicator(progress = { t.progress }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp), color = C.Accent, trackColor = C.Surface2)
+                        if (t.state == TState.RUNNING) LinearProgressIndicator(progress = { t.progress }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp).semantics { contentDescription = "传输进度 ${(t.progress * 100).toInt()}%" }, color = C.Accent, trackColor = C.Surface2)
                     }
                     if (t.state == TState.FAILED) IconButton(onClick = { Transfers.retry(t) }) { Icon(Icons.Rounded.Refresh, "重试", tint = C.Accent) }
                     if (t.state == TState.DONE) Icon(Icons.Rounded.CheckCircle, null, tint = C.Accent, modifier = Modifier.size(20.dp))
