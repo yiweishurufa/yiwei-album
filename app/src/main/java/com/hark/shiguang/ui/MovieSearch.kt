@@ -16,6 +16,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,7 +60,7 @@ fun MovieSearchScreen() {
                         textStyle = MaterialTheme.typography.bodyMedium.copy(color = C.Text, fontSize = 15.sp), cursorBrush = SolidColor(C.Accent),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                         keyboardActions = KeyboardActions(onSearch = { saveQuery(text); focus.clearFocus() }),
-                        modifier = Modifier.fillMaxWidth())
+                        modifier = Modifier.fillMaxWidth().semantics { contentDescription = "搜索影片" })
                 }
                 if (text.isNotEmpty()) IconButton(onClick = { text = "" }) { Icon(LI.close(), "清除搜索", tint = C.Sub, modifier = Modifier.size(18.dp)) }
             }
