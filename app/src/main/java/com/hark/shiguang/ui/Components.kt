@@ -71,7 +71,7 @@ fun NetImage(url: String?, modifier: Modifier = Modifier, scale: ContentScale = 
             contentDescription = null, contentScale = scale, modifier = Modifier.matchParentSize(),
             onState = { failed = it is coil.compose.AsyncImagePainter.State.Error },
         )
-        if (failed) Icon(Icons.Rounded.BrokenImage, null, tint = C.Faint, modifier = Modifier.size(22.dp))
+        if (failed) Icon(Icons.Rounded.BrokenImage, "图片加载失败", tint = C.Faint, modifier = Modifier.size(22.dp))
     }
 }
 
