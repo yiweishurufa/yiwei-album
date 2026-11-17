@@ -49,7 +49,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun PageTop(title: String, sub: String = "", actions: @Composable RowScope.() -> Unit = {}) {
     Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        RoundIcon(Icons.Rounded.ArrowBackIosNew, size = 40.dp) { Selection.clear(); Nav.pop() }
+        RoundIcon(Icons.Rounded.ArrowBackIosNew, size = 40.dp, desc = "返回") { Selection.clear(); Nav.pop() }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -290,7 +290,7 @@ fun DuplicatesScreen() {
     DisposableEffect(acct) { onDispose { FnRepeatCache.put(acct, groups.toList(), total) } }
     Page("重复照片", if (total > 0) "$total 组" else "", actions = {
         // 1.0.2: no scan button here; 飞牛's repeat check is started together with the AI tab's 整理 (see DiscoverTab)
-        RoundIcon(Icons.Rounded.Refresh) { scope.launch { load(true) } }
+        RoundIcon(Icons.Rounded.Refresh, desc = "刷新") { scope.launch { load(true) } }
         if (groups.isNotEmpty()) TextButton(onClick = { confirmAll = true }) { Text("全部清理", color = C.Accent) }
     }) {
         when {
@@ -493,7 +493,7 @@ fun BackupScreen() {
     // 用户 2026-10-23：传输队列从设置首页移走，备份页右上角放一个入口；页面说明放进 ⓘ
     Page("手机相册备份", actions = {
         InfoDot("照片上传到飞牛相册设置的上传目录。自动备份每小时检查一次，只备份开启之后新拍的照片；备份只上传，不会删除手机上的照片。", "手机相册备份")
-        RoundIcon(LI.swap()) { Nav.push(Route.Transfers) }
+        RoundIcon(LI.swap(), desc = "传输") { Nav.push(Route.Transfers) }
     }) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 40.dp)) {
             Section("手动")
@@ -551,7 +551,7 @@ fun DavAccountsScreen() {
     var editing by remember { mutableStateOf<CloudAccount?>(null) }
     var adding by remember { mutableStateOf(false) }
     var removing by remember { mutableStateOf<CloudAccount?>(null) }
-    Page("WebDAV", actions = { RoundIcon(LI.plus()) { adding = true } }) {
+    Page("WebDAV", actions = { RoundIcon(LI.plus(), desc = "添加") { adding = true } }) {
         if (accounts.isEmpty()) StateMessage(LI.drive(), "还没有 WebDAV", "支持 123 云盘、坚果云、群晖、Nextcloud、Alist 等任何 WebDAV 服务。", "添加") { adding = true }
         else LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
             items(accounts, key = { it.id }) { a ->
@@ -677,7 +677,7 @@ fun CloudBrowseScreen(r: Route.CloudBrowse) {
     }
     LaunchedEffect(r) { load() }
     Page(r.title, r.path, actions = {
-        RoundIcon(Icons.Rounded.ViewDay) { Nav.push(Route.CloudTimeline(r.accountId)) }
+        RoundIcon(Icons.Rounded.ViewDay, desc = "云端时间线") { Nav.push(Route.CloudTimeline(r.accountId)) }
     }) {
         val d = dirs
         when {

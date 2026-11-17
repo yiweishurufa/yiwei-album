@@ -68,7 +68,7 @@ fun EditScreen(p: Photo) {
 
     Column(Modifier.fillMaxSize().background(Color.Black)) {
         Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            RoundIcon(Icons.Rounded.Close, bg = Color(0x33FFFFFF), tint = Color.White) { Nav.pop() }
+            RoundIcon(Icons.Rounded.Close, bg = Color(0x33FFFFFF), tint = Color.White, desc = "关闭") { Nav.pop() }
             Text("编辑", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f).padding(start = 14.dp))
             TextButton(onClick = { rot = 0; bright = 0f; contrast = 1f; aspect = 0; rotated?.let { crop = RectF(0f, 0f, 1f, 1f) } }) { Text("还原", color = Color.White.copy(alpha = 0.7f)) }
             Box(Modifier.clip(RoundedCornerShape(14.dp)).background(C.Accent).clickable(enabled = !saving && rotated != null) {

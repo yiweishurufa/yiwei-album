@@ -58,7 +58,7 @@ object SelExtra { var actions by mutableStateOf<List<SelExtraAction>>(emptyList(
 @Composable
 fun ExtTop(title: String, sub: String = "", actions: @Composable RowScope.() -> Unit = {}) {
     Row(Modifier.fillMaxWidth().background(C.TopScrim).statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        RoundIcon(Icons.Rounded.ArrowBackIosNew, size = 40.dp) { Nav.pop() }
+        RoundIcon(Icons.Rounded.ArrowBackIosNew, size = 40.dp, desc = "返回") { Nav.pop() }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -152,7 +152,7 @@ private fun PersonScreen(s: ExtScreen.Person) {
         }
         ExtTop(p?.name?.ifEmpty { "未命名" } ?: "人物") {
             if (p != null) Box {
-                RoundIcon(Icons.Rounded.MoreHoriz, size = 40.dp) { menu = true }
+                RoundIcon(Icons.Rounded.MoreHoriz, size = 40.dp, desc = "更多") { menu = true }
                 DropdownMenu(menu, { menu = false }, Modifier.background(C.Surface2)) {
                     DropdownMenuItem({ Text("命名", color = C.Text) }, { menu = false; renaming = true })
                     DropdownMenuItem({ Text("合并到其他人物…", color = C.Text) }, { menu = false; merging = true })

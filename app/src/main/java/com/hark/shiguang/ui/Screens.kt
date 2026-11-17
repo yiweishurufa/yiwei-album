@@ -422,7 +422,7 @@ fun CollectionScreen(r: Route.Collection) {
         }
         Box(Modifier.fillMaxWidth().background(C.TopScrim)) {
             Row(Modifier.statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                RoundIcon(Icons.Rounded.ArrowBackIosNew, size = 40.dp) { Nav.pop() }
+                RoundIcon(Icons.Rounded.ArrowBackIosNew, size = 40.dp, desc = "返回") { Nav.pop() }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(title, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -430,7 +430,7 @@ fun CollectionScreen(r: Route.Collection) {
                     if (s.isNotEmpty()) Text(s, style = MaterialTheme.typography.bodySmall)
                 }
                 if (r.album != null) Box {
-                    RoundIcon(Icons.Rounded.MoreHoriz, size = 40.dp) { menu = true }
+                    RoundIcon(Icons.Rounded.MoreHoriz, size = 40.dp, desc = "更多") { menu = true }
                     DropdownMenu(menu, { menu = false }, Modifier.background(C.Surface2)) {
                         DropdownMenuItem({ Text("重命名", color = C.Text) }, { menu = false; renaming = true })
                         DropdownMenuItem({ Text("删除相册", color = C.Danger) }, { menu = false; deleting = true })

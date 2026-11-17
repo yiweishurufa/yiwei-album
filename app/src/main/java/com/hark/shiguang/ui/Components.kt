@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import coil.request.ImageRequest
 import com.hark.shiguang.data.Photo
@@ -237,14 +238,15 @@ fun GradientButton(text: String, modifier: Modifier = Modifier, loading: Boolean
 }
 
 @Composable
-fun RoundIcon(icon: ImageVector, modifier: Modifier = Modifier, tint: Color = C.Text, bg: Color = C.Chip, size: Dp = 40.dp, onClick: () -> Unit) {
+fun RoundIcon(icon: ImageVector, modifier: Modifier = Modifier, tint: Color = C.Text, bg: Color = C.Chip, size: Dp = 40.dp, desc: String? = null, onClick: () -> Unit) {
     // 顶栏的圆形按钮：拟物时是凸起的小圆钮（按下内凹），只在页面的默认底色上这样画；调用方给了别的底色（例如照片上的半透明黑）就保持原样
     val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
     val skeuo = Skeuo.on && bg == C.Chip
     Box(
         (if (skeuo) modifier.size(size).skeuoPressable(interaction, CircleShape, C.Surface)
         else modifier.size(size).clip(CircleShape).background(bg).border(0.5.dp, C.Line, CircleShape))
-            .clickable(interaction, androidx.compose.foundation.LocalIndication.current, onClick = onClick),
+            .clickable(interaction, androidx.compose.foundation.LocalIndication.current, onClick = onClick)
+            .then(if (desc != null) Modifier.semantics { contentDescription = desc; role = androidx.compose.ui.semantics.Role.Button } else Modifier),
         contentAlignment = Alignment.Center
     ) { Icon(icon, null, tint = tint, modifier = Modifier.size(size * 0.5f)) }
 }

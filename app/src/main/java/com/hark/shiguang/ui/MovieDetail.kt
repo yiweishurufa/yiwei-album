@@ -188,7 +188,7 @@ fun MovieDetailScreen(r: Route.MovieDetail) {
                 }
             }
         }
-        Box(Modifier.statusBarsPadding().padding(10.dp)) { RoundIcon(LI.back(true), bg = Color(0x55000000), tint = Color.White) { Nav.pop() } }
+        Box(Modifier.statusBarsPadding().padding(10.dp)) { RoundIcon(LI.back(true), bg = Color(0x55000000), tint = Color.White, desc = "返回") { Nav.pop() } }
     }
 
     if (versions) AlertDialog(onDismissRequest = { versions = false }, containerColor = C.Surface, title = { Text("选择版本", color = C.Text) }, text = {

@@ -133,7 +133,7 @@ fun ViewerScreen(photosIn: List<Photo>, start: Int, slideshowStart: Boolean = fa
         AnimatedVisibility(chrome && p != null, enter = fadeIn() + slideInVertically { -it / 2 }, exit = fadeOut() + slideOutVertically { -it / 2 }) {
             Box(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0xCC000000), Color.Transparent)))) {
                 Row(Modifier.statusBarsPadding().padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    RoundIcon(Icons.Rounded.ArrowBackIosNew, bg = Color(0x40000000), tint = Color.White) { Nav.pop() }
+                    RoundIcon(Icons.Rounded.ArrowBackIosNew, bg = Color(0x40000000), tint = Color.White, desc = "返回") { Nav.pop() }
                     Spacer(Modifier.width(12.dp))
                     if (p != null) Column(Modifier.weight(1f)) {
                         val (t, w) = dayTitle(p.day)
@@ -146,7 +146,7 @@ fun ViewerScreen(photosIn: List<Photo>, start: Int, slideshowStart: Boolean = fa
                         modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(Color(0x40000000)).padding(horizontal = 9.dp, vertical = 4.dp))
                     Spacer(Modifier.width(10.dp))
                     Spacer(Modifier.width(8.dp))
-                    RoundIcon(Icons.Rounded.MoreHoriz, bg = Color(0x40000000), tint = Color.White) { more = true }
+                    RoundIcon(Icons.Rounded.MoreHoriz, bg = Color(0x40000000), tint = Color.White, desc = "更多") { more = true }
                 }
             }
         }
