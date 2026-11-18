@@ -1,5 +1,6 @@
 package com.hark.shiguang.ui
 
+import androidx.compose.foundation.selection.selectable
 import android.graphics.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -97,7 +98,7 @@ fun EditScreen(p: Photo) {
             if (tool == 0) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 listOf("自由", "1:1", "4:3", "16:9").forEachIndexed { i, t ->
                     Text(t, color = if (aspect == i) C.OnAccent else Color.White, fontSize = 13.sp, modifier = Modifier.padding(end = 8.dp).clip(RoundedCornerShape(12.dp))
-                        .background(if (aspect == i) C.Accent else Color(0x26FFFFFF)).clickable { aspect = i }.padding(horizontal = 14.dp, vertical = 8.dp))
+                        .background(if (aspect == i) C.Accent else Color(0x26FFFFFF)).selectable(selected = aspect == i, role = androidx.compose.ui.semantics.Role.RadioButton) { aspect = i }.padding(horizontal = 14.dp, vertical = 8.dp))
                 }
                 Spacer(Modifier.width(8.dp))
                 Row(Modifier.clip(RoundedCornerShape(12.dp)).background(Color(0x26FFFFFF)).clickable { rot = (rot + 90) % 360 }.padding(horizontal = 14.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -112,7 +113,7 @@ fun EditScreen(p: Photo) {
             }
             Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                 listOf(Icons.Rounded.Crop to "裁剪旋转", Icons.Rounded.Tune to "调节").forEachIndexed { i, (ic, t) ->
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { tool = i }.padding(horizontal = 18.dp, vertical = 6.dp)) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clip(RoundedCornerShape(12.dp)).selectable(selected = tool == i, role = androidx.compose.ui.semantics.Role.Tab) { tool = i }.padding(horizontal = 18.dp, vertical = 6.dp)) {
                         Icon(ic, null, tint = if (tool == i) C.Accent else Color.White.copy(alpha = 0.7f), modifier = Modifier.size(22.dp))
                         Text(t, color = if (tool == i) C.Accent else Color.White.copy(alpha = 0.7f), fontSize = 11.sp, modifier = Modifier.padding(top = 3.dp))
                     }
