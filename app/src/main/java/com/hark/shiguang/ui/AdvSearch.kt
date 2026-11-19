@@ -13,6 +13,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -123,7 +127,7 @@ object AdvFilter {
 @Composable
 fun FilterChipsRow(onOpen: () -> Unit, onClear: () -> Unit) {
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-        Row(Modifier.clip(RoundedCornerShape(12.dp)).background(if (AdvFilter.active) C.Accent.copy(alpha = 0.16f) else C.Surface).clickable(onClick = onOpen)
+        Row(Modifier.clip(RoundedCornerShape(12.dp)).background(if (AdvFilter.active) C.Accent.copy(alpha = 0.16f) else C.Surface).semantics(mergeDescendants = true) { role = Role.Button; stateDescription = if (AdvFilter.active) "已启用筛选" else "未启用筛选" }.clickable(onClick = onOpen)
             .padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.Tune, null, tint = if (AdvFilter.active) C.Accent else C.Sub, modifier = Modifier.size(16.dp))
             Text("筛选", color = if (AdvFilter.active) C.Accent else C.Text, fontSize = 13.sp, modifier = Modifier.padding(start = 6.dp))

@@ -16,6 +16,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -73,7 +75,7 @@ fun BgGuideScreen() {
             Card {
                 BgRun.Vendor.values().filter { it != mine }.forEachIndexed { i, v ->
                     if (i > 0) Div()
-                    Column(Modifier.fillMaxWidth().clickable { open = if (open == v) null else v }.padding(horizontal = 18.dp, vertical = 12.dp)) {
+                    Column(Modifier.fillMaxWidth().semantics(mergeDescendants = true) { stateDescription = if (open == v) "已展开" else "已折叠" }.clickable(onClickLabel = if (open == v) "收起" else "展开") { open = if (open == v) null else v }.padding(horizontal = 18.dp, vertical = 12.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(v.label, color = C.Text, fontSize = 15.sp, modifier = Modifier.weight(1f))
                             Icon(if (open == v) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null, tint = C.Faint)
