@@ -403,7 +403,7 @@ fun TransfersScreen() {
                         if (t.state == TState.RUNNING) LinearProgressIndicator(progress = { t.progress }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp).semantics { contentDescription = "传输进度 ${(t.progress * 100).toInt()}%" }, color = C.Accent, trackColor = C.Surface2)
                     }
                     if (t.state == TState.FAILED) IconButton(onClick = { Transfers.retry(t) }) { Icon(Icons.Rounded.Refresh, "重试", tint = C.Accent) }
-                    if (t.state == TState.DONE) Icon(Icons.Rounded.CheckCircle, null, tint = C.Accent, modifier = Modifier.size(20.dp))
+                    if (t.state == TState.DONE) Icon(Icons.Rounded.CheckCircle, "已完成", tint = C.Accent, modifier = Modifier.size(20.dp))
                 }
             }
         }
