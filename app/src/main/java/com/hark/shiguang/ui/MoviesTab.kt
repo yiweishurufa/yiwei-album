@@ -13,6 +13,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -164,7 +166,7 @@ fun Segmented(items: List<String>, sel: Int, onPick: (Int) -> Unit) {
             val on = i == sel
             Text(t, color = if (on) C.Text else C.Sub, fontSize = 14.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
                 modifier = Modifier.then(if (on) Modifier.skeuoPressed(false, RoundedCornerShape(9.dp), if (Skeuo.on) C.Surface else C.Surface2, Elevation.pressed + 1.dp)
-                    else Modifier.clip(RoundedCornerShape(9.dp))).clickable { onPick(i) }.padding(horizontal = 16.dp, vertical = 7.dp))
+                    else Modifier.clip(RoundedCornerShape(9.dp))).clickable(role = androidx.compose.ui.semantics.Role.Tab) { onPick(i) }.semantics { selected = on }.padding(horizontal = 16.dp, vertical = 7.dp))
         }
     }
 }
