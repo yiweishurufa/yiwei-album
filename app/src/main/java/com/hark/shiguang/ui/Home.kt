@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -120,7 +121,7 @@ internal fun PhotoFilterChips() {
             val on = HomeState.photoFilter == i
             Text(t, color = if (on) C.Accent else C.Sub, fontSize = 13.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
                 modifier = Modifier.clip(RoundedCornerShape(16.dp)).background(if (on) C.Accent.copy(alpha = 0.14f) else C.Surface)
-                    .clickable { HomeState.setFilter(i) }.heightIn(min = 32.dp).padding(horizontal = 14.dp, vertical = 7.dp))
+                    .clickable(role = Role.Tab) { HomeState.setFilter(i) }.semantics { selected = on }.heightIn(min = 32.dp).padding(horizontal = 14.dp, vertical = 7.dp))
         }
         Spacer(Modifier.weight(1f))
         // 第 6 批 沉浸视图第一步：网格 ↔ 单列大图流
