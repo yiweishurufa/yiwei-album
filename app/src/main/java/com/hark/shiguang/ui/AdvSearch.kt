@@ -201,5 +201,5 @@ private fun Label(t: String) = Text(t, style = MaterialTheme.typography.labelSma
 @Composable
 private fun Choice(t: String, on: Boolean, onClick: () -> Unit) {
     Text(t, color = if (on) C.OnAccent else C.Text, fontSize = 13.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
-        modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(if (on) C.Accent else C.Surface2).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp))
+        modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(if (on) C.Accent else C.Surface2).semantics { role = Role.RadioButton; stateDescription = if (on) "已选中" else "未选中" }.clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp))
 }
