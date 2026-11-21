@@ -133,9 +133,9 @@ fun FilterChipsRow(onOpen: () -> Unit, onClear: () -> Unit) {
             Text("筛选", color = if (AdvFilter.active) C.Accent else C.Text, fontSize = 13.sp, modifier = Modifier.padding(start = 6.dp))
         }
         AdvFilter.chips().forEach { c ->
-            Text(c, color = C.Text, fontSize = 13.sp, modifier = Modifier.padding(start = 8.dp).clip(RoundedCornerShape(12.dp)).background(C.Surface).clickable(onClick = onOpen).padding(horizontal = 12.dp, vertical = 7.dp))
+            Text(c, color = C.Text, fontSize = 13.sp, modifier = Modifier.padding(start = 8.dp).clip(RoundedCornerShape(12.dp)).background(C.Surface).clickable(role = Role.Button, onClick = onOpen).padding(horizontal = 12.dp, vertical = 7.dp))
         }
-        if (AdvFilter.active) Text("清除", color = C.Sub, fontSize = 13.sp, modifier = Modifier.padding(start = 8.dp).clip(RoundedCornerShape(12.dp)).clickable(onClick = onClear).padding(horizontal = 10.dp, vertical = 7.dp))
+        if (AdvFilter.active) Text("清除", color = C.Sub, fontSize = 13.sp, modifier = Modifier.padding(start = 8.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = onClear).padding(horizontal = 10.dp, vertical = 7.dp))
     }
 }
 
