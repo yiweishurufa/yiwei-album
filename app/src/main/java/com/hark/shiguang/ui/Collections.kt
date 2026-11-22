@@ -257,7 +257,7 @@ private fun MediaTypeGrid(dav: Boolean, media: List<MediaCategory>?) {
         btns.chunked(2).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 row.forEach { b ->
-                    Row(Modifier.weight(1f).heightIn(min = 52.dp).clip(RoundedCornerShape(C.Card)).background(C.Surface).clickable(onClick = b.open).padding(horizontal = 14.dp),
+                    Row(Modifier.weight(1f).heightIn(min = 52.dp).clip(RoundedCornerShape(C.Card)).background(C.Surface).clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = b.open).padding(horizontal = 14.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         Icon(b.icon, null, tint = C.Accent, modifier = Modifier.size(20.dp))
                         Text(b.label, color = C.Text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 10.dp))
