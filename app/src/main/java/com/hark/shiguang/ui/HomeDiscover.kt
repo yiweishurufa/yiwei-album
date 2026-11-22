@@ -7,6 +7,10 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -453,7 +457,8 @@ private fun RowHeader(title: String, trailing: String = "", action: String? = nu
 @OptIn(ExperimentalFoundationApi::class)
 private fun CoverCard(title: String, sub: String, cover: String?, small: Boolean = false, onLong: (() -> Unit)? = null, onClick: () -> Unit) {
     val w = if (small) 120.dp else 150.dp; val h = if (small) 120.dp else 180.dp
-    Box(Modifier.size(w, h).pressScale().skeuoPhoto().combinedClickable(onLongClick = onLong, onClick = onClick)) {
+    Box(Modifier.size(w, h).pressScale().skeuoPhoto().combinedClickable(onLongClick = onLong, onClick = onClick)
+        .semantics(mergeDescendants = true) { role = Role.Button; contentDescription = "$title，$sub" }) {
         NetImage(cover, Modifier.fillMaxSize())
         Box(Modifier.matchParentSize().background(C.Scrim))
         Column(Modifier.align(Alignment.BottomStart).padding(12.dp)) {
@@ -484,7 +489,7 @@ private fun InfoRow(icon: ImageVector, title: String, sub: String?, progress: Fl
 /** 发现页的入口行。用户 2026-10-23：去掉说明小字和不准确的「扫描」字样，右侧只放状态值（「14 组」「230 张」）。 */
 @Composable
 private fun ToolRow(icon: ImageVector, title: String, value: String? = null, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable(role = Role.Button, onClick = onClick).padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(32.dp).clip(RoundedCornerShape(9.dp)).background(C.Accent.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) { Icon(icon, null, tint = C.Accent, modifier = Modifier.size(18.dp)) }
         Spacer(Modifier.width(12.dp))
         Text(title, color = C.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
