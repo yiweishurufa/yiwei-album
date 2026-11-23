@@ -448,8 +448,8 @@ private fun RowHeader(title: String, trailing: String = "", action: String? = nu
         Text(title, color = C.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
         if (trailing.isNotEmpty()) Text(trailing, color = C.Sub, fontSize = 13.sp, modifier = Modifier.padding(start = 8.dp))
         Spacer(Modifier.weight(1f))
-        if (extra != null) Text(extra.first, color = C.Sub, fontSize = 13.sp, modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = extra.second).padding(horizontal = 8.dp, vertical = 4.dp))
-        if (action != null) Text(action, color = C.Accent, fontSize = 13.sp, modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onAction).padding(horizontal = 8.dp, vertical = 4.dp))
+        if (extra != null) Text(extra.first, color = C.Sub, fontSize = 13.sp, modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = extra.second).padding(horizontal = 8.dp, vertical = 4.dp))
+        if (action != null) Text(action, color = C.Accent, fontSize = 13.sp, modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onAction).padding(horizontal = 8.dp, vertical = 4.dp))
     }
 }
 
