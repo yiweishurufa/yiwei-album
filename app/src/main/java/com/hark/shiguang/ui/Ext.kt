@@ -230,7 +230,7 @@ private fun FnHiddenPersonsScreen() {
 
 @Composable
 private fun PersonListRow(img: String?, title: String, sub: String, onOpen: () -> Unit, onUnhide: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(horizontal = 18.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onOpen).padding(horizontal = 18.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(52.dp).clip(CircleShape).background(C.Surface2)) { NetImage(img, Modifier.fillMaxSize()) }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
@@ -238,6 +238,6 @@ private fun PersonListRow(img: String?, title: String, sub: String, onOpen: () -
             Text(sub, style = MaterialTheme.typography.bodySmall)
         }
         Text("取消隐藏", color = C.Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(C.Accent.copy(alpha = 0.12f)).clickable(onClick = onUnhide).padding(horizontal = 12.dp, vertical = 7.dp))
+            modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(C.Accent.copy(alpha = 0.12f)).clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onUnhide).padding(horizontal = 12.dp, vertical = 7.dp))
     }
 }

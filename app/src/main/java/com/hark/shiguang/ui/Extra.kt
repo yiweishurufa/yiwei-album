@@ -1,5 +1,6 @@
 package com.hark.shiguang.ui
 
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -125,7 +126,7 @@ fun DateFilterDialog(onDismiss: () -> Unit) {
 @Composable
 private fun Chip(t: String, on: Boolean, onClick: () -> Unit) {
     Text(t, fontSize = 13.sp, color = if (on) C.OnAccent else C.Text, modifier = Modifier.clip(RoundedCornerShape(14.dp)).background(if (on) C.Accent else C.Chip)
-        .clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 7.dp))
+        .selectable(selected = on, role = androidx.compose.ui.semantics.Role.RadioButton, onClick = onClick).padding(horizontal = 12.dp, vertical = 7.dp))
 }
 
 private fun openDate(y: Int, m: Int, d: Int) {
