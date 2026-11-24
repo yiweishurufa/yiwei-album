@@ -199,7 +199,7 @@ private fun MarkCards(lib: MusicLib) {
 
 @Composable
 private fun MarkCard(icon: ImageVector, title: String, count: Int, modifier: Modifier, onClick: () -> Unit) {
-    Row(modifier.height(56.dp).clip(RoundedCornerShape(14.dp)).background(C.Surface).clickable(onClick = onClick).padding(horizontal = 12.dp),
+    Row(modifier.height(56.dp).clip(RoundedCornerShape(14.dp)).background(C.Surface).clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick).padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(32.dp).clip(RoundedCornerShape(10.dp)).background(C.Accent.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
             Icon(icon, null, tint = C.Accent, modifier = Modifier.size(18.dp))
@@ -228,7 +228,7 @@ private fun SearchBox() {
 
 @Composable
 private fun PillButton(icon: ImageVector, text: String, modifier: Modifier = Modifier, primary: Boolean = false, onClick: () -> Unit) {
-    Row(modifier.height(42.dp).clip(RoundedCornerShape(14.dp)).background(if (primary) C.Accent else C.Surface).clickable(onClick = onClick),
+    Row(modifier.height(42.dp).clip(RoundedCornerShape(14.dp)).background(if (primary) C.Accent else C.Surface).clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick),
         horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, null, tint = if (primary) C.OnAccent else C.Text, modifier = Modifier.size(19.dp))
         Text(text, color = if (primary) C.OnAccent else C.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 6.dp))
@@ -311,7 +311,7 @@ private fun TrackRow(t: Track, sourceKey: String, showNo: Boolean = false, onCli
 
 @Composable
 private fun AlbumCard(g: MusicGroup, modifier: Modifier, onClick: () -> Unit) {
-    Column(modifier.clickable(onClick = onClick)) {
+    Column(modifier.clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)) {
         MusicArt(g.art, Modifier.fillMaxWidth().aspectRatio(1f), corner = 12.dp)
         Text(g.title, color = C.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 7.dp))
         Text(listOf(g.sub, fmtCount(g.count)).filter { it.isNotBlank() }.joinToString(" · "), color = C.Sub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -320,7 +320,7 @@ private fun AlbumCard(g: MusicGroup, modifier: Modifier, onClick: () -> Unit) {
 
 @Composable
 private fun GroupRow(g: MusicGroup, round: Boolean = false, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         if (g.kind == "folder") Box(Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).background(C.Surface2), contentAlignment = Alignment.Center) { Icon(LI.folder(), null, tint = C.Text, modifier = Modifier.size(22.dp)) }
         else MusicArt(g.art, Modifier.size(48.dp), corner = if (round) 24.dp else 8.dp)
         Column(Modifier.weight(1f).padding(start = 12.dp)) {
