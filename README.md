@@ -77,4 +77,9 @@ app/src/main/java/com/hark/shiguang/
 
 ## 许可
 
-待定。
+App 源码许可待定。随包使用的第三方资源：
+
+- 界面图标：[Kubai Icons](https://github.com/kubai087/kubai-icons)（icons-line），MIT License，Copyright (c) 2026 Kubai087 and the Kubai Icons contributors。许可原文：`app/src/main/assets/licenses/kubai-icons-MIT.txt`。
+- 数字字体：[Allo](https://github.com/joshpuckett/allo)（仅 ASCII 子集），SIL Open Font License 1.1，Copyright 2026 Josh Puckett；Copyright (c) 2016 The Inter Project Authors。许可原文：`app/src/main/assets/licenses/allo-OFL.txt`。
+
+设计规范见 `docs/DESIGN.md`。
