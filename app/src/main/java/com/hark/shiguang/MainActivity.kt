@@ -11,6 +11,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.*
 import androidx.compose.foundation.layout.fillMaxSize
@@ -253,9 +256,25 @@ class MainActivity : ComponentActivity() {
                 // Home always stays composed underneath so scroll position survives.
                 val home = Nav.stack.firstOrNull() == Route.Home
                 if (home) HomeScreen()
+                // 1.6.0 转场（docs/DESIGN.md §7）：普通页面走共享 X 轴（进栈从右侧 28dp 滑入 + 淡入，出栈反向）；
+                // 大图 / 播放器用放大淡入；系统「移除动画」时只做 90ms 淡入淡出。
+                val depth = Nav.stack.size
+                val prevDepth = remember { mutableIntStateOf(depth) }
+                val forward = depth >= prevDepth.intValue
+                SideEffect { prevDepth.intValue = depth }
+                val shift = with(androidx.compose.ui.platform.LocalDensity.current) { Motion.PAGE_SHIFT.roundToPx() }
                 AnimatedContent(
                     targetState = entry,
-                    transitionSpec = { (fadeIn(tween(220)) + scaleIn(tween(220), initialScale = 0.97f)) togetherWith fadeOut(tween(160)) },
+                    transitionSpec = {
+                        val media = { r: Route -> r is Route.Viewer || r is Route.MoviePlay }
+                        when {
+                            Motion.reduced -> fadeIn(Motion.enter()) togetherWith fadeOut(Motion.exit())
+                            media(targetState.route) -> (fadeIn(Motion.enter()) + scaleIn(Motion.zoom(), initialScale = 0.94f)) togetherWith fadeOut(Motion.exit())
+                            media(initialState.route) -> fadeIn(Motion.enter()) togetherWith (fadeOut(Motion.exit()) + scaleOut(Motion.exit(), targetScale = 0.96f))
+                            else -> (slideInHorizontally(Motion.page()) { if (forward) shift else -shift } + fadeIn(Motion.enter())) togetherWith
+                                (slideOutHorizontally(Motion.page()) { if (forward) -shift / 2 else shift / 2 } + fadeOut(Motion.exit()))
+                        }
+                    },
                     label = "nav",
                 ) { e ->
                     val r = e.route
