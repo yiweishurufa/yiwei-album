@@ -101,7 +101,7 @@ fun buildEntriesBy(photos: List<Photo>, level: Level, grouped: Boolean): List<En
 @Composable
 fun SelectableThumb(p: Photo, corner: Dp, onOpen: () -> Unit, small: Boolean = false) {
     val sel = Selection.active && Selection.has(p)
-    val s by animateFloatAsState(if (sel) 0.86f else 1f, label = "sel")
+    val s by animateFloatAsState(if (sel) 0.92f else 1f, Motion.state(), label = "sel")
     Box(
         Modifier.aspectRatio(1f).onGloballyPositioned { Hero.bounds[p.key] = it.boundsInRoot() }
     ) {
@@ -112,9 +112,10 @@ fun SelectableThumb(p: Photo, corner: Dp, onOpen: () -> Unit, small: Boolean = f
             }
         }
         if (Selection.active) {
+            val ringBg by androidx.compose.animation.animateColorAsState(if (sel) C.Accent else Color(0x33000000), Motion.state(), label = "ring")
             Box(
                 Modifier.align(Alignment.TopEnd).padding(6.dp).size(22.dp).clip(CircleShape)
-                    .background(if (sel) C.Accent else Color(0x33000000))
+                    .background(ringBg)
                     .border(1.5.dp, Color.White, CircleShape),
                 contentAlignment = Alignment.Center
             ) { if (sel) Icon(Icons.Rounded.Check, null, tint = C.OnAccent, modifier = Modifier.size(15.dp)) }
