@@ -127,13 +127,13 @@ private fun FilterRow(options: List<String>, selected: String, allLabel: String,
 private fun FilterChipText(t: String, on: Boolean, bold: Boolean = false, onClick: () -> Unit) {
     Text(t, color = if (on) C.Accent else C.Text, fontSize = 15.sp, fontWeight = if (on || bold) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1,
         modifier = Modifier.heightIn(min = 40.dp).clip(RoundedCornerShape(20.dp)).background(if (on) C.Accent.copy(alpha = 0.14f) else Color.Transparent)
-            .clickable(onClick = onClick).padding(horizontal = 14.dp).wrapContentHeight(Alignment.CenterVertically))
+            .clickable(role = androidx.compose.ui.semantics.Role.RadioButton, onClick = onClick).padding(horizontal = 14.dp).wrapContentHeight(Alignment.CenterVertically))
 }
 
 /** 搜索结果海报：左上角类型角标，右下角评分，下面片名 + 「共 N 季」/ 年份。 */
 @Composable
 private fun SearchPoster(m: MovieItem, onClick: () -> Unit) {
-    Column(Modifier.clickable(onClick = onClick)) {
+    Column(Modifier.clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)) {
         Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp)).background(C.Surface2)) {
             if (m.poster != null) NetImage(posterModel(m.poster), Modifier.fillMaxSize())
             else Text(m.title, color = C.Sub, fontSize = 12.sp, textAlign = TextAlign.Center, maxLines = 3, overflow = TextOverflow.Ellipsis,

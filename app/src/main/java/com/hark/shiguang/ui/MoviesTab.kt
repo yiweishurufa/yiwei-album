@@ -227,7 +227,7 @@ fun autoScanIfStale(storeKey: String, hasDirs: Boolean, scanning: Boolean, onSca
 @Composable
 fun GhostButton(t: String, enabled: Boolean = true, onClick: () -> Unit) {
     Text(t, color = C.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1,
-        modifier = Modifier.height(48.dp).clip(RoundedCornerShape(14.dp)).background(C.Surface).clickable(enabled = enabled, onClick = onClick).padding(horizontal = 16.dp).wrapContentHeight(Alignment.CenterVertically))
+        modifier = Modifier.height(48.dp).clip(RoundedCornerShape(14.dp)).background(C.Surface).clickable(enabled = enabled, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick).padding(horizontal = 16.dp).wrapContentHeight(Alignment.CenterVertically))
 }
 
 /** Settings-page scan row: one manual “立即扫描” + the lib's own “redo” action ([onRedo]). */
