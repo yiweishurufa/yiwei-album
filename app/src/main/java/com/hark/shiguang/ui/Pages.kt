@@ -38,6 +38,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.unit.sp
 import com.hark.shiguang.*
 import com.hark.shiguang.cloud.*
@@ -49,11 +50,12 @@ import kotlinx.coroutines.launch
 @Composable
 fun PageTop(title: String, sub: String = "", actions: @Composable RowScope.() -> Unit = {}) {
     Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        RoundIcon(Icons.Rounded.ArrowBackIosNew, size = 40.dp, desc = "返回") { Selection.clear(); Nav.pop() }
+        // 1.6.0 二级页顶栏：44dp 返回圆钮（Kubai chevron-left）+ 标题 headlineSmall；标题是读屏「标题」
+        RoundIcon(KI.back(), size = 44.dp, desc = "返回") { Selection.clear(); Nav.pop() }
         Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
+        Column(Modifier.weight(1f).semantics(mergeDescendants = true) { heading() }) {
             Text(title, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall.merge(Type.num), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically, content = actions)
     }
@@ -72,9 +74,7 @@ private fun Loading() = Box(Modifier.fillMaxSize(), contentAlignment = Alignment
 
 @Composable
 private fun Pill(text: String, on: Boolean = false, onClick: () -> Unit) {
-    Box(
-        Modifier.clip(RoundedCornerShape(18.dp)).background(if (on) C.Accent else C.Chip).clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 8.dp)
-    ) { Text(text, color = if (on) C.OnAccent else C.Text, fontSize = 13.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal) }
+    ChoiceChip(text, on, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
 }
 
 @Composable

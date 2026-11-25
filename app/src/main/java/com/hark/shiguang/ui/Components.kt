@@ -23,6 +23,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -44,6 +45,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import coil.request.ImageRequest
 import com.hark.shiguang.data.Photo
 import java.time.LocalDate
@@ -52,10 +54,12 @@ import java.util.Locale
 
 @Composable
 fun shimmerBrush(): Brush {
+    // loading-states：骨架只在首屏用；「移除动画」时不扫光，只给静态底色
+    if (Motion.reduced) return androidx.compose.ui.graphics.SolidColor(C.Surface)
     val t = rememberInfiniteTransition(label = "s")
-    val x by t.animateFloat(0f, 1400f, infiniteRepeatable(tween(1300, easing = LinearEasing), RepeatMode.Restart), label = "x")
+    val x by t.animateFloat(0f, 1400f, infiniteRepeatable(tween(1600, easing = LinearEasing), RepeatMode.Restart), label = "x")
     return Brush.linearGradient(
-        listOf(C.Surface, C.Surface2, C.Surface), start = Offset(x - 400f, 0f), end = Offset(x, 400f)
+        listOf(C.Surface, androidx.compose.ui.graphics.lerp(C.Surface, C.Surface2, 0.7f), C.Surface), start = Offset(x - 400f, 0f), end = Offset(x, 400f)
     )
 }
 
@@ -95,7 +99,7 @@ fun Thumb(p: Photo, corner: Dp, small: Boolean = false, onClick: () -> Unit) {
         if (!small) Row(Modifier.align(Alignment.BottomEnd).padding(5.dp), verticalAlignment = Alignment.CenterVertically) {
             if (p.isVideo) {
                 Icon(Icons.Rounded.PlayArrow, null, tint = Color.White, modifier = Modifier.size(14.dp))
-                if (p.duration > 0) Text(fmtDuration(p.duration), color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                if (p.duration > 0) Text(fmtDuration(p.duration), color = Color.White, style = Type.badge)
             } else if (p.isLive) {
                 Icon(Icons.Rounded.MotionPhotosOn, null, tint = Color.White, modifier = Modifier.size(14.dp))
             }
@@ -160,17 +164,15 @@ fun SkeletonGrid(columns: Int, top: Dp) {
 
 @Composable
 fun StateMessage(icon: ImageVector, title: String, sub: String, action: String? = null, action2: String? = null, onAction2: (() -> Unit)? = null, onAction: (() -> Unit)? = null) {
-    Column(Modifier.fillMaxSize().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Box(Modifier.size(84.dp).clip(CircleShape).background(C.Accent.copy(alpha = 0.10f)), contentAlignment = Alignment.Center) {
-            Icon(icon, null, tint = C.Accent, modifier = Modifier.size(36.dp))
-        }
-        Spacer(Modifier.height(18.dp))
-        Text(title, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(6.dp))
-        if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center, modifier = Modifier.widthIn(max = 300.dp))
+    // 1.6.0 空状态：不再是「彩色圆底 + 图标」的模板，只留一个安静的大线性图标 + 标题 + 一句话 + 一个主操作（unslop §3、craft-floor）
+    Column(Modifier.fillMaxSize().padding(horizontal = 40.dp, vertical = Space.xxl), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Icon(icon, null, tint = C.Faint, modifier = Modifier.size(44.dp))
+        Spacer(Modifier.height(Space.l))
+        Text(title, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
+        if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodyMedium, color = C.Sub, textAlign = TextAlign.Center, modifier = Modifier.padding(top = Space.s).widthIn(max = 300.dp))
         if (action != null && onAction != null) {
-            Spacer(Modifier.height(20.dp))
-            GradientButton(action, Modifier.width(160.dp), onClick = onAction)
+            Spacer(Modifier.height(Space.xl))
+            GradientButton(action, Modifier.widthIn(min = 160.dp), onClick = onAction)
         }
         if (action2 != null && onAction2 != null) TextButton(onClick = onAction2, modifier = Modifier.padding(top = 6.dp)) { Text(action2, color = C.Accent) }
     }
@@ -197,18 +199,16 @@ fun ErrorState(message: String?, onRetry: () -> Unit, onFix: ((com.hark.shiguang
         com.hark.shiguang.ErrorKind.NOT_FOUND -> Icons.Rounded.FolderOff
         com.hark.shiguang.ErrorKind.OTHER -> Icons.Rounded.ErrorOutline
     }
-    Column(Modifier.fillMaxSize().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Box(Modifier.size(84.dp).clip(CircleShape).background((if (k == com.hark.shiguang.ErrorKind.OTHER || k == com.hark.shiguang.ErrorKind.NETWORK) C.Accent else C.Danger).copy(alpha = 0.10f)), contentAlignment = Alignment.Center) {
-            Icon(icon, null, tint = if (k == com.hark.shiguang.ErrorKind.OTHER || k == com.hark.shiguang.ErrorKind.NETWORK) C.Accent else C.Danger, modifier = Modifier.size(36.dp))
-        }
-        Spacer(Modifier.height(Space.l + 2.dp))
-        Text(k.title, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(6.dp))
-        Text(k.hint, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center, modifier = Modifier.widthIn(max = 300.dp))
+    Column(Modifier.fillMaxSize().padding(horizontal = 40.dp, vertical = Space.xxl), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        // 网络 / 其它错误用中性色（多半能重试）；密码、证书、空间这类要用户处理的用错误色
+        Icon(icon, null, tint = if (k == com.hark.shiguang.ErrorKind.OTHER || k == com.hark.shiguang.ErrorKind.NETWORK) C.Faint else C.Danger, modifier = Modifier.size(44.dp))
+        Spacer(Modifier.height(Space.l))
+        Text(k.title, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
+        Text(k.hint, style = MaterialTheme.typography.bodyMedium, color = C.Sub, textAlign = TextAlign.Center, modifier = Modifier.padding(top = Space.s).widthIn(max = 300.dp))
         if (!message.isNullOrBlank() && message != k.title) Text(message, color = C.Faint, fontSize = TextSize.caption, textAlign = TextAlign.Center, maxLines = 3,
             overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = Space.s).widthIn(max = 300.dp))
-        Spacer(Modifier.height(Space.l + 4.dp))
-        GradientButton(k.action, Modifier.width(180.dp)) {
+        Spacer(Modifier.height(Space.xl))
+        GradientButton(k.action, Modifier.widthIn(min = 160.dp)) {
             when {
                 k == com.hark.shiguang.ErrorKind.NETWORK || k == com.hark.shiguang.ErrorKind.OTHER -> onRetry()
                 onFix != null -> onFix(k)
@@ -223,29 +223,60 @@ fun ErrorState(message: String?, onRetry: () -> Unit, onFix: ((com.hark.shiguang
     }
 }
 
+/**
+ * 主按钮（一屏最多一个）。1.6.0：实心强调色、14dp 圆角、按下缩到 0.97（[skeuoPressable]），质感风格下阴影变浅。
+ * 名字沿用 GradientButton 以免改动 40 多处调用；表面已经不是渐变。
+ */
 @Composable
 fun GradientButton(text: String, modifier: Modifier = Modifier, loading: Boolean = false, onClick: () -> Unit) {
-    // 用户 2026-10-23 拟物：凸起的渐变按钮，按下变内凹（Skeuo.kt）；简洁风格时仍是纯色
     val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
     Box(
-        modifier.height(52.dp).skeuoPressable(interaction, RoundedCornerShape(16.dp), C.Accent)
-            .clickable(interaction, androidx.compose.foundation.LocalIndication.current, enabled = !loading, onClick = onClick),
+        modifier.heightIn(min = 50.dp).skeuoPressable(interaction, RoundedCornerShape(Radius.m), C.Accent)
+            .clickable(interaction, null, enabled = !loading, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
+            .padding(horizontal = Space.xl),
         contentAlignment = Alignment.Center
     ) {
-        if (loading) CircularProgressIndicator(Modifier.size(22.dp), color = C.OnAccent, strokeWidth = 2.5.dp)
-        else Text(text, color = C.OnAccent, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        if (loading) CircularProgressIndicator(Modifier.size(22.dp), color = C.OnAccent, strokeWidth = 2.dp)
+        else Text(text, color = C.OnAccent, style = MaterialTheme.typography.labelLarge, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+    }
+}
+
+/** 次要按钮：中性底 + 正文色，和主按钮同高同圆角、同样的按压缩放。 */
+@Composable
+fun SecondaryButton(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    Box(
+        modifier.heightIn(min = 50.dp).skeuoPressable(interaction, RoundedCornerShape(Radius.m), if (Skeuo.on) C.Surface else C.Surface2)
+            .clickable(interaction, null, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
+            .padding(horizontal = Space.xl),
+        contentAlignment = Alignment.Center
+    ) { Text(text, color = C.Text, style = MaterialTheme.typography.labelLarge, fontSize = 16.sp, maxLines = 1) }
+}
+
+/**
+ * 选择胶囊（筛选、分类）。选中 = 强调色 14% 浅底 + 强调色文字（不用实心色块抢照片）；32dp 高，触摸区补到 48dp。
+ */
+@Composable
+fun ChoiceChip(text: String, selected: Boolean, modifier: Modifier = Modifier, role: androidx.compose.ui.semantics.Role = androidx.compose.ui.semantics.Role.Tab, onClick: () -> Unit) {
+    val view = androidx.compose.ui.platform.LocalView.current
+    val bg by androidx.compose.animation.animateColorAsState(if (selected) C.AccentSoft else C.Chip, Motion.state(), label = "chipBg")
+    val fg by androidx.compose.animation.animateColorAsState(if (selected) C.Accent else C.Sub, Motion.state(), label = "chipFg")
+    Box(modifier.minimumInteractiveComponentSize().pressScale().clip(RoundedCornerShape(Radius.s + 6.dp)).background(bg)
+        .clickable(role = role) { if (!selected) Haptics.tick(view); onClick() }.semantics { this.selected = selected }
+        .heightIn(min = 32.dp).padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
+        Text(text, color = fg, style = MaterialTheme.typography.labelLarge, fontSize = 13.sp, fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal, maxLines = 1)
     }
 }
 
 @Composable
 fun RoundIcon(icon: ImageVector, modifier: Modifier = Modifier, tint: Color = C.Text, bg: Color = C.Chip, size: Dp = 40.dp, desc: String? = null, onClick: () -> Unit) {
     // 顶栏的圆形按钮：拟物时是凸起的小圆钮（按下内凹），只在页面的默认底色上这样画；调用方给了别的底色（例如照片上的半透明黑）就保持原样
+    // 1.6.0：两种风格都按下缩放；质感风格是浮起的小圆钮，简洁风格是中性浅底。照片上的半透明黑底保持原样（只缩放）
     val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-    val skeuo = Skeuo.on && bg == C.Chip
+    val base = if (bg != C.Chip) bg else if (Skeuo.on) C.Surface else C.Chip
     Box(
-        (if (skeuo) modifier.size(size).skeuoPressable(interaction, CircleShape, C.Surface)
-        else modifier.size(size).clip(CircleShape).background(bg).border(0.5.dp, C.Line, CircleShape))
-            .clickable(interaction, androidx.compose.foundation.LocalIndication.current, onClick = onClick)
+        modifier.size(size).skeuoPressable(interaction, CircleShape, base, scale = 0.92f, flat = bg != C.Chip || !Skeuo.on)
+            .clickable(interaction, null, onClick = onClick)
             .then(if (desc != null) Modifier.semantics { contentDescription = desc; role = androidx.compose.ui.semantics.Role.Button } else Modifier),
         contentAlignment = Alignment.Center
     ) { Icon(icon, null, tint = tint, modifier = Modifier.size(size * 0.5f)) }
@@ -292,10 +323,10 @@ fun ScanProgressCard(
     modifier: Modifier = Modifier,
     onRetry: (() -> Unit)? = null,
 ) {
-    Column(modifier.fillMaxWidth().skeuoCard(RoundedCornerShape(14.dp)).padding(horizontal = 14.dp, vertical = 12.dp)) {
+    Column(modifier.fillMaxWidth().skeuoCard(RoundedCornerShape(Radius.m)).padding(horizontal = Space.l, vertical = Space.m)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(title, color = C.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (countText != null) Text(countText, color = C.Sub, fontSize = 12.sp)
+            if (countText != null) Text(countText, color = C.Sub, fontSize = 12.sp, style = Type.num)
         }
         if (error != null && !scanning) Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))

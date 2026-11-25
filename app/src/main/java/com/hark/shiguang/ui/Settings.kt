@@ -23,6 +23,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -88,14 +95,18 @@ fun SettingsScreen() {
             Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 12.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("界面风格", color = C.Text, fontSize = 15.sp, modifier = Modifier.weight(1f))
             }
-            FillSegmented(listOf("拟物", "简洁"), if (ThemeState.skeuo) 0 else 1) { ThemeState.pickStyle(it == 0) }
+            FillSegmented(listOf("质感", "简洁"), if (ThemeState.skeuo) 0 else 1) { ThemeState.pickStyle(it == 0) }
             Div()
             Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("强调色", color = C.Text, fontSize = 15.sp, modifier = Modifier.weight(1f))
                 Accents.forEachIndexed { i, a ->
                     val on = ThemeState.accent == i
-                    Box(Modifier.padding(start = 10.dp).size(26.dp).clip(CircleShape).border(if (on) 2.dp else 0.dp, if (on) C.Text else Color.Transparent, CircleShape)
-                        .padding(if (on) 4.dp else 0.dp).clip(CircleShape).background(a.color).clickable { ThemeState.pickAccent(i) })
+                    // 色块显示当前主题下真正会用到的那一档；48dp 触摸区，读屏读「蓝色，已选中」
+                    Box(Modifier.size(38.dp).clip(CircleShape).selectable(on, role = androidx.compose.ui.semantics.Role.RadioButton) { ThemeState.pickAccent(i) }
+                        .semantics { contentDescription = a.name + "色" }, contentAlignment = Alignment.Center) {
+                        Box(Modifier.size(26.dp).clip(CircleShape).border(if (on) 2.dp else 0.dp, if (on) C.Text else Color.Transparent, CircleShape)
+                            .padding(if (on) 4.dp else 0.dp).clip(CircleShape).background(if (C.P.dark) a.color else a.soft))
+                    }
                 }
             }
             Div()
@@ -175,6 +186,14 @@ fun SettingsScreen() {
             }
             Div()
             NavRow(LI.sparkle(), "使用引导") { Onboarding.open(0) }
+            Div()
+            // 1.6.0：第三方图标 / 字体的许可（Kubai Icons MIT 要求附版权声明；Allo 是 SIL OFL 1.1）
+            var licOpen by remember { mutableStateOf(false) }
+            NavRow(LI.info(), "开源许可") { licOpen = true }
+            if (licOpen) AlertDialog(onDismissRequest = { licOpen = false }, containerColor = C.Surface,
+                title = { Text("开源许可", style = MaterialTheme.typography.titleLarge) },
+                text = { Text(OPEN_SOURCE_NOTICE, color = C.Sub, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) },
+                confirmButton = { TextButton(onClick = { licOpen = false }) { Text("知道了", color = C.Accent) } })
             Div()
             NavRow(Icons.Rounded.MailOutline, "反馈与帮助") { helpOpen = true }
             Div()
@@ -275,31 +294,31 @@ fun DavFolderSelectDialog(initial: List<String>, onDismiss: () -> Unit, onSave: 
 /** Settings group label (small grey text). Deliberately NOT [SectionTitle]: that one is a titleMedium row with a trailing count for content lists — merging them would restyle every Settings section. */
 @Composable
 fun Section(t: String, info: String? = null) {
-    Row(Modifier.padding(start = 22.dp, end = 12.dp, top = 24.dp, bottom = if (info == null) 8.dp else 2.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(t, color = C.Sub, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+    // 1.6.0：分组标题与卡片内文字左对齐（16 页边距 + 16 卡片内边距），上 28 下 8：离自己的组近、离上一组远
+    Row(Modifier.semantics { heading() }.padding(start = 32.dp, end = 12.dp, top = 28.dp, bottom = if (info == null) 8.dp else 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(t, color = C.Sub, style = MaterialTheme.typography.labelLarge, fontSize = 13.sp)
         if (info != null) InfoDot(info, t)
     }
 }
 
-/** 卡片里的细分隔线。拟物时是「刻线」：一道暗线下面跟一道高光线，像压在纸上的折痕。 */
+/** 卡片里的发丝分隔线，从行标题的起点开始（图标列不画线）。 */
 @Composable
 fun Div() {
-    if (!Skeuo.on) HorizontalDivider(color = C.Line, thickness = 0.6.dp, modifier = Modifier.padding(start = 64.dp))
-    else Column(Modifier.padding(start = 64.dp)) {
-        HorizontalDivider(color = C.Line, thickness = 0.6.dp)
-        HorizontalDivider(color = Skeuo.highlight.copy(alpha = Skeuo.highlight.alpha * 0.7f), thickness = 0.6.dp)
-    }
+    HorizontalDivider(color = C.Line, thickness = 0.5.dp, modifier = Modifier.padding(start = 60.dp))
 }
 
 /** 撑满一行的分段控件（主题、界面风格）：拟物时是内凹的槽 + 凸起的选中块。 */
 @Composable
 fun FillSegmented(items: List<String>, sel: Int, onPick: (Int) -> Unit) {
-    Row(Modifier.padding(12.dp).fillMaxWidth().skeuoInset(RoundedCornerShape(12.dp)).padding(3.dp)) {
+    val view = androidx.compose.ui.platform.LocalView.current
+    Row(Modifier.padding(12.dp).fillMaxWidth().skeuoInset(RoundedCornerShape(Radius.m)).padding(3.dp)) {
         items.forEachIndexed { i, t ->
             val on = i == sel
-            Box(Modifier.weight(1f).then(if (on) Modifier.skeuoPressed(false, RoundedCornerShape(10.dp), C.Surface, Elevation.pressed + 1.dp) else Modifier.clip(RoundedCornerShape(10.dp)))
-                .clickable { onPick(i) }.padding(vertical = 9.dp), contentAlignment = Alignment.Center) {
-                Text(t, color = if (on) C.Text else C.Sub, fontSize = 14.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal)
+            val fg by androidx.compose.animation.animateColorAsState(if (on) C.Text else C.Sub, Motion.state(), label = "segFg")
+            Box(Modifier.weight(1f).then(if (on) Modifier.skeuoPressed(false, RoundedCornerShape(Radius.m - 3.dp), if (Skeuo.on) C.Surface else C.Bg, Elevation.pressed) else Modifier.clip(RoundedCornerShape(Radius.m - 3.dp)))
+                .clickable(role = androidx.compose.ui.semantics.Role.Tab) { if (!on) Haptics.tick(view); onPick(i) }.semantics { selected = on }
+                .heightIn(min = 40.dp).padding(vertical = 9.dp), contentAlignment = Alignment.Center) {
+                Text(t, color = fg, style = MaterialTheme.typography.labelLarge, fontWeight = if (on) FontWeight.Medium else FontWeight.Normal)
             }
         }
     }
@@ -327,18 +346,18 @@ fun InfoDot(text: String, title: String = "说明") {
 @Composable
 fun NavRow(icon: ImageVector, title: String, sub: String? = null, danger: Boolean = false, value: String? = null, alert: Boolean = false,
            info: String? = null, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().heightIn(min = Space.row).clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         RowIcon(icon, danger)
-        Spacer(Modifier.width(14.dp))
+        Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(title, color = if (danger) C.Danger else C.Text, fontSize = 15.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                Text(title, color = if (danger) C.Danger else C.Text, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                 if (info != null) InfoDot(info, title)
             }
             if (!sub.isNullOrEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall, color = if (alert) C.Danger else C.Sub, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
-        if (!value.isNullOrEmpty()) Text(value, color = C.Sub, fontSize = 13.sp, maxLines = 1, modifier = Modifier.padding(start = 10.dp).widthIn(max = 150.dp), overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-        if (!danger) Icon(LI.chevron(), null, tint = C.Faint, modifier = Modifier.padding(start = 4.dp).size(18.dp))
+        if (!value.isNullOrEmpty()) Text(value, color = C.Sub, style = MaterialTheme.typography.bodyMedium.merge(Type.num), maxLines = 1, modifier = Modifier.padding(start = 10.dp).widthIn(max = 150.dp), overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        if (!danger) Icon(KI.chevron(), null, tint = C.Faint, modifier = Modifier.padding(start = 4.dp).size(18.dp))
     }
 }
 
@@ -346,30 +365,34 @@ fun NavRow(icon: ImageVector, title: String, sub: String? = null, danger: Boolea
 @Composable
 fun ToggleRow(icon: ImageVector, title: String, sub: String? = null, on: Boolean, enabled: Boolean = true, alert: Boolean = false, info: String? = null,
               onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable(enabled = enabled) { onChange(!on) }.padding(horizontal = 16.dp, vertical = 9.dp)
+    val view = androidx.compose.ui.platform.LocalView.current
+    // 整行就是一个开关（读屏读「标题，开关，已开启」），点哪里都能切
+    Row(Modifier.fillMaxWidth().heightIn(min = Space.row)
+        .toggleable(on, enabled = enabled, role = androidx.compose.ui.semantics.Role.Switch) { Haptics.toggle(view, it); onChange(it) }
+        .padding(horizontal = 16.dp, vertical = 9.dp)
         .then(if (enabled) Modifier else Modifier.alpha(0.5f)), verticalAlignment = Alignment.CenterVertically) {
         RowIcon(icon, false)
-        Spacer(Modifier.width(14.dp))
+        Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(title, color = C.Text, fontSize = 15.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                Text(title, color = C.Text, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                 if (info != null) InfoDot(info, title)
             }
             if (!sub.isNullOrEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall, color = if (alert) C.Danger else C.Sub, maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(top = 1.dp))
         }
         Spacer(Modifier.width(10.dp))
-        SkeuoSwitch(on, enabled, onChange)
+        // 开关本身不再单独接收点击（整行已是 toggleable），避免读屏读两遍
+        Box(Modifier.clearAndSetSemantics {}) { SkeuoSwitch(on, enabled) { Haptics.toggle(view, it); onChange(it) } }
     }
 }
 
 /** 设置行左侧的小图标底。 */
 @Composable
 internal fun RowIcon(icon: ImageVector, danger: Boolean) {
-    // 拟物：小图标底是微凹的槽，图标用次要色、线条细，颜色克制
-    Box(Modifier.size(32.dp).then(if (danger) Modifier.clip(RoundedCornerShape(9.dp)).background(C.Danger.copy(alpha = 0.12f)) else Modifier.skeuoInset(RoundedCornerShape(9.dp))),
-        contentAlignment = Alignment.Center) {
-        Icon(icon, null, tint = if (danger) C.Danger else if (Skeuo.on) C.Sub else C.Text, modifier = Modifier.size(18.dp))
+    // 1.6.0：图标跟随文字角色的颜色（次要色），不再放进小方块；固定 32dp 宽的一列，标题起点对齐（unslop §3）
+    Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) {
+        Icon(icon, null, tint = if (danger) C.Danger else C.Sub, modifier = Modifier.size(22.dp))
     }
 }
 
@@ -384,16 +407,17 @@ fun SkeuoSwitch(on: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Uni
 fun InputRow(label: String, value: String, hint: String, onChange: (String) -> Unit) {
     Column(Modifier.padding(horizontal = 16.dp, vertical = 5.dp)) {
         Text(label, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = 2.dp, bottom = 6.dp))
-        Box(Modifier.fillMaxWidth().height(48.dp).skeuoInset(RoundedCornerShape(14.dp)).padding(horizontal = 14.dp), contentAlignment = Alignment.CenterStart) {
-            if (value.isEmpty()) Text(hint, color = C.Faint, fontSize = 14.sp)
-            BasicTextField(value, onChange, singleLine = true, textStyle = MaterialTheme.typography.bodyMedium.copy(color = C.Text, fontSize = 15.sp), cursorBrush = SolidColor(C.Accent), modifier = Modifier.fillMaxWidth())
+        Box(Modifier.fillMaxWidth().height(50.dp).skeuoInset(RoundedCornerShape(Radius.m)).padding(horizontal = 14.dp), contentAlignment = Alignment.CenterStart) {
+            // 提示文字用次要色（≥ 4.5:1，craft-floor：占位文字也要达标），不用 faint
+            if (value.isEmpty()) Text(hint, color = C.Sub, style = MaterialTheme.typography.bodyLarge)
+            BasicTextField(value, onChange, singleLine = true, textStyle = MaterialTheme.typography.bodyLarge.copy(color = C.Text), cursorBrush = SolidColor(C.Accent), modifier = Modifier.fillMaxWidth())
         }
     }
 }
 
 @Composable
 fun Card(content: @Composable ColumnScope.() -> Unit) {
-    Column(Modifier.padding(horizontal = 16.dp).fillMaxWidth().skeuoCard(), content = content)
+    Column(Modifier.padding(horizontal = 16.dp).fillMaxWidth().skeuoCard(RoundedCornerShape(Radius.l)), content = content)
 }
 
 @Composable
@@ -571,3 +595,15 @@ private fun sizeLabel(bytes: Long): String = when {
 private fun clearableCacheSize(dir: java.io.File): Long =
     dir.listFiles()?.filter { it.name != "diag" && it.name != "update" && !it.name.startsWith("crash") }
         ?.sumOf { c -> if (c.isFile) c.length() else c.walkTopDown().filter { it.isFile }.sumOf { it.length() } } ?: 0L
+
+/** 设置 → 通用 → 开源许可。完整许可原文随包附在 assets/licenses/。 */
+internal const val OPEN_SOURCE_NOTICE = """界面图标：Kubai Icons（icons-line）
+Copyright (c) 2026 Kubai087 and the Kubai Icons contributors
+MIT License — https://github.com/kubai087/kubai-icons
+
+数字字体：Allo（仅数字与英文字母子集）
+Copyright 2026 Josh Puckett；Copyright (c) 2016 The Inter Project Authors
+SIL Open Font License 1.1 — https://github.com/joshpuckett/allo
+
+播放：AndroidX Media3（Apache 2.0）、Jellyfin FFmpeg 解码扩展（LGPL 2.1+）
+图片：Coil（Apache 2.0）；网络：OkHttp（Apache 2.0）；地图：osmdroid（Apache 2.0）"""

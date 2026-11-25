@@ -160,13 +160,15 @@ fun MediaHeader(title: String, search: SearchScope, scanning: Boolean, hasDirs: 
 
 @Composable
 fun Segmented(items: List<String>, sel: Int, onPick: (Int) -> Unit) {
-    // 用户 2026-10-23 拟物：内凹的槽 + 凸起的选中块（简洁风格时外观同以前）
-    Row(Modifier.skeuoInset(RoundedCornerShape(12.dp), if (Skeuo.on) C.Surface2 else C.Surface).padding(3.dp)) {
+    // 1.6.0 分段控件：内凹的槽 + 浮起的选中块（质感）/ 中性槽 + 页面底色块（简洁）；切换时文字颜色渐变、轻震
+    val view = androidx.compose.ui.platform.LocalView.current
+    Row(Modifier.skeuoInset(RoundedCornerShape(Radius.s + 2.dp), if (Skeuo.on) C.Surface2 else C.Chip).padding(3.dp)) {
         items.forEachIndexed { i, t ->
             val on = i == sel
-            Text(t, color = if (on) C.Text else C.Sub, fontSize = 14.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
-                modifier = Modifier.then(if (on) Modifier.skeuoPressed(false, RoundedCornerShape(9.dp), if (Skeuo.on) C.Surface else C.Surface2, Elevation.pressed + 1.dp)
-                    else Modifier.clip(RoundedCornerShape(9.dp))).clickable(role = androidx.compose.ui.semantics.Role.Tab) { onPick(i) }.semantics { selected = on }.padding(horizontal = 16.dp, vertical = 7.dp))
+            val fg by androidx.compose.animation.animateColorAsState(if (on) C.Text else C.Sub, Motion.state(), label = "segFg")
+            Text(t, color = fg, style = MaterialTheme.typography.labelLarge, fontWeight = if (on) FontWeight.Medium else FontWeight.Normal,
+                modifier = Modifier.then(if (on) Modifier.skeuoPressed(false, RoundedCornerShape(Radius.s - 1.dp), if (Skeuo.on) C.Surface else C.Bg, Elevation.pressed)
+                    else Modifier.clip(RoundedCornerShape(Radius.s - 1.dp))).clickable(role = androidx.compose.ui.semantics.Role.Tab) { if (!on) Haptics.tick(view); onPick(i) }.semantics { selected = on }.padding(horizontal = 16.dp, vertical = 7.dp))
         }
     }
 }

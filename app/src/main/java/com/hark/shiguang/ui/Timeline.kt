@@ -251,11 +251,12 @@ private fun DateHeader(e: Entry.Header, entries: List<Entry>, i: Int, onClick: (
     }
     val allSel = Selection.active && inGroup.isNotEmpty() && inGroup.all { Selection.has(it) }
     Row(
-        Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 22.dp, bottom = 8.dp)
+        Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 24.dp, bottom = 8.dp)
             .pointerInput(onClick) { detectTapGestures { if (onClick != null) onClick(e) } },
         verticalAlignment = Alignment.Bottom
     ) {
-        Text(e.title, style = MaterialTheme.typography.titleMedium, fontSize = 17.sp, fontFamily = C.P.display, fontWeight = FontWeight.Bold)
+        // 1.6.0：日期标题 17sp SemiBold，数字 Allo 等宽；副标题（星期 · 地点）次要色
+        Text(e.title, style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp, fontFamily = C.P.display, fontWeight = FontWeight.SemiBold, fontFeatureSettings = Type.TNUM))
         Spacer(Modifier.width(8.dp))
         Text(e.sub, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(bottom = 1.dp))
         if (Selection.active) {
@@ -350,7 +351,7 @@ fun YearGrid(cards: List<YearCard>, top: Dp, onPick: (Int) -> Unit, onPinch: (Bo
                 if (c.cover != null) NetImage(c.cover.thumbM, Modifier.fillMaxSize())
                 Box(Modifier.matchParentSize().background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to Color(0xB3000000))))
                 Column(Modifier.align(Alignment.BottomStart).padding(18.dp)) {
-                    Text("${c.year}", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, fontFamily = C.P.display)
+                    Text("${c.year}", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.SemiBold, fontFamily = C.P.display)
                     Text("${c.count} 项", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
                 }
             }
