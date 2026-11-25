@@ -36,6 +36,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -109,24 +113,22 @@ private fun n(v: Int) = NumberFormat.getIntegerInstance().format(v)
 private data class Tab(val title: String, val index: Int, val icon: (Boolean) -> ImageVector)
 private val tabs = listOf(
     // 用户 2026-11-02：「影音」拆成「影视」「音乐」两个 tab（音乐 = 索引 6）
-    Tab("照片", 0) { LI.photos(it) }, Tab("影视", 5) { LI.film(it) }, Tab("音乐", 6) { LI.music(it) }, Tab("发现", 3) { LI.discover(it) }, Tab("设置", 4) { LI.settings(it) },
+    // 1.6.0：Kubai 线性图标；选中 = 线性双色（外形内一层 22% 同色填充）
+    Tab("照片", 0) { KI.photos(it) }, Tab("影视", 5) { KI.film(it) }, Tab("音乐", 6) { KI.music(it) }, Tab("发现", 3) { KI.discover(it) }, Tab("设置", 4) { KI.settings(it) },
 )
 
 /** 1.1.0: 全部 / 照片 / 视频 / 实况 chips under the 时间线 | 相册 switch (timeline mode only). */
 @Composable
 internal fun PhotoFilterChips() {
     if (HomeState.tab != 0) return
-    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         listOf("全部", "照片", "视频", "实况").forEachIndexed { i, t ->
-            val on = HomeState.photoFilter == i
-            Text(t, color = if (on) C.Accent else C.Sub, fontSize = 13.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
-                modifier = Modifier.clip(RoundedCornerShape(16.dp)).background(if (on) C.Accent.copy(alpha = 0.14f) else C.Surface)
-                    .clickable(role = Role.Tab) { HomeState.setFilter(i) }.semantics { selected = on }.heightIn(min = 32.dp).padding(horizontal = 14.dp, vertical = 7.dp))
+            ChoiceChip(t, HomeState.photoFilter == i) { HomeState.setFilter(i) }
         }
         Spacer(Modifier.weight(1f))
         // 第 6 批 沉浸视图第一步：网格 ↔ 单列大图流
         IconButton(onClick = { HomeState.useImmersive(!HomeState.immersive) }) {
-            Icon(if (HomeState.immersive) Icons.Rounded.GridView else Icons.Rounded.ViewAgenda, if (HomeState.immersive) "切换到网格" else "切换到大图流", tint = C.Sub, modifier = Modifier.size(20.dp))
+            Icon(if (HomeState.immersive) KI.grid() else KI.feed(), if (HomeState.immersive) "切换到网格" else "切换到大图流", tint = C.Sub, modifier = Modifier.size(22.dp))
         }
     }
 }
@@ -217,31 +219,40 @@ private fun SideRail() {
         tabs.forEach { t ->
             val sel = HomeState.tab == t.index || (t.index == 0 && HomeState.tab == 2)
             NavigationRailItem(selected = sel, onClick = { onTabTap(t.index, sel) },
-                icon = { Icon(t.icon(sel), null, modifier = Modifier.size(23.dp)) },
-                label = { Text(t.title, fontSize = 11.sp) },
-                colors = NavigationRailItemDefaults.colors(selectedIconColor = C.Accent, selectedTextColor = C.Accent, unselectedIconColor = C.Sub,
-                    unselectedTextColor = C.Sub, indicatorColor = C.Accent.copy(alpha = 0.16f)))
+                icon = { Icon(t.icon(sel), null, modifier = Modifier.size(24.dp)) },
+                label = { Text(t.title, style = MaterialTheme.typography.labelMedium) },
+                colors = NavigationRailItemDefaults.colors(selectedIconColor = C.Accent, selectedTextColor = C.Text, unselectedIconColor = C.Sub,
+                    unselectedTextColor = C.Sub, indicatorColor = C.AccentSoft))
         }
     }
 }
 
+/**
+ * 1.6.0 底栏（docs/DESIGN.md §9）：不透明底 + 顶部发丝线；每项整格可点（≥ 48dp），选中时图标换成双色、
+ * 背后的浅色胶囊从中间横向展开（临界阻尼弹簧），文字变正文色；切换时轻震一下。按压整项缩到 0.94。
+ */
 @Composable
 private fun BottomBar(modifier: Modifier) {
     if (Selection.active) return
+    val view = androidx.compose.ui.platform.LocalView.current
     Row(
-        modifier.fillMaxWidth().skeuoBar().navigationBarsPadding().padding(top = 8.dp, bottom = 6.dp),
+        modifier.fillMaxWidth().skeuoBar().navigationBarsPadding().padding(top = 6.dp, bottom = 4.dp),
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
         tabs.forEach { t ->
             val i = t.index
             val sel = HomeState.tab == i || (i == 0 && HomeState.tab == 2)
-            Column(Modifier.clickable(remember { MutableInteractionSource() }, null, role = androidx.compose.ui.semantics.Role.Tab) { onTabTap(i, sel) }.semantics { selected = sel }.padding(horizontal = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                // 拟物：选中的标签像被按下去一样（内凹的小槽），其余平放
-                Box(Modifier.width(52.dp).height(32.dp).then(if (sel && Skeuo.on) Modifier.skeuoInset(RoundedCornerShape(12.dp), C.Accent.copy(alpha = 0.14f))
-                    else Modifier.clip(RoundedCornerShape(12.dp)).background(if (sel) C.Accent.copy(alpha = 0.16f) else Color.Transparent)), contentAlignment = Alignment.Center) {
-                    Icon(t.icon(sel), null, tint = if (sel) C.Accent else C.Sub, modifier = Modifier.size(23.dp))
+            val grow by animateFloatAsState(if (sel) 1f else 0f, Motion.move(), label = "tabPill")
+            val fg by androidx.compose.animation.animateColorAsState(if (sel) C.Text else C.Sub, Motion.state(), label = "tabFg")
+            val icon by androidx.compose.animation.animateColorAsState(if (sel) C.Accent else C.Sub, Motion.state(), label = "tabIcon")
+            Column(Modifier.weight(1f).heightIn(min = 52.dp).pressScale(0.94f)
+                .clickable(remember { MutableInteractionSource() }, null, role = androidx.compose.ui.semantics.Role.Tab) { if (!sel) Haptics.tick(view); onTabTap(i, sel) }
+                .semantics { selected = sel }, horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(Modifier.width(56.dp).height(30.dp), contentAlignment = Alignment.Center) {
+                    Box(Modifier.matchParentSize().graphicsLayer { scaleX = 0.5f + 0.5f * grow; alpha = grow }.clip(RoundedCornerShape(15.dp)).background(C.AccentSoft))
+                    Icon(t.icon(sel), null, tint = icon, modifier = Modifier.size(24.dp))
                 }
-                Text(t.title, fontSize = 11.sp, color = if (sel) C.Accent else C.Sub, fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal, modifier = Modifier.padding(top = 2.dp))
+                Text(t.title, style = MaterialTheme.typography.labelMedium, color = fg, fontWeight = if (sel) FontWeight.Medium else FontWeight.Normal, modifier = Modifier.padding(top = 2.dp))
             }
         }
     }
@@ -290,15 +301,18 @@ fun TopSwitch(search: SearchScope = SearchScope.Photos, showDate: Boolean = true
     val cur = currentSource()
     Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 16.dp, end = 12.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Box {
-            Row(Modifier.skeuoCard(RoundedCornerShape(18.dp), Elevation.pressed + 1.dp).clickable { open = true }.padding(start = 12.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
+            // 1.6.0：来源胶囊——浮起的小胶囊，按下缩放；状态点 6dp（绿 = 在线，红 = 连不上）
+            val srcPress = remember { MutableInteractionSource() }
+            Row(Modifier.heightIn(min = 40.dp).skeuoPressable(srcPress, RoundedCornerShape(20.dp), if (Skeuo.on) C.Surface else C.Chip, flat = !Skeuo.on)
+                .clickable(srcPress, null, role = Role.Button, onClickLabel = "切换来源") { open = true }.padding(start = 14.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 if (cur?.kind == "fn") {
                     val ok = Endpoint.online && Endpoint.latency >= 0
                     Box(Modifier.size(7.dp).clip(CircleShape).background(if (ok) C.Green else C.Danger))
-                } else Icon(LI.drive(), null, tint = C.Gold, modifier = Modifier.size(16.dp))
+                } else Icon(KI.drive(), null, tint = C.Sub, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(8.dp))
-                Text(cur?.title ?: "添加来源", color = C.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 170.dp))
-                Icon(LI.down(), null, tint = C.Sub, modifier = Modifier.padding(start = 4.dp).size(16.dp))
+                Text(cur?.title ?: "添加来源", color = C.Text, style = MaterialTheme.typography.titleMedium, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 170.dp))
+                Icon(KI.down(), null, tint = C.Sub, modifier = Modifier.padding(start = 4.dp).size(16.dp))
             }
             DropdownMenu(open, onDismissRequest = { open = false }, modifier = Modifier.background(C.Surface).widthIn(min = 230.dp)) {
                 val all = allSources()
@@ -309,7 +323,7 @@ fun TopSwitch(search: SearchScope = SearchScope.Photos, showDate: Boolean = true
                     group.forEach { s ->
                         val on = cur?.kind == s.kind && cur.id == s.id
                         DropdownMenuItem(
-                            leadingIcon = { Box(Modifier.width(20.dp)) { if (on) Icon(Icons.Rounded.Check, null, tint = C.Accent, modifier = Modifier.size(18.dp)) } },
+                            leadingIcon = { Box(Modifier.width(20.dp)) { if (on) Icon(KI.check(), null, tint = C.Accent, modifier = Modifier.size(18.dp)) } },
                             text = { Column {
                                 Text(s.title, color = C.Text, fontSize = 15.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1)
                                 Text(s.sub, color = C.Sub, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -323,10 +337,10 @@ fun TopSwitch(search: SearchScope = SearchScope.Photos, showDate: Boolean = true
         }
         Spacer(Modifier.weight(1f))
         extra()
-        if (showDate) IconButton(onClick = { HomeState.showDate = true }) { Icon(LI.calendar(), "按日期查看照片", tint = C.Text, modifier = Modifier.size(22.dp)) }
+        if (showDate) IconButton(onClick = { HomeState.showDate = true }, modifier = Modifier.pressScale(0.9f)) { Icon(KI.calendar(), "按日期查看照片", tint = C.Text, modifier = Modifier.size(24.dp)) }
         when (search) {
-            SearchScope.Photos -> IconButton(onClick = { Nav.push(Route.Search) }) { Icon(LI.search(), "搜索照片", tint = C.Text, modifier = Modifier.size(23.dp)) }
-            SearchScope.Media -> IconButton(onClick = { Nav.push(Route.MovieSearch) }) { Icon(LI.search(), "搜索影片", tint = C.Text, modifier = Modifier.size(23.dp)) }
+            SearchScope.Photos -> IconButton(onClick = { Nav.push(Route.Search) }, modifier = Modifier.pressScale(0.9f)) { Icon(KI.search(), "搜索照片", tint = C.Text, modifier = Modifier.size(24.dp)) }
+            SearchScope.Media -> IconButton(onClick = { Nav.push(Route.MovieSearch) }, modifier = Modifier.pressScale(0.9f)) { Icon(KI.search(), "搜索影片", tint = C.Text, modifier = Modifier.size(24.dp)) }
             SearchScope.None -> Unit
         }
     }
@@ -334,9 +348,10 @@ fun TopSwitch(search: SearchScope = SearchScope.Photos, showDate: Boolean = true
 
 @Composable
 internal fun BigTitle(title: String, sub: String) {
-    Column(Modifier.padding(start = 18.dp, end = 18.dp, top = 14.dp, bottom = 10.dp)) {
-        Text(title, fontSize = 30.sp, fontWeight = FontWeight.Bold, color = C.Text, letterSpacing = (-0.5).sp)
-        if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 2.dp))
+    // 1.6.0：月份大标题用 displaySmall（数字是 Allo、等宽），副标题一行次要色；标题是读屏的「标题」
+    Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp).semantics(mergeDescendants = true) { heading() }) {
+        Text(title, style = MaterialTheme.typography.displaySmall)
+        if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodyMedium.merge(Type.num), color = C.Sub, modifier = Modifier.padding(top = 2.dp))
     }
 }
 
@@ -358,10 +373,12 @@ private fun visibleDay(entries: List<Entry>, grid: LazyGridState, offset: Int): 
 
 @Composable
 private fun CompactBar(title: String) {
-    Row(Modifier.fillMaxWidth().background(C.Bg.copy(alpha = 0.96f)).statusBarsPadding().padding(horizontal = 18.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = C.Text, modifier = Modifier.weight(1f))
+    // 1.6.0：吸顶栏 = 页面底色 98% + 底部发丝线；标题 titleLarge（数字 Allo 等宽，滚动时宽度不跳）
+    Row(Modifier.fillMaxWidth().background(C.Bg.copy(alpha = 0.98f)).drawBehind { drawLine(C.Line, androidx.compose.ui.geometry.Offset(0f, size.height), androidx.compose.ui.geometry.Offset(size.width, size.height), 1f) }
+        .statusBarsPadding().padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(title, style = MaterialTheme.typography.titleLarge.copy(fontFamily = Type.numFamily, fontWeight = FontWeight.SemiBold, fontFeatureSettings = Type.TNUM), modifier = Modifier.weight(1f).semantics { heading() })
         // B12: was a 22 dp clickable icon without a label; IconButton gives a 48 dp touch target and TalkBack reads 「搜索」.
-        IconButton(onClick = { Nav.push(Route.Search) }, modifier = Modifier.size(40.dp)) { Icon(LI.search(), "搜索", tint = C.Text, modifier = Modifier.size(22.dp)) }
+        IconButton(onClick = { Nav.push(Route.Search) }, modifier = Modifier.pressScale(0.9f)) { Icon(KI.search(), "搜索", tint = C.Text, modifier = Modifier.size(24.dp)) }
     }
 }
 
