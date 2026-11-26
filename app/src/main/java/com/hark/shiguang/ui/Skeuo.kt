@@ -129,8 +129,8 @@ internal object SkeuoShadow {
     }
 }
 
-/** 页面底色：两种风格都是纯色 C.Bg（1.6.0 去掉了纸面颗粒和底色渐变）。所有页面根节点用它代替 background(C.Bg)。 */
-fun Modifier.appBackground(): Modifier = background(C.Bg)
+/** 页面底色：C.Bg 纯色；1.7.0 玻璃风格再叠环境光晕（Glass.kt · ambientGlow）。所有页面根节点用它代替 background(C.Bg)。 */
+fun Modifier.appBackground(): Modifier = background(C.Bg).ambientGlow()
 
 /**
  * 凸起卡片：外阴影（ambient + spot 两层）+ 上亮下暗的表面 + 顶部 1px 高光描边。
@@ -138,9 +138,8 @@ fun Modifier.appBackground(): Modifier = background(C.Bg)
  */
 fun Modifier.skeuoCard(shape: Shape = RoundedCornerShape(C.Card), elevation: Dp = Elevation.card, color: Color = C.Surface): Modifier =
     if (!Skeuo.on) clip(shape).background(color)
-    else skeuoShadow(elevation, shape)
-        .clip(shape).background(Skeuo.surfaceBrush(color))
-        .border(0.8.dp, Brush.verticalGradient(listOf(Skeuo.highlight, Color.Transparent, Skeuo.edge.copy(alpha = Skeuo.edge.alpha * 0.5f))), shape)
+    // 1.7.0：玻璃风格下卡片是磨砂玻璃（卡片色 74% + 细噪点 + 上沿高光边），环境光晕从底下透上来；投影很浅
+    else glass(shape, backdrop = null, tint = color, shadow = elevation * 2, highlight = 0.7f).clip(shape)
 
 /** 有照片封面的卡片（人物 / 地点 / 回忆 / 旅行）：只加一层轻阴影，不改表面，照片保持干净。 */
 fun Modifier.skeuoPhoto(shape: Shape = RoundedCornerShape(C.Card)): Modifier =

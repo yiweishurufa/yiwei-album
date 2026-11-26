@@ -19,16 +19,18 @@ import androidx.compose.ui.unit.dp
  */
 object KI {
     const val DUO_ALPHA = 0.22f
+    /** 1.7.0：底栏选中态的「实心」填充透明度（描线不透明，内部细节可辨）。 */
+    const val FILL_ALPHA = 0.5f
     /** [clip]：前面的部件在它身上留出的空隙（Kubai 的 gap / occ），画成「画布减去空隙」的裁剪路径。 */
     private class Part(val kind: Char, val tint: Boolean, val butt: Boolean, val d: String, val clip: String? = null)
     private val cache = HashMap<String, ImageVector>()
-    private fun build(name: String, duo: Boolean, parts: Array<Part>, solid: Boolean = false): ImageVector = cache.getOrPut(name + duo + solid) {
+    private fun build(name: String, duo: Boolean, parts: Array<Part>, solid: Boolean = false, filled: Boolean = false): ImageVector = cache.getOrPut(name + duo + solid + filled) {
         val b = ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f)
         val black = SolidColor(Color.Black)
         fun clipped(p: Part, draw: () -> Unit) {
             if (p.clip == null) draw() else { b.addGroup(clipPathData = addPathNodes(p.clip)); draw(); b.clearGroup() }
         }
-        if (duo || solid) parts.filter { it.tint }.forEach { p -> clipped(p) { b.addPath(addPathNodes(p.d), fill = black, fillAlpha = if (solid) 1f else DUO_ALPHA) } }
+        if (duo || solid || filled) parts.filter { it.tint }.forEach { p -> clipped(p) { b.addPath(addPathNodes(p.d), fill = black, fillAlpha = if (solid) 1f else if (filled) FILL_ALPHA else DUO_ALPHA) } }
         parts.forEach { p ->
             clipped(p) {
                 if (p.kind == 's') b.addPath(addPathNodes(p.d), fill = black)
@@ -41,18 +43,23 @@ object KI {
     private val p_photos = arrayOf(Part('h', true, false, "M2.75 10.6C2.75 8.185 2.75 6.654 3.702 5.702C4.654 4.75 6.185 4.75 8.6 4.75L15.4 4.75C17.815 4.75 19.346 4.75 20.298 5.702C21.25 6.654 21.25 8.185 21.25 10.6L21.25 13.4C21.25 15.815 21.25 17.346 20.298 18.298C19.346 19.25 17.815 19.25 15.4 19.25L8.6 19.25C6.185 19.25 4.654 19.25 3.702 18.298C2.75 17.346 2.75 15.815 2.75 13.4Z"), Part('l', false, false, "M7.156 19.25A11.6 11.6 0 0 1 21.25 13.523"), Part('s', false, false, "M5.9 9.34A1.44 1.44 0 1 1 8.78 9.34A1.44 1.44 0 1 1 5.9 9.34Z"))
     /** Kubai «image» */
     fun photos(duo: Boolean = false) = build("photos", duo, p_photos)
+    fun photosFilled() = build("photos", false, p_photos, filled = true)
     private val p_film = arrayOf(Part('h', true, false, "M3.75 10.5C3.75 7.714 3.75 5.947 4.848 4.848C5.947 3.75 7.714 3.75 10.5 3.75L13.5 3.75C16.286 3.75 18.053 3.75 19.152 4.848C20.25 5.947 20.25 7.714 20.25 10.5L20.25 13.5C20.25 16.286 20.25 18.053 19.152 19.152C18.053 20.25 16.286 20.25 13.5 20.25L10.5 20.25C7.714 20.25 5.947 20.25 4.848 19.152C3.75 18.053 3.75 16.286 3.75 13.5Z"), Part('l', false, false, "M8 3.75L8 20.25M16 3.75L16 20.25"), Part('l', false, false, "M3.75 8L8 8M16 8L20.25 8M3.75 12L8 12M16 12L20.25 12M3.75 16L8 16M16 16L20.25 16"))
     /** Kubai «film» */
     fun film(duo: Boolean = false) = build("film", duo, p_film)
+    fun filmFilled() = build("film", false, p_film, filled = true)
     private val p_music = arrayOf(Part('l', false, false, "M8.25 17.5L8.25 6L19.25 3.75L19.25 15.5"), Part('h', true, false, "M2.75 17.5A2.75 2.75 0 1 1 8.25 17.5A2.75 2.75 0 1 1 2.75 17.5Z"), Part('h', true, false, "M13.75 15.5A2.75 2.75 0 1 1 19.25 15.5A2.75 2.75 0 1 1 13.75 15.5Z"))
     /** Kubai «music» */
     fun music(duo: Boolean = false) = build("music", duo, p_music)
+    fun musicFilled() = build("music", false, p_music, filled = true)
     private val p_discover = arrayOf(Part('h', true, false, "M9.435 8.005C10.081 5.601 10.31 4.751 11 4.751C11.69 4.751 11.919 5.601 12.565 8.005L13.156 10.208C13.212 10.415 13.251 10.56 13.346 10.654C13.44 10.749 13.585 10.788 13.792 10.844L15.995 11.435C18.399 12.081 19.249 12.31 19.249 13C19.249 13.69 18.399 13.919 15.995 14.565L13.792 15.156C13.585 15.212 13.44 15.251 13.346 15.346C13.251 15.44 13.212 15.585 13.156 15.792L12.565 17.995C11.919 20.399 11.69 21.249 11 21.249C10.31 21.249 10.081 20.399 9.435 17.995L8.844 15.792C8.788 15.585 8.749 15.44 8.654 15.346C8.56 15.251 8.415 15.212 8.208 15.156L6.005 14.565C3.601 13.919 2.751 13.69 2.751 13C2.751 12.31 3.601 12.081 6.005 11.435L8.208 10.844C8.415 10.788 8.56 10.749 8.654 10.654C8.749 10.56 8.788 10.415 8.844 10.208Z"), Part('s', false, false, "M18.396 3.148C18.646 2.314 18.739 2 19 2C19.261 2 19.354 2.314 19.604 3.148L19.835 3.923C19.858 4 19.875 4.054 19.91 4.09C19.946 4.125 20 4.142 20.077 4.165L20.852 4.396C21.686 4.646 22 4.739 22 5C22 5.261 21.686 5.354 20.852 5.604L20.077 5.835C20 5.858 19.946 5.875 19.91 5.91C19.875 5.946 19.858 6 19.835 6.077L19.604 6.852C19.354 7.686 19.261 8 19 8C18.739 8 18.646 7.686 18.396 6.852L18.165 6.077C18.142 6 18.125 5.946 18.09 5.91C18.054 5.875 18 5.858 17.923 5.835L17.148 5.604C16.314 5.354 16 5.261 16 5C16 4.739 16.314 4.646 17.148 4.396L17.923 4.165C18 4.142 18.054 4.125 18.09 4.09C18.125 4.054 18.142 4 18.165 3.923Z"))
     /** Kubai «sparkles» */
     fun discover(duo: Boolean = false) = build("discover", duo, p_discover)
+    fun discoverFilled() = build("discover", false, p_discover, filled = true)
     private val p_settings = arrayOf(Part('h', true, false, "M9.381 5.678C9.273 5.723 9.163 5.616 9.205 5.507L9.898 3.677C9.965 3.501 10.102 3.14 10.384 2.945C10.667 2.75 11.053 2.75 11.242 2.75L12.758 2.75C12.947 2.75 13.333 2.75 13.616 2.945C13.898 3.14 14.035 3.501 14.102 3.677L14.795 5.507C14.837 5.616 14.727 5.723 14.619 5.678L14.619 5.678C14.51 5.633 14.508 5.48 14.615 5.432L16.399 4.629C16.571 4.551 16.923 4.393 17.261 4.455C17.598 4.516 17.871 4.789 18.004 4.923L19.077 5.996C19.211 6.129 19.484 6.402 19.545 6.739C19.607 7.077 19.449 7.429 19.371 7.601L18.568 9.385C18.52 9.492 18.367 9.49 18.322 9.381L18.322 9.381C18.277 9.273 18.384 9.163 18.493 9.205L20.323 9.898C20.499 9.965 20.86 10.102 21.055 10.384C21.25 10.667 21.25 11.053 21.25 11.242L21.25 12.758C21.25 12.947 21.25 13.333 21.055 13.616C20.86 13.898 20.499 14.035 20.323 14.102L18.493 14.795C18.384 14.837 18.277 14.727 18.322 14.619L18.322 14.619C18.367 14.51 18.52 14.508 18.568 14.615L19.371 16.399C19.449 16.571 19.607 16.923 19.545 17.261C19.484 17.598 19.211 17.871 19.077 18.004L18.004 19.077C17.871 19.211 17.598 19.484 17.261 19.545C16.923 19.607 16.571 19.449 16.399 19.371L14.615 18.568C14.508 18.52 14.51 18.367 14.619 18.322L14.619 18.322C14.727 18.277 14.837 18.384 14.795 18.493L14.102 20.323C14.035 20.499 13.898 20.86 13.616 21.055C13.333 21.25 12.947 21.25 12.758 21.25L11.242 21.25C11.053 21.25 10.667 21.25 10.384 21.055C10.102 20.86 9.965 20.499 9.898 20.323L9.205 18.493C9.163 18.384 9.273 18.277 9.381 18.322L9.381 18.322C9.49 18.367 9.492 18.52 9.385 18.568L7.601 19.371C7.429 19.449 7.077 19.607 6.739 19.545C6.402 19.484 6.129 19.211 5.996 19.077L4.923 18.004C4.789 17.871 4.516 17.598 4.455 17.261C4.393 16.923 4.551 16.571 4.629 16.399L5.432 14.615C5.48 14.508 5.633 14.51 5.678 14.619L5.678 14.619C5.723 14.727 5.616 14.837 5.507 14.795L3.677 14.102C3.501 14.035 3.14 13.898 2.945 13.616C2.75 13.333 2.75 12.947 2.75 12.758L2.75 11.242C2.75 11.053 2.75 10.667 2.945 10.384C3.14 10.102 3.501 9.965 3.677 9.898L5.507 9.205C5.616 9.163 5.723 9.273 5.678 9.381L5.678 9.381C5.633 9.49 5.48 9.492 5.432 9.385L4.629 7.601C4.551 7.429 4.393 7.077 4.455 6.739C4.516 6.402 4.789 6.129 4.923 5.996L5.996 4.923C6.129 4.789 6.402 4.516 6.739 4.455C7.077 4.393 7.429 4.551 7.601 4.629L9.385 5.432C9.492 5.48 9.49 5.633 9.381 5.678Z"), Part('h', false, false, "M8.875 12A3.125 3.125 0 1 1 15.125 12A3.125 3.125 0 1 1 8.875 12Z"))
     /** Kubai «settings» */
     fun settings(duo: Boolean = false) = build("settings", duo, p_settings)
+    fun settingsFilled() = build("settings", false, p_settings, filled = true)
     private val p_search = arrayOf(Part('h', true, false, "M3.75 10A6.25 6.25 0 1 1 16.25 10A6.25 6.25 0 1 1 3.75 10Z"), Part('l', false, false, "M14.419 14.419L20.25 20.25"))
     /** Kubai «search» */
     fun search(duo: Boolean = false) = build("search", duo, p_search)

@@ -31,6 +31,8 @@ ICONS = [  # kotlin name, kubai file
 ]
 # 另外生成整块填实版本（xxxSolid）的图标：播放器主控件
 SOLID = {'play', 'pause', 'skipBack', 'skipFwd', 'heart'}
+# 1.7.0 v2「液态玻璃」：底栏选中态用「实心感」版本（外形填 FILL_ALPHA 同色，再描线，线条仍看得清）
+FILLED = {'photos', 'film', 'music', 'discover', 'settings'}
 GAP = 0.5 * float(STROKE) + 0.75   # kit.mjs gapOf(s)
 
 def _rings(d, closed_only):
@@ -108,16 +110,18 @@ import androidx.compose.ui.unit.dp
  */
 object KI {
     const val DUO_ALPHA = 0.22f
+    /** 1.7.0：底栏选中态的「实心」填充透明度（描线不透明，内部细节可辨）。 */
+    const val FILL_ALPHA = 0.5f
     /** [clip]：前面的部件在它身上留出的空隙（Kubai 的 gap / occ），画成「画布减去空隙」的裁剪路径。 */
     private class Part(val kind: Char, val tint: Boolean, val butt: Boolean, val d: String, val clip: String? = null)
     private val cache = HashMap<String, ImageVector>()
-    private fun build(name: String, duo: Boolean, parts: Array<Part>, solid: Boolean = false): ImageVector = cache.getOrPut(name + duo + solid) {
+    private fun build(name: String, duo: Boolean, parts: Array<Part>, solid: Boolean = false, filled: Boolean = false): ImageVector = cache.getOrPut(name + duo + solid + filled) {
         val b = ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f)
         val black = SolidColor(Color.Black)
         fun clipped(p: Part, draw: () -> Unit) {
             if (p.clip == null) draw() else { b.addGroup(clipPathData = addPathNodes(p.clip)); draw(); b.clearGroup() }
         }
-        if (duo || solid) parts.filter { it.tint }.forEach { p -> clipped(p) { b.addPath(addPathNodes(p.d), fill = black, fillAlpha = if (solid) 1f else DUO_ALPHA) } }
+        if (duo || solid || filled) parts.filter { it.tint }.forEach { p -> clipped(p) { b.addPath(addPathNodes(p.d), fill = black, fillAlpha = if (solid) 1f else if (filled) FILL_ALPHA else DUO_ALPHA) } }
         parts.forEach { p ->
             clipped(p) {
                 if (p.kind == 's') b.addPath(addPathNodes(p.d), fill = black)
@@ -136,4 +140,5 @@ for kn, fn in ICONS:
     w('    private val p_%s = arrayOf(%s)\n' % (kn, arr))
     w('    /** Kubai «%s» */\n    fun %s(duo: Boolean = false) = build("%s", duo, p_%s)\n' % (fn, kn, kn, kn))
     if kn in SOLID: w('    fun %sSolid() = build("%s", false, p_%s, solid = true)\n' % (kn, kn, kn))
+    if kn in FILLED: w('    fun %sFilled() = build("%s", false, p_%s, filled = true)\n' % (kn, kn, kn))
 w('}\n')
