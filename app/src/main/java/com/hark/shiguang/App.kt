@@ -44,10 +44,10 @@ class App : Application(), ImageLoaderFactory {
         }.build()
         return ImageLoader.Builder(this)
             .okHttpClient(client)
-            .components { add(DavThumb.Factory()); add(VideoFrameDecoder.Factory()) }
+            .components { add(StableImageKeys()); add(DavThumb.Factory()); add(VideoFrameDecoder.Factory()) }
             .memoryCache { MemoryCache.Builder(this).maxSizePercent(0.2).build() }
             // 1.0.8: 800 MB -> 300 MB. Grid thumbnails are tiny; what filled the cache were full-size originals from the viewer.
-            // #94: 上限可在 设置 → 清理缓存 → 缩略图缓存上限 里改，默认仍是 300 MB，重启 App 后生效
+            // #94: 上限可在 设置 → 存储空间 → 缩略图缓存上限 里改，默认仍是 300 MB，重启 App 后生效
             .diskCache { DiskCache.Builder().directory(cacheDir.resolve("thumbs")).maxSizeBytes(CacheLimit.bytes(Store.thumbCacheMb)).build() }
             .respectCacheHeaders(false)
             .crossfade(180)
@@ -165,5 +165,19 @@ object CacheTrim {
     private fun olderThan(dir: java.io.File, days: Int) {
         val cut = System.currentTimeMillis() - days * 86_400_000L
         dir.walkBottomUp().filter { it.isFile && it.lastModified() < cut }.forEach { it.delete() }
+    }
+}
+
+/**
+ * 1.7.17 Coil 拦截器（在内存 / 磁盘缓存查找之前执行）：飞牛图片的磁盘缓存键换成与内外网地址无关的稳定键（[ImageKeys]），
+ * 切换内外网后缩略图不再整库重下。
+ */
+class StableImageKeys : coil.intercept.Interceptor {
+    override suspend fun intercept(chain: coil.intercept.Interceptor.Chain): coil.request.ImageResult {
+        val req = chain.request
+        val data = req.data as? String
+        val key = if (data != null && req.diskCacheKey == null) ImageKeys.stable(data).takeIf { it != data } else null
+        if (key == null) return chain.proceed(req)
+        return chain.proceed(req.newBuilder().diskCacheKey(key).build())
     }
 }
