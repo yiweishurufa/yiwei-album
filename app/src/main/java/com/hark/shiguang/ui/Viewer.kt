@@ -9,6 +9,11 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -102,6 +107,8 @@ fun ViewerScreen(photosIn: List<Photo>, start: Int, slideshowStart: Boolean = fa
     var screen by remember { mutableStateOf(IntSize(1, 1)) }
     val H = screen.height.toFloat().coerceAtLeast(1f); val W = screen.width.toFloat().coerceAtLeast(1f)
     val dragProgress = (drag.value.y / H).coerceIn(0f, 1f)
+    // 1.7.0：照片录进 backdrop，顶部 / 底部的玻璃控件模糊它（API 31+；以下降级为磨砂深色玻璃）
+    val backdrop = remember { GlassBackdrop() }
     val dragScale = 1f - dragProgress * 0.45f
 
     /** 照片在屏幕上 Fit 显示时的矩形。 */
@@ -140,7 +147,7 @@ fun ViewerScreen(photosIn: List<Photo>, start: Int, slideshowStart: Boolean = fa
                 alpha = if (closing) 0f else if (heroFrom != null) ((heroAnim.value - 0.75f) * 4f).coerceIn(0f, 1f) else 1f
                 translationX = drag.value.x; translationY = drag.value.y
                 scaleX = dragScale; scaleY = dragScale
-            },
+            }.glassSource(backdrop),
             key = { photos[it].id },
         ) { page ->
             val p = photos[page]
@@ -185,54 +192,61 @@ fun ViewerScreen(photosIn: List<Photo>, start: Int, slideshowStart: Boolean = fa
             )
         }
         val p = photos.getOrNull(pager.currentPage)
+        // 1.7.0：环境光晕跟着正在看的照片变色（回到网格时也是这张照片的颜色）
+        AmbientFrom(p?.thumbS)
         val chromeOn = chrome && p != null && !closing && dragProgress < 0.02f && (heroFrom == null || heroAnim.value > 0.6f)
-        AnimatedVisibility(chromeOn, enter = fadeIn(Motion.enter()) + slideInVertically(Motion.enter()) { -it / 3 }, exit = fadeOut(Motion.exit()) + slideOutVertically(Motion.exit()) { -it / 3 }) {
-            Box(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0x99000000), Color.Transparent)))) {
-                Row(Modifier.statusBarsPadding().padding(start = Space.m, end = Space.m, top = Space.s, bottom = Space.xl), verticalAlignment = Alignment.CenterVertically) {
-                    RoundIcon(KI.back(), bg = ViewerChrome.btnBg, tint = Color.White, size = ViewerChrome.btn, desc = "返回") { requestClose() }
-                    Spacer(Modifier.width(Space.m))
-                    if (p != null) Column(Modifier.weight(1f).semantics(mergeDescendants = true) {}) {
-                        val (t, w) = dayTitle(p.day)
-                        Text("$t $w", color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1)
-                        // 第 4 批：飞牛实况 type-1 的独立视频流映射未验证（FnExtra.motionVideo），这里标注「未验证」，不要宣称已验证。
-                        // WebDAV 的 MOV 配对也用 liveType=1，但 isCloud=true，不受影响。
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(p.time.drop(11).take(5), color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall.merge(Type.num))
-                            if (p.isLive) {
-                                Icon(KI.live(), null, tint = Color.White.copy(alpha = 0.75f), modifier = Modifier.padding(start = Space.s, end = Space.xxs).size(14.dp))
-                                Text("实况" + (if (!p.isCloud && p.liveType == 1) "（未验证）" else ""), color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall)
+        // 1.7.0 v2：控件是浮在照片上的玻璃——返回 / 更多两颗玻璃圆钮、中间一枚日期胶囊、底部一条玻璃操作胶囊；
+        // 出现时「材质到来」（缩放 + 淡入，Motion.materialize），不再有整条黑色渐变
+        AnimatedVisibility(chromeOn, enter = fadeIn(Motion.enter()) + scaleIn(Motion.materialize(), initialScale = 0.88f) + slideInVertically(Motion.materialize()) { -it / 4 },
+            exit = fadeOut(Motion.exit()) + scaleOut(Motion.exit(), targetScale = 0.92f)) {
+            Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = Space.s, end = Space.s, top = Space.s), verticalAlignment = Alignment.CenterVertically) {
+                GlassIconButton(KI.back(), "返回", overPhoto = true, backdrop = backdrop) { requestClose() }
+                Spacer(Modifier.width(Space.xs))
+                if (p != null) GlassSurface(Modifier.weight(1f, fill = false).heightIn(min = 44.dp), shape = CircleShape, backdrop = backdrop, shadow = 0.dp, onDark = true) {
+                    Row(Modifier.padding(start = 18.dp, end = 8.dp, top = 5.dp, bottom = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f, fill = false).semantics(mergeDescendants = true) {}) {
+                            val (t, w) = dayTitle(p.day)
+                            Text("$t $w", color = Color.White, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                            // 第 4 批：飞牛实况 type-1 的独立视频流映射未验证（FnExtra.motionVideo），这里标注「未验证」，不要宣称已验证。
+                            // WebDAV 的 MOV 配对也用 liveType=1，但 isCloud=true，不受影响。
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(p.time.drop(11).take(5), color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodySmall.merge(Type.num))
+                                if (p.isLive) {
+                                    Icon(KI.live(), null, tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.padding(start = Space.s, end = Space.xxs).size(14.dp))
+                                    Text("实况" + (if (!p.isCloud && p.liveType == 1) "（未验证）" else ""), color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodySmall)
+                                }
                             }
                         }
+                        Text("${pager.currentPage + 1} / ${photos.size}", color = Color.White,
+                            style = MaterialTheme.typography.labelMedium.copy(fontFamily = C.P.display, fontFeatureSettings = Type.TNUM),
+                            modifier = Modifier.padding(start = Space.m).semantics { contentDescription = "第 ${pager.currentPage + 1} 张，共 ${photos.size} 张" }
+                                .clip(CircleShape).background(Color.White.copy(alpha = 0.14f)).padding(horizontal = 10.dp, vertical = 5.dp))
                     }
-                    Text("${pager.currentPage + 1} / ${photos.size}", color = Color.White.copy(alpha = 0.9f),
-                        style = MaterialTheme.typography.labelMedium.copy(fontFamily = C.P.display, fontFeatureSettings = Type.TNUM),
-                        modifier = Modifier.semantics { contentDescription = "第 ${pager.currentPage + 1} 张，共 ${photos.size} 张" }
-                            .clip(RoundedCornerShape(Radius.s)).background(ViewerChrome.btnBg).padding(horizontal = 10.dp, vertical = 5.dp))
-                    Spacer(Modifier.width(Space.s))
-                    RoundIcon(KI.moreH(), bg = ViewerChrome.btnBg, tint = Color.White, size = ViewerChrome.btn, desc = "更多") { more = true }
                 }
+                Spacer(Modifier.weight(0.001f))
+                GlassIconButton(KI.moreH(), "更多", overPhoto = true, backdrop = backdrop) { more = true }
             }
         }
         AnimatedVisibility(chromeOn, modifier = Modifier.align(Alignment.BottomCenter),
-            enter = fadeIn(Motion.enter()) + slideInVertically(Motion.enter()) { it / 3 }, exit = fadeOut(Motion.exit()) + slideOutVertically(Motion.exit()) { it / 3 }) {
-            Box(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0x99000000))))) {
-                // 1.6.2：底栏是一排 44dp 圆钮（Kubai 线性图标），文字只给读屏；收藏后变成双色心形 + 强调色
-                Row(
-                    Modifier.navigationBarsPadding().padding(bottom = Space.m, top = Space.xxl).fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (p != null) {
-                        if (!p.isCloud) key(favTick, p.id) {
-                            BarAction(KI.heart(duo = p.collected), if (p.collected) "取消收藏" else "收藏", if (p.collected) C.Accent else Color.White) {
-                                val target = !p.collected
-                                p.collected = target; favTick++
-                                scope.launch { runCatching { Repo.setCollect(p.id, target) }.onFailure { p.collected = !target; favTick++ } }
+            enter = fadeIn(Motion.enter()) + scaleIn(Motion.materialize(), initialScale = 0.88f) + slideInVertically(Motion.materialize()) { it / 3 },
+            exit = fadeOut(Motion.exit()) + scaleOut(Motion.exit(), targetScale = 0.92f)) {
+            Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = Space.l, end = Space.l, bottom = Space.m), contentAlignment = Alignment.Center) {
+                // 底部操作 = 一条玻璃胶囊，里面一排图标（文字只给读屏）；收藏后变成实心心形 + 强调色
+                GlassSurface(Modifier.widthIn(max = 420.dp).fillMaxWidth(), shape = CircleShape, backdrop = backdrop, shadow = 0.dp, onDark = true) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = Space.s, vertical = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                        if (p != null) {
+                            if (!p.isCloud) key(favTick, p.id) {
+                                BarAction(if (p.collected) KI.heartSolid() else KI.heart(), if (p.collected) "取消收藏" else "收藏", if (p.collected) C.Accent else Color.White) {
+                                    val target = !p.collected
+                                    p.collected = target; favTick++
+                                    scope.launch { runCatching { Repo.setCollect(p.id, target) }.onFailure { p.collected = !target; favTick++ } }
+                                }
                             }
+                            BarAction(KI.share(), "分享", Color.White) { Ops.share(ctx, listOf(p)) }
+                            BarAction(KI.download(), "下载", Color.White) { Ops.download(ctx, listOf(p)) }
+                            BarAction(KI.album(), "加入相册", Color.White) { albumFor = p }
+                            BarAction(KI.trash(), "删除", Color.White) { confirmDelete = true }
                         }
-                        BarAction(KI.share(), "分享", Color.White) { Ops.share(ctx, listOf(p)) }
-                        BarAction(KI.download(), "下载", Color.White) { Ops.download(ctx, listOf(p)) }
-                        BarAction(KI.album(), "加入相册", Color.White) { albumFor = p }
-                        BarAction(KI.trash(), "删除", Color.White) { confirmDelete = true }
                     }
                 }
             }
@@ -304,17 +318,19 @@ fun AddToAlbumFlow(p: Photo, onDone: () -> Unit) {
 }
 
 /** 大图上的按钮规格（照片上的半透明黑圆钮）。 */
-private object ViewerChrome {
-    val btn = 44.dp
-    val btnBg = Color(0x38000000)
-}
 
 @Composable
 private fun BarAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, tint: Color, onClick: () -> Unit) {
     val c by androidx.compose.animation.animateColorAsState(tint, Motion.state(), label = "barTint")
-    // 48dp 触摸区里画 44dp 圆钮；按下缩 0.92（圆钮规格）
-    Box(Modifier.size(Space.touch), contentAlignment = Alignment.Center) {
-        RoundIcon(icon, bg = ViewerChrome.btnBg, tint = c, size = ViewerChrome.btn, desc = label, onClick = onClick)
+    // 1.7.0：玻璃胶囊里的图标按钮（48dp 触摸区），按下时一小团亮光 + 液体形变
+    val inter = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val pressed by inter.collectIsPressedAsState()
+    val glow by animateFloatAsState(if (pressed) 1f else 0f, Motion.state(), label = "barGlow")
+    Box(Modifier.size(Space.touch).glassPress(inter, 1.6f).clip(CircleShape)
+        .background(Color.White.copy(alpha = 0.16f * glow))
+        .clickable(inter, null, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
+        .semantics { contentDescription = label }, contentAlignment = Alignment.Center) {
+        Icon(icon, null, tint = c, modifier = Modifier.size(23.dp))
     }
 }
 
