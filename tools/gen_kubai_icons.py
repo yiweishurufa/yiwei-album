@@ -17,6 +17,10 @@ ICONS = [  # kotlin name, kubai file
     ('copy', 'copy'), ('layers', 'layers'), ('upload', 'upload'), ('lock', 'lock'), ('info', 'info'),
     ('nas', 'server'), ('backup', 'cloud-upload'), ('trash', 'trash'), ('person', 'user'), ('swap', 'arrow-left-right'),
     ('clock', 'clock'), ('tv', 'tv'), ('sort', 'sort'), ('refresh', 'rotate-cw'), ('map', 'map'), ('plus', 'plus'),
+    # 1.6.2 阶段 2：大图工具栏与「⋯」面板、合集 / 发现入口
+    ('share', 'share'), ('download', 'download'), ('eye', 'eye'), ('sliders', 'sliders'), ('live', 'live'),
+    ('moreH', 'more-horizontal'), ('album', 'album'), ('similar', 'scan-face'), ('star', 'star'), ('users', 'users-round'),
+    ('history', 'history'), ('archive', 'archive'), ('camera', 'camera'), ('sparkle', 'wand'), ('upDown', 'arrow-up-down'),
 ]
 GAP = 0.5 * float(STROKE) + 0.75   # kit.mjs gapOf(s)
 
