@@ -199,4 +199,7 @@ object KI {
     private val p_upDown = arrayOf(Part('l', false, false, "M8 20.25L8 3.75M4 7.75L8 3.75L12 7.75"), Part('l', false, false, "M16 3.75L16 20.25M20 16.25L16 20.25L12 16.25"))
     /** Kubai «arrow-up-down» */
     fun upDown(duo: Boolean = false) = build("upDown", duo, p_upDown)
+    private val p_crop = arrayOf(Part('l', false, false, "M7 3.75V15A2 2 0 0 0 9 17H20.25"), Part('l', false, false, "M3.75 7H15A2 2 0 0 1 17 9V20.25"))
+    /** Kubai «crop» */
+    fun crop(duo: Boolean = false) = build("crop", duo, p_crop)
 }

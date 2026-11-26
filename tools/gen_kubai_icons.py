@@ -21,6 +21,7 @@ ICONS = [  # kotlin name, kubai file
     ('share', 'share'), ('download', 'download'), ('eye', 'eye'), ('sliders', 'sliders'), ('live', 'live'),
     ('moreH', 'more-horizontal'), ('album', 'album'), ('similar', 'scan-face'), ('star', 'star'), ('users', 'users-round'),
     ('history', 'history'), ('archive', 'archive'), ('camera', 'camera'), ('sparkle', 'wand'), ('upDown', 'arrow-up-down'),
+    ('crop', 'crop'),
 ]
 GAP = 0.5 * float(STROKE) + 0.75   # kit.mjs gapOf(s)
 

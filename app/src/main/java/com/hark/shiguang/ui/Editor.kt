@@ -10,6 +10,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -69,10 +71,11 @@ fun EditScreen(p: Photo) {
 
     Column(Modifier.fillMaxSize().background(Color.Black)) {
         Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            RoundIcon(Icons.Rounded.Close, bg = Color(0x33FFFFFF), tint = Color.White, desc = "关闭") { Nav.pop() }
-            Text("编辑", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f).padding(start = 14.dp))
-            TextButton(onClick = { rot = 0; bright = 0f; contrast = 1f; aspect = 0; rotated?.let { crop = RectF(0f, 0f, 1f, 1f) } }) { Text("还原", color = Color.White.copy(alpha = 0.7f)) }
-            Box(Modifier.clip(RoundedCornerShape(14.dp)).background(C.Accent).clickable(enabled = !saving && rotated != null) {
+            // 1.6.4：与大图同一套 44dp 半透明圆钮；标题 titleMedium；「另存」是主按钮（强调色、按下缩放、≥40dp 高）
+            RoundIcon(KI.close(), bg = Color(0x26FFFFFF), tint = Color.White, size = 44.dp, desc = "关闭") { Nav.pop() }
+            Text("编辑", color = Color.White, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f).padding(start = Space.m).semantics { heading() })
+            TextButton(onClick = { rot = 0; bright = 0f; contrast = 1f; aspect = 0; rotated?.let { crop = RectF(0f, 0f, 1f, 1f) } }) { Text("还原", color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.labelLarge) }
+            Box(Modifier.pressScale().heightIn(min = 40.dp).clip(RoundedCornerShape(Radius.m)).background(C.Accent).clickable(enabled = !saving && rotated != null, role = androidx.compose.ui.semantics.Role.Button) {
                 val r = rotated ?: return@clickable
                 saving = true
                 Ops.launch {
@@ -81,9 +84,9 @@ fun EditScreen(p: Photo) {
                         .onFailure { failToast(ctx, it, "保存失败") }
                     saving = false
                 }
-            }.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            }.padding(horizontal = Space.l, vertical = 10.dp), contentAlignment = Alignment.Center) {
                 if (saving) CircularProgressIndicator(Modifier.size(18.dp), color = C.OnAccent, strokeWidth = 2.dp)
-                else Text("另存", color = C.OnAccent, fontWeight = FontWeight.SemiBold)
+                else Text("另存", color = C.OnAccent, style = MaterialTheme.typography.labelLarge)
             }
         }
         Box(Modifier.weight(1f).fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
@@ -96,26 +99,31 @@ fun EditScreen(p: Photo) {
         }
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 10.dp)) {
             if (tool == 0) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                // 比例胶囊：暗底上的 ChoiceChip（选中 = 白底黑字，像相纸；颜色变化走 Motion.state）
                 listOf("自由", "1:1", "4:3", "16:9").forEachIndexed { i, t ->
-                    Text(t, color = if (aspect == i) C.OnAccent else Color.White, fontSize = 13.sp, modifier = Modifier.padding(end = 8.dp).clip(RoundedCornerShape(12.dp))
-                        .background(if (aspect == i) C.Accent else Color(0x26FFFFFF)).selectable(selected = aspect == i, role = androidx.compose.ui.semantics.Role.RadioButton) { aspect = i }.padding(horizontal = 14.dp, vertical = 8.dp))
+                    DarkChip(t, aspect == i, Modifier.padding(end = Space.s)) { aspect = i }
                 }
-                Spacer(Modifier.width(8.dp))
-                Row(Modifier.clip(RoundedCornerShape(12.dp)).background(Color(0x26FFFFFF)).clickable { rot = (rot + 90) % 360 }.padding(horizontal = 14.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.RotateRight, null, tint = Color.White, modifier = Modifier.size(18.dp))
-                    Text("旋转", color = Color.White, fontSize = 13.sp, modifier = Modifier.padding(start = 4.dp))
+                Spacer(Modifier.width(Space.s))
+                Row(Modifier.pressScale().heightIn(min = 36.dp).clip(RoundedCornerShape(Radius.s)).background(Color(0x26FFFFFF))
+                    .clickable(role = androidx.compose.ui.semantics.Role.Button) { rot = (rot + 90) % 360 }.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(KI.refresh(), null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Text("旋转", color = Color.White, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(start = 6.dp))
                 }
             } else Column(Modifier.padding(horizontal = 20.dp)) {
-                Text("亮度  ${(bright * 100).toInt()}", color = Color.White, fontSize = 13.sp)
-                Slider(bright, { bright = it }, valueRange = -0.6f..0.6f)
-                Text("对比度  ${(contrast * 100).toInt()}%", color = Color.White, fontSize = 13.sp)
-                Slider(contrast, { contrast = it }, valueRange = 0.5f..1.6f)
+                val sc = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.White, inactiveTrackColor = Color(0x33FFFFFF))
+                Text("亮度  ${(bright * 100).toInt()}", color = Color.White, style = MaterialTheme.typography.labelLarge.merge(Type.num))
+                Slider(bright, { bright = it }, valueRange = -0.6f..0.6f, colors = sc)
+                Text("对比度  ${(contrast * 100).toInt()}%", color = Color.White, style = MaterialTheme.typography.labelLarge.merge(Type.num))
+                Slider(contrast, { contrast = it }, valueRange = 0.5f..1.6f, colors = sc)
             }
             Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                listOf(Icons.Rounded.Crop to "裁剪旋转", Icons.Rounded.Tune to "调节").forEachIndexed { i, (ic, t) ->
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clip(RoundedCornerShape(12.dp)).selectable(selected = tool == i, role = androidx.compose.ui.semantics.Role.Tab) { tool = i }.padding(horizontal = 18.dp, vertical = 6.dp)) {
-                        Icon(ic, null, tint = if (tool == i) C.Accent else Color.White.copy(alpha = 0.7f), modifier = Modifier.size(22.dp))
-                        Text(t, color = if (tool == i) C.Accent else Color.White.copy(alpha = 0.7f), fontSize = 11.sp, modifier = Modifier.padding(top = 3.dp))
+                // 工具切换：Kubai 图标，选中 = 白色 + 线性双色，未选 = 60% 白（暗底上强调色对比不够，用明度区分）
+                listOf("裁剪旋转", "调节").forEachIndexed { i, t ->
+                    val on = tool == i
+                    val c by androidx.compose.animation.animateColorAsState(if (on) Color.White else Color.White.copy(alpha = 0.6f), Motion.state(), label = "tool")
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.pressScale(0.94f).clip(RoundedCornerShape(Radius.m)).selectable(selected = on, role = androidx.compose.ui.semantics.Role.Tab) { tool = i }.padding(horizontal = 18.dp, vertical = 6.dp)) {
+                        Icon(if (i == 0) KI.crop(duo = on) else KI.sliders(duo = on), null, tint = c, modifier = Modifier.size(24.dp))
+                        Text(t, color = c, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = Space.xs))
                     }
                 }
             }
@@ -282,4 +290,16 @@ private suspend fun save(p: Photo, out: Bitmap): String {
     com.hark.shiguang.Diag.log("EDIT", "fn save-as stored=${res.storedPath.substringAfterLast('/')} id=${res.photoId}")
     HomeState.dirty = true
     return name
+}
+
+/** 编辑器（黑底）上的比例胶囊：选中白底黑字，未选 15% 白底白字；颜色走 Motion.state，按下 0.97，读屏单选。 */
+@Composable
+private fun DarkChip(text: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val bg by androidx.compose.animation.animateColorAsState(if (selected) Color.White else Color(0x26FFFFFF), Motion.state(), label = "chipBg")
+    val fg by androidx.compose.animation.animateColorAsState(if (selected) Color(0xFF0E0E10) else Color.White, Motion.state(), label = "chipFg")
+    Box(modifier.pressScale().heightIn(min = 36.dp).clip(RoundedCornerShape(Radius.s)).background(bg)
+        .selectable(selected = selected, role = androidx.compose.ui.semantics.Role.RadioButton, onClick = onClick).padding(horizontal = 14.dp),
+        contentAlignment = Alignment.Center) {
+        Text(text, color = fg, style = MaterialTheme.typography.labelLarge.merge(Type.num))
+    }
 }
