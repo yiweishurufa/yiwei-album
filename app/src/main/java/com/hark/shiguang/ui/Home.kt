@@ -193,7 +193,7 @@ fun HomeScreen() {
             androidx.compose.animation.AnimatedVisibility(MusicState.active && !Selection.active,
                 enter = androidx.compose.animation.slideInVertically(Motion.sheet()) { it } + androidx.compose.animation.fadeIn(Motion.enter()),
                 exit = androidx.compose.animation.slideOutVertically(Motion.exit()) { it } + androidx.compose.animation.fadeOut(Motion.exit())) {
-                MiniPlayer(Modifier.padding(bottom = if (wide) 0.dp else Space.xs + 2.dp).then(if (wide) Modifier.navigationBarsPadding().padding(bottom = 10.dp) else Modifier))
+                MiniPlayer(Modifier.padding(bottom = if (wide) 0.dp else Space.xs + 2.dp).then(if (wide) Modifier.navigationBarsPadding().padding(bottom = 10.dp) else Modifier), backdrop)
             }
             if (!wide) BottomBar(Modifier, backdrop)
         }
@@ -382,7 +382,7 @@ fun TopSwitch(search: SearchScope = SearchScope.Photos, showDate: Boolean = true
                 Text(cur?.title ?: "添加来源", color = fg, style = MaterialTheme.typography.titleMedium, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 170.dp))
                 Icon(KI.down(), null, tint = fgSub, modifier = Modifier.padding(start = 4.dp).size(16.dp))
             }
-            AppDropdownMenu(open, onDismissRequest = { open = false }, modifier = Modifier.background(C.Surface).widthIn(min = 230.dp)) {
+            AppDropdownMenu(open, onDismissRequest = { open = false }, modifier = Modifier.widthIn(min = 230.dp)) {
                 val all = allSources()
                 listOf("fn" to "飞牛", "dav" to "WebDAV").forEach { (k, label) ->
                     val group = all.filter { it.kind == k }

@@ -23,6 +23,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -442,27 +443,31 @@ val miniPlayerPad: Dp get() = if (MusicState.active && !Selection.active) 64.dp 
  * 播放 / 暂停换图标有缩放过渡；出现 / 消失由 Home 里的 AnimatedVisibility 从底部滑入滑出。
  */
 @Composable
-fun MiniPlayer(modifier: Modifier = Modifier) {
+fun MiniPlayer(modifier: Modifier = Modifier, backdrop: GlassBackdrop? = null) {
     val t = remember(MusicState.mediaId, MusicState.tick) { MusicState.current() }
     var pos by remember { mutableLongStateOf(0L) }
     // 全面审查 B10：暂停时只读一次位置，不再每 0.5 秒刷新
     LaunchedEffect(MusicState.isPlaying, MusicState.mediaId) { pos = MusicState.position; while (MusicState.isPlaying) { delay(500); pos = MusicState.position } }
     val dur = MusicState.duration
     val title = t?.title?.ifBlank { t.name } ?: "正在准备…"
-    Column(modifier.padding(horizontal = Space.s + 2.dp).fillMaxWidth().pressScale(Motion.PRESS_SCALE_LARGE).skeuoCard(RoundedCornerShape(Radius.l), elevation = Elevation.raised)
-        .clickable(onClickLabel = "打开正在播放") { Nav.push(Route.MusicNowPlaying) }
+    // 1.7.0 v2：玻璃胶囊（和底栏同宽、首页上有真模糊），按下液体形变；环境光晕取当前封面
+    AmbientFrom(t?.artPath?.let { "file://$it" })
+    val press = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val shape = RoundedCornerShape(Radius.l)
+    Column(modifier.padding(horizontal = 14.dp).fillMaxWidth().glassPress(press, 0.5f).glass(shape, backdrop, shadow = 14.dp).clip(shape)
+        .clickable(press, null, onClickLabel = "打开正在播放") { Nav.push(Route.MusicNowPlaying) }
         .semantics(mergeDescendants = false) { contentDescription = "正在播放：$title" + (t?.displayArtist?.takeIf { it.isNotBlank() }?.let { "，$it" } ?: "") }) {
         Row(Modifier.padding(start = Space.s, end = Space.xs, top = Space.s, bottom = Space.s - 2.dp), verticalAlignment = Alignment.CenterVertically) {
             MusicArt(t?.artPath, Modifier.size(42.dp), corner = Radius.l - Space.s)
             Column(Modifier.weight(1f).padding(start = Space.m)) {
-                Text(title, color = C.Text, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(t?.displayArtist ?: "", color = C.Sub, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(title, color = C.OnGlass, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(t?.displayArtist ?: "", color = C.OnGlassSub, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             IconButton(onClick = { MusicState.toggle() }, modifier = Modifier.semantics { contentDescription = if (MusicState.isPlaying) "暂停" else "播放" }) {
                 if (MusicState.buffering && MusicState.isPlaying) CircularProgressIndicator(color = C.Sub, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
-                else PlayPauseIcon(MusicState.isPlaying, C.Text, 24.dp)
+                else PlayPauseIcon(MusicState.isPlaying, C.OnGlass, 24.dp)
             }
-            IconButton(onClick = { MusicState.next() }) { Icon(KI.skipFwdSolid(), "下一首", tint = C.Text, modifier = Modifier.size(22.dp)) }
+            IconButton(onClick = { MusicState.next() }) { Icon(KI.skipFwdSolid(), "下一首", tint = C.OnGlass, modifier = Modifier.size(22.dp)) }
         }
         Box(Modifier.padding(horizontal = Space.l).fillMaxWidth().height(2.dp).clip(RoundedCornerShape(1.dp)).background(C.Line)) {
             if (dur > 0) Box(Modifier.fillMaxWidth((pos.toFloat() / dur).coerceIn(0f, 1f)).fillMaxHeight().background(C.Accent))
@@ -496,10 +501,13 @@ fun MusicNowPlayingScreen() {
     // 1.6.6 阶段 5：Kubai 图标、实心播放钮 72dp（按压 0.92、换图标缩放过渡）、可加粗的进度条、心形收藏回弹、
     // 封面暂停时轻轻缩小（弹簧，「移除动画」时直接切换）；时间与时长等宽数字
     Box(Modifier.fillMaxSize().appBackground()) {
-        // soft blurred-looking backdrop: the cover, very dim
+        // 1.7.0 v2：封面放大并重度模糊铺满全屏（API 31+ 真模糊；以下仍是压暗的封面），环境光晕取封面颜色
+        AmbientFrom(t?.artPath?.let { "file://$it" })
         if (t?.artPath != null) Box(Modifier.fillMaxSize()) {
-            NetImage("file://${t.artPath}", Modifier.fillMaxSize(), crossfade = false)
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(C.Bg.copy(alpha = 0.86f), C.Bg.copy(alpha = 0.95f), C.Bg))))
+            val real = Glass.on && Glass.blurSupported
+            NetImage("file://${t.artPath}", Modifier.fillMaxSize().graphicsLayer { if (real) { scaleX = 1.3f; scaleY = 1.3f } }.then(if (real) Modifier.blur(80.dp) else Modifier), crossfade = false)
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(if (real) listOf(C.Bg.copy(alpha = 0.45f), C.Bg.copy(alpha = 0.7f), C.Bg.copy(alpha = 0.92f))
+                else listOf(C.Bg.copy(alpha = 0.86f), C.Bg.copy(alpha = 0.95f), C.Bg))))
         }
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             Row(Modifier.padding(horizontal = Space.xs, vertical = Space.xs), verticalAlignment = Alignment.CenterVertically) {
