@@ -94,7 +94,8 @@ fun SnackHost(bottom: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier
             val m = last ?: return@AnimatedVisibility
             // 反色：深色主题浅底深字，浅色主题深底浅字
             val bg = C.Text; val fg = C.Bg
-            Row(Modifier.widthIn(max = 520.dp).clip(RoundedCornerShape(Radius.m)).background(bg)
+            // 1.7.0：胶囊形（全圆角），和底栏 / 玻璃按钮同一套形状
+            Row(Modifier.widthIn(max = 520.dp).clip(androidx.compose.foundation.shape.CircleShape).background(bg)
                 .clickable(onClickLabel = "关闭提示") { Snack.dismiss(m) }
                 .semantics { liveRegion = LiveRegionMode.Polite }
                 .heightIn(min = 48.dp).padding(start = Space.l, end = if (m.action != null) Space.xs else Space.l), verticalAlignment = Alignment.CenterVertically) {
@@ -103,7 +104,7 @@ fun SnackHost(bottom: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier
                 if (m.action != null) {
                     // 操作文字用强调色的另一档（Accent2）：深色主题下浅底配深一档的强调色，浅色主题下深底配浅一档，对比度都 ≥ 4.5
                     val ac = C.Accent2
-                    Box(Modifier.padding(start = Space.s).heightIn(min = 40.dp).clip(RoundedCornerShape(Radius.s))
+                    Box(Modifier.padding(start = Space.s).heightIn(min = 40.dp).clip(androidx.compose.foundation.shape.CircleShape)
                         .clickable(role = Role.Button) { Snack.dismiss(m); m.onAction?.invoke() }.padding(horizontal = Space.m), contentAlignment = Alignment.Center) {
                         Text(m.action, color = ac, style = MaterialTheme.typography.labelLarge.copy(color = ac))
                     }

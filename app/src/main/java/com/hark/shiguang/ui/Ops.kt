@@ -517,7 +517,10 @@ private fun SelectionBarContent(onChanged: () -> Unit) {
     // 退出动画期间选择已经清空：数量停在最后一个非零值，不闪成 0
     var shownCount by remember { mutableIntStateOf(sel.size) }
     if (sel.isNotEmpty()) shownCount = sel.size
-    Column(Modifier.fillMaxWidth().background(C.Surface).drawBehind { drawLine(C.Line, androidx.compose.ui.geometry.Offset(0f, 0f), androidx.compose.ui.geometry.Offset(size.width, 0f), 1f) }.navigationBarsPadding()) {
+    // 1.7.0 v2：多选栏 = 悬浮的玻璃面板（和底栏同样离底、左右 14dp，圆角 32），不再是贴底的整条
+    val selShape = androidx.compose.foundation.shape.RoundedCornerShape(Radius.sheet)
+    Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 14.dp, end = 14.dp, bottom = 10.dp)
+        .glass(selShape, null, tint = C.Surface, shadow = 18.dp).clip(selShape).padding(vertical = Space.xs)) {
         Row(Modifier.fillMaxWidth().padding(start = Space.l, end = Space.xs, top = Space.xs), verticalAlignment = Alignment.CenterVertically) {
             Row(Modifier.weight(1f).semantics(mergeDescendants = true) { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite }, verticalAlignment = Alignment.CenterVertically) {
                 Text("已选 ", color = C.Text, style = MaterialTheme.typography.titleMedium)
