@@ -7,6 +7,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.heading
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.scaleIn
@@ -275,27 +276,55 @@ fun ViewerScreen(photosIn: List<Photo>, start: Int, slideshowStart: Boolean = fa
 @Composable
 private fun MoreSheet(p: Photo, onInfo: () -> Unit, onDismiss: () -> Unit, onHidden: () -> Unit) {
     val ctx = LocalContext.current
-    // 1.6.2「⋯」面板：按「看 / 做 / 藏」分三组卡片，组间留白；不放说明小字（DESIGN §1 少说明）
-    AppBottomSheet(onDismissRequest = onDismiss, containerColor = C.Bg) {
-        Column(Modifier.padding(bottom = Space.xl).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(Space.m)) {
-            Card {
-                NavRow(KI.info(), "详情") { onInfo() }
-                // 全面审查 C1：「加入相册」只留底栏那一个
-                if (!p.isCloud) { Div(); NavRow(KI.similar(), "找相似照片") { onDismiss(); Ops.openSimilar(p) } }
-            }
+    // 1.7.7 v2「⋯」面板：上面一行大的操作块（看 / 做），下面单独一行「隐藏」；标题是这张照片的日期（v2 字阶）。
+    // 面板本身是玻璃，块不再叠玻璃，只用一层淡底（DESIGN §1 玻璃不叠玻璃）。功能与 1.6.2 相同。
+    AppBottomSheet(onDismissRequest = onDismiss, containerColor = C.Surface) {
+        Column(Modifier.padding(horizontal = Space.page).padding(bottom = Space.xl).navigationBarsPadding()) {
+            val (t, w) = dayTitle(p.day)
+            Text(t, style = MaterialTheme.typography.headlineMedium, color = C.Text, maxLines = 1,
+                modifier = Modifier.semantics { heading() })
+            Text(listOf(w, p.time.drop(11).take(5), p.fileName).filter { it.isNotBlank() }.joinToString("  ·  "), style = MaterialTheme.typography.bodySmall,
+                color = C.Sub, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp, bottom = Space.l))
             val edit = !p.isVideo; val live = p.isLive
-            if (edit || live) Card {
-                if (edit) NavRow(KI.sliders(), "编辑") { onDismiss(); Nav.push(com.hark.shiguang.Route.X(ExtScreen.Edit(p))) }
-                if (edit && live) Div()
-                if (live) NavRow(KI.live(), "保存实况视频部分") { onDismiss(); Ops.downloadLiveVideo(ctx, p) }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.s)) {
+                SheetTile(KI.info(), "详情", Modifier.weight(1f)) { onInfo() }
+                // 全面审查 C1：「加入相册」只留底栏那一个
+                if (!p.isCloud) SheetTile(KI.similar(), "找相似", Modifier.weight(1f)) { onDismiss(); Ops.openSimilar(p) }
+                if (edit) SheetTile(KI.sliders(), "编辑", Modifier.weight(1f)) { onDismiss(); Nav.push(com.hark.shiguang.Route.X(ExtScreen.Edit(p))) }
+                if (live) SheetTile(KI.live(), "存实况视频", Modifier.weight(1f)) { onDismiss(); Ops.downloadLiveVideo(ctx, p) }
             }
             val hid = remember(p.key) { com.hark.shiguang.Hidden.has(p) }
-            Card {
-                NavRow(KI.eye(), if (hid) "取消隐藏" else "隐藏") {
-                    com.hark.shiguang.Hidden.hide(listOf(p), !hid); toast(ctx, if (hid) "已取消隐藏" else "已隐藏"); onHidden()
-                }
+            SheetLine(KI.eye(), if (hid) "取消隐藏" else "隐藏", Modifier.padding(top = Space.s)) {
+                com.hark.shiguang.Hidden.hide(listOf(p), !hid); toast(ctx, if (hid) "已取消隐藏" else "已隐藏"); onHidden()
             }
         }
+    }
+}
+
+/** 面板里的淡底（玻璃面板里不再叠玻璃）：玻璃风格是正文色 6%，简洁风格是凹槽色。 */
+private val sheetFill: Color @Composable get() = if (Glass.on) C.Text.copy(alpha = 0.06f) else C.Surface2
+
+/** 「⋯」面板的大操作块：图标在上、文字在下，高 84，圆角 24，按下液体形变。 */
+@Composable
+private fun SheetTile(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val ix = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    Column(modifier.height(84.dp).glassPress(ix, 0.8f).clip(RoundedCornerShape(Radius.l)).background(sheetFill)
+        .clickable(ix, androidx.compose.foundation.LocalIndication.current, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Icon(icon, null, tint = C.Text, modifier = Modifier.size(26.dp))
+        Text(label, style = MaterialTheme.typography.labelLarge, color = C.Text, maxLines = 1, modifier = Modifier.padding(top = Space.s))
+    }
+}
+
+/** 「⋯」面板里的整行操作（隐藏）：高 56，圆角 24。 */
+@Composable
+private fun SheetLine(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val ix = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    Row(modifier.fillMaxWidth().heightIn(min = Space.row).glassPress(ix, 0.4f).clip(RoundedCornerShape(Radius.l)).background(sheetFill)
+        .clickable(ix, androidx.compose.foundation.LocalIndication.current, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
+        .padding(horizontal = Space.l), verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, tint = C.Text, modifier = Modifier.size(22.dp))
+        Text(label, style = MaterialTheme.typography.titleSmall, color = C.Text, modifier = Modifier.padding(start = Space.m))
     }
 }
 
@@ -503,18 +532,23 @@ fun VideoSurface(url: String, play: Boolean, loop: Boolean, controls: Boolean, m
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun InfoSheet(p: Photo, onDismiss: () -> Unit) {
+    // 1.7.7 v2 信息面板：26sp 粗体日期标题；相机卡（机型 + 参数胶囊）；尺寸 / 像素 / 大小三格数字（Allo 等宽）；地点、路径各一行带标签。
     AppBottomSheet(onDismissRequest = onDismiss, containerColor = C.Surface) {
-        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 36.dp).verticalScroll(rememberScrollState())) {
+        Column(Modifier.padding(horizontal = Space.page + 4.dp).padding(bottom = 36.dp).verticalScroll(rememberScrollState())) {
             val (t, w) = dayTitle(p.day)
-            Text("$t $w  ${p.time.drop(11).take(5)}", style = MaterialTheme.typography.headlineSmall)
-            Text(p.fileName, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
-            Spacer(Modifier.height(18.dp))
+            Text(t, style = MaterialTheme.typography.headlineMedium, color = C.Text, modifier = Modifier.semantics { heading() })
+            Text(listOf(w, p.time.drop(11).take(5)).filter { it.isNotBlank() }.joinToString("  "), style = MaterialTheme.typography.bodyMedium, color = C.Sub,
+                modifier = Modifier.padding(top = 2.dp))
+            Text(p.fileName, style = MaterialTheme.typography.bodySmall, color = C.Sub, modifier = Modifier.padding(top = 2.dp))
+            Spacer(Modifier.height(Space.l))
             val camera = listOf(p.make, p.model).filter { it.isNotBlank() }.joinToString(" ").trim()
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(C.Surface2).padding(16.dp)) {
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(Radius.l)).background(sheetFill).padding(Space.l)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(KI.camera(), null, tint = C.Gold, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(10.dp))
-                    Text(camera.ifEmpty { "未知设备" }, style = MaterialTheme.typography.titleSmall)
+                    Box(Modifier.size(36.dp).clip(CircleShape).background(C.Accent.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
+                        Icon(KI.camera(), null, tint = C.Accent, modifier = Modifier.size(20.dp))
+                    }
+                    Text(camera.ifEmpty { "未知设备" }, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = C.Text,
+                        modifier = Modifier.padding(start = Space.m))
                 }
                 val specs = listOfNotNull(
                     p.focal.takeIf { it.isNotBlank() }?.let { if (it.endsWith("mm")) it else "${it}mm" },
@@ -523,27 +557,44 @@ private fun InfoSheet(p: Photo, onDismiss: () -> Unit) {
                     p.iso.takeIf { it.isNotBlank() }?.let { "ISO $it" },
                 )
                 if (specs.isNotEmpty()) {
-                    Spacer(Modifier.height(14.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        specs.forEach { s -> Box(Modifier.clip(RoundedCornerShape(10.dp)).background(Color(0x14FFFFFF)).padding(horizontal = 10.dp, vertical = 6.dp)) { Text(s, fontSize = 12.sp, color = C.Text) } }
+                    Spacer(Modifier.height(Space.m))
+                    Row(horizontalArrangement = Arrangement.spacedBy(Space.s)) {
+                        specs.forEach { s -> Box(Modifier.clip(CircleShape).background(C.Text.copy(alpha = 0.07f)).padding(horizontal = 12.dp, vertical = 6.dp)) {
+                            Text(s, style = Type.badge.copy(fontSize = 12.5.sp, lineHeight = 16.sp), color = C.Text) } }
                     }
                 }
-                Spacer(Modifier.height(14.dp))
-                val mp = if (p.width > 0) "%.1f MP".format(p.width * p.height / 1_000_000f) else ""
-                Text(listOf(if (p.width > 0) "${p.width} × ${p.height}" else "", mp, fmtBytes(p.size)).filter { it.isNotEmpty() }.joinToString("  ·  "), style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(Space.l))
+                Row(Modifier.fillMaxWidth()) {
+                    InfoStat("尺寸", if (p.width > 0) "${p.width}×${p.height}" else "—", Modifier.weight(1.3f))
+                    InfoStat("像素", if (p.width > 0) "%.1f MP".format(p.width * p.height / 1_000_000f) else "—", Modifier.weight(1f))
+                    InfoStat("大小", fmtBytes(p.size), Modifier.weight(1f))
+                }
             }
-            if (p.geo.isNotBlank()) InfoRow(KI.pin(), p.geo)
-            if (p.path.isNotBlank()) InfoRow(KI.folder(), p.path)
+            if (p.geo.isNotBlank()) InfoRow(KI.pin(), "地点", p.geo)
+            if (p.path.isNotBlank()) InfoRow(KI.folder(), "位置", p.path)
         }
     }
 }
 
+/** 信息面板里的一格数字：小标签在上，Allo 等宽数字在下。读屏合并成「尺寸 4032×3024」。 */
 @Composable
-private fun InfoRow(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
-    Row(Modifier.padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, tint = C.Sub, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(10.dp))
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = C.Sub)
+private fun InfoStat(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier.semantics(mergeDescendants = true) {}) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = C.Sub)
+        Text(value, style = Type.badge.copy(fontSize = 15.sp, lineHeight = 20.sp), color = C.Text, maxLines = 1, modifier = Modifier.padding(top = 2.dp))
+    }
+}
+
+@Composable
+private fun InfoRow(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, text: String) {
+    Row(Modifier.fillMaxWidth().padding(top = Space.l).semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.Top) {
+        Box(Modifier.size(36.dp).clip(CircleShape).background(sheetFill), contentAlignment = Alignment.Center) {
+            Icon(icon, null, tint = C.Text, modifier = Modifier.size(19.dp))
+        }
+        Column(Modifier.weight(1f).padding(start = Space.m)) {
+            Text(label, style = MaterialTheme.typography.labelSmall, color = C.Sub)
+            Text(text, style = MaterialTheme.typography.bodyMedium, color = C.Text, modifier = Modifier.padding(top = 1.dp))
+        }
     }
 }
 
