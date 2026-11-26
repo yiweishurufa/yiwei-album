@@ -443,26 +443,31 @@ fun CollectionScreen(r: Route.Collection) {
     var deleting by remember { mutableStateOf(false) }
     var title by remember { mutableStateOf(r.title) }
     DisposableEffect(r) { AlbumCtx.current = r.album; onDispose { if (AlbumCtx.current == r.album) AlbumCtx.current = null } }
+    // 1.7.14：照片区录进 backdrop，返回 / 更多换成玻璃圆钮（API 31+ 真模糊下面的照片）；相册、相似照片、人物等合集页共用
+    val backdrop = remember { GlassBackdrop() }
     Box(Modifier.fillMaxSize().appBackground()) {
         val topPad = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 64.dp
+        Box(Modifier.fillMaxSize().glassSource(backdrop)) {
         when {
             src.photos.isEmpty() && src.loading -> SkeletonGrid(cols, topPad)
             src.photos.isEmpty() && src.error != null -> ErrorState(src.error, onRetry = { scope.launch { src.refresh() } })
             src.photos.isEmpty() -> StateMessage(KI.photos(), "这里还是空的", "")
             else -> PhotoGrid(entries, cols, src.loading, onEnd = { scope.launch { src.next() } }, onOpen = { Nav.push(Route.Viewer(shown, it)) }, state = grid, top = topPad, bottom = 40.dp)
         }
+        }
         Box(Modifier.fillMaxWidth().background(C.TopScrim)) {
-            Row(Modifier.statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                RoundIcon(KI.back(), size = 40.dp, desc = "返回") { Nav.pop() }
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
+            Row(Modifier.statusBarsPadding().padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                GlassIconButton(KI.back(), "返回", backdrop = backdrop) { Nav.pop() }
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f).semantics(mergeDescendants = true) { heading() }) {
                     Text(title, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     val s = listOf(r.subtitle, if (src.photos.isNotEmpty()) "${num(src.photos.size)}${if (src.more) "+" else ""} 项" else "").filter { it.isNotEmpty() }.joinToString(" · ")
-                    if (s.isNotEmpty()) Text(s, style = MaterialTheme.typography.bodySmall)
+                    if (s.isNotEmpty()) Text(s, style = MaterialTheme.typography.bodySmall.merge(Type.num), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 if (r.album != null) Box {
-                    RoundIcon(KI.moreH(), size = 40.dp, desc = "更多") { menu = true }
-                    AppDropdownMenu(menu, { menu = false }, Modifier.background(C.Surface2)) {
+                    GlassIconButton(KI.moreH(), "更多", backdrop = backdrop) { menu = true }
+                    // 1.7.14：去掉写死的不透明底，走玻璃菜单（与 1.7.4 其余菜单一致）
+                    AppDropdownMenu(menu, { menu = false }) {
                         DropdownMenuItem({ Text("重命名", color = C.Text) }, { menu = false; renaming = true })
                         DropdownMenuItem({ Text("删除相册", color = C.Danger) }, { menu = false; deleting = true })
                     }
