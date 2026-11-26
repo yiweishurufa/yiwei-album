@@ -70,6 +70,8 @@ fun MovieDetailScreen(r: Route.MovieDetail) {
     val density = androidx.compose.ui.platform.LocalDensity.current
     val headerPx = with(density) { DetailSize.backdrop.toPx() }
     val pinned by remember { derivedStateOf { list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > headerPx * 0.72f } }
+    // 1.7.0：环境光晕取海报颜色
+    AmbientFrom(posterModel(m.poster ?: m.backdrop))
     Box(Modifier.fillMaxSize().appBackground(), contentAlignment = Alignment.TopCenter) {
         LazyColumn(Modifier.widthIn(max = 720.dp).fillMaxHeight(), state = list, contentPadding = PaddingValues(bottom = 60.dp)) {
             item(key = "head") {
@@ -323,7 +325,7 @@ private fun EpisodeRow(lib: MovieLib, m: MovieItem, e: Episode) {
 @Composable
 fun WatchMenu(open: Boolean, onDismiss: () -> Unit, watched: Boolean, resumable: Boolean = false,
               onWatched: () -> Unit, onUnwatched: () -> Unit, onFromStart: (() -> Unit)? = null, onHideContinue: (() -> Unit)? = null) {
-    AppDropdownMenu(open, onDismissRequest = onDismiss, modifier = Modifier.background(C.Surface)) {
+    AppDropdownMenu(open, onDismissRequest = onDismiss) {
         if (resumable && onFromStart != null) DropdownMenuItem(text = { Text("从头播放", color = C.Text) }, onClick = { onDismiss(); onFromStart() })
         if (watched) DropdownMenuItem(text = { Text("标为未看", color = C.Text) }, onClick = { onDismiss(); onUnwatched() })
         else DropdownMenuItem(text = { Text("标为已看", color = C.Text) }, onClick = { onDismiss(); onWatched() })

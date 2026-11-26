@@ -314,7 +314,7 @@ private fun TrackRow(t: Track, sourceKey: String, showNo: Boolean = false, index
             if (t.durationMs > 0) Text(Music.fmt(t.durationMs), color = C.Sub, style = MaterialTheme.typography.labelSmall.merge(Type.num), modifier = Modifier.padding(start = Space.s))
             IconButton(onClick = { menu = true }) { Icon(KI.more(), "更多", tint = C.Sub, modifier = Modifier.size(18.dp)) }
         }
-        AppDropdownMenu(menu, onDismissRequest = { menu = false }, modifier = Modifier.background(C.Surface)) {
+        AppDropdownMenu(menu, onDismissRequest = { menu = false }) {
             DropdownMenuItem(text = { Text(if (fav) "取消喜欢" else "加入我喜欢", color = C.Text) }, onClick = {
                 menu = false; toastUndo(ctx, if (lib.toggleFav(t.id)) "已加入我喜欢" else "已取消喜欢") { lib.toggleFav(t.id) }
             })
@@ -772,7 +772,7 @@ private fun SleepButton() {
             if (MusicState.sleepAt > 0) Text(" $left 分", color = C.Accent, style = MaterialTheme.typography.labelMedium.merge(Type.num).copy(color = C.Accent))
             else if (MusicState.sleepAfterTrack != null) Text(" 本首", color = C.Accent, style = MaterialTheme.typography.labelMedium.copy(color = C.Accent))
         }
-        AppDropdownMenu(open, onDismissRequest = { open = false }, modifier = Modifier.background(C.Surface)) {
+        AppDropdownMenu(open, onDismissRequest = { open = false }) {
             PlayerHints.sleepChoices.forEach { m -> DropdownMenuItem(text = { Text("$m 分钟后暂停", color = C.Text) }, onClick = { open = false; MusicState.setSleep(m) }) }
             DropdownMenuItem(text = { Text("本首播完后停止", color = C.Text) }, onClick = { open = false; MusicState.sleepAfterThisTrack() })
             if (on) DropdownMenuItem(text = { Text("关闭定时", color = C.Danger) }, onClick = { open = false; MusicState.clearSleep() })
@@ -790,7 +790,7 @@ private fun MusicSortMenu() {
             Icon(KI.sort(), null, tint = C.Sub, modifier = Modifier.size(16.dp))
             Text(MusicUi.sorts[MusicUi.sort], color = C.Sub, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(start = Space.xs))
         }
-        AppDropdownMenu(open, onDismissRequest = { open = false }, modifier = Modifier.background(C.Surface)) {
+        AppDropdownMenu(open, onDismissRequest = { open = false }) {
             MusicUi.sorts.forEachIndexed { i, s ->
                 DropdownMenuItem(text = { Text(s, color = if (i == MusicUi.sort) C.Accent else C.Text, fontWeight = if (i == MusicUi.sort) FontWeight.Medium else FontWeight.Normal) },
                     trailingIcon = if (i == MusicUi.sort) { { Icon(KI.check(), "当前", tint = C.Accent, modifier = Modifier.size(18.dp)) } } else null,

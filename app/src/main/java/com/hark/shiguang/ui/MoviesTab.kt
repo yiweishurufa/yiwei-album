@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -178,15 +180,29 @@ fun MediaHeader(title: String, search: SearchScope, scanning: Boolean, hasDirs: 
 
 @Composable
 fun Segmented(items: List<String>, sel: Int, onPick: (Int) -> Unit) {
-    // 1.6.0 分段控件：内凹的槽 + 浮起的选中块（质感）/ 中性槽 + 页面底色块（简洁）；切换时文字颜色渐变、轻震
+    // 1.7.0 v2：玻璃胶囊槽 + 一颗会滑动的强调色气泡（Motion.liquid，移动中拉长），选中文字强调色粗体；切换轻震。
+    // 各项等宽（取最宽的一项），气泡画在槽里（drawBehind），不额外增加图层。
     val view = androidx.compose.ui.platform.LocalView.current
-    Row(Modifier.skeuoInset(RoundedCornerShape(Radius.s + 2.dp), if (Skeuo.on) C.Surface2 else C.Chip).padding(3.dp)) {
+    val n = items.size.coerceAtLeast(1)
+    val x by androidx.compose.animation.core.animateFloatAsState(sel.toFloat(), Motion.liquid(), label = "segX")
+    val bubble = if (Glass.on) C.Accent.copy(alpha = if (C.P.dark) 0.26f else 0.16f) else C.AccentSoft
+    Row(Modifier.width(androidx.compose.foundation.layout.IntrinsicSize.Max)
+        .glass(CircleShape, null, tint = C.Surface, shadow = if (Glass.on) 6.dp else 0.dp, highlight = 0.8f).clip(CircleShape).padding(4.dp)
+        .drawBehind {
+            val iw = size.width / n
+            val stretch = 1f + kotlin.math.abs(x - sel).coerceAtMost(1f) * 0.3f
+            val w = iw * stretch
+            val left = (x * iw + iw / 2f - w / 2f).coerceIn(0f, size.width - w)
+            drawRoundRect(bubble, topLeft = androidx.compose.ui.geometry.Offset(left, 0f), size = androidx.compose.ui.geometry.Size(w, size.height),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.height / 2f))
+        }) {
         items.forEachIndexed { i, t ->
             val on = i == sel
-            val fg by androidx.compose.animation.animateColorAsState(if (on) C.Text else C.Sub, Motion.state(), label = "segFg")
-            Text(t, color = fg, style = MaterialTheme.typography.labelLarge, fontWeight = if (on) FontWeight.Medium else FontWeight.Normal,
-                modifier = Modifier.then(if (on) Modifier.skeuoPressed(false, RoundedCornerShape(Radius.s - 1.dp), if (Skeuo.on) C.Surface else C.Bg, Elevation.pressed)
-                    else Modifier.clip(RoundedCornerShape(Radius.s - 1.dp))).clickable(role = androidx.compose.ui.semantics.Role.Tab) { if (!on) Haptics.tick(view); onPick(i) }.semantics { selected = on }.padding(horizontal = 16.dp, vertical = 7.dp))
+            val fg by androidx.compose.animation.animateColorAsState(if (on) C.Accent else C.Sub, Motion.state(), label = "segFg")
+            Box(Modifier.weight(1f).clip(CircleShape).clickable(role = androidx.compose.ui.semantics.Role.Tab) { if (!on) Haptics.tick(view); onPick(i) }
+                .semantics { selected = on }.heightIn(min = 36.dp).padding(horizontal = 18.dp, vertical = 7.dp), contentAlignment = Alignment.Center) {
+                Text(t, color = fg, style = MaterialTheme.typography.labelLarge, fontWeight = if (on) FontWeight.Bold else FontWeight.Medium, maxLines = 1)
+            }
         }
     }
 }
@@ -200,7 +216,7 @@ private fun SortMenu() {
             Icon(KI.sort(), null, tint = C.Sub, modifier = Modifier.size(16.dp))
             Text(MoviesState.sorts[MoviesState.sort], color = C.Sub, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(start = Space.xs))
         }
-        AppDropdownMenu(open, onDismissRequest = { open = false }, modifier = Modifier.background(C.Surface)) {
+        AppDropdownMenu(open, onDismissRequest = { open = false }) {
             MoviesState.sorts.forEachIndexed { i, s ->
                 DropdownMenuItem(text = { Text(s, color = if (i == MoviesState.sort) C.Accent else C.Text, fontWeight = if (i == MoviesState.sort) FontWeight.Medium else FontWeight.Normal) },
                     trailingIcon = if (i == MoviesState.sort) { { Icon(KI.check(), "当前", tint = C.Accent, modifier = Modifier.size(18.dp)) } } else null,
