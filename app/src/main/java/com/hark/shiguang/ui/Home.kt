@@ -25,7 +25,6 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
-import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.runtime.*
@@ -169,8 +168,11 @@ fun HomeScreen() {
         if (HomeState.switching && HomeState.tab != 4) Column { TopSwitch(search = if (HomeState.tab == 5 || HomeState.tab == 6) SearchScope.None else SearchScope.Photos, showDate = HomeState.tab != 5 && HomeState.tab != 6); SkeletonGrid(4, 20.dp) }
         // 用户 2026-10-24 要求继续优化：切底部 tab 时各 tab 的 rememberSaveable 状态（设置页滚动、发现页展开的卡片）
         // 也按 tab 保存，切回来还在。照片网格 / 发现页列表的滚动另有 ScrollMem 按账号保存。
-        else tabStates.SaveableStateProvider(homeTabKey(HomeState.tab, false, HomeState.source)) {
-            when (HomeState.tab) {
+        // 1.7.12：切 Tab 时新旧内容交叉淡入（Motion.crossfade，220ms，不位移）；移除动画时直接切换
+        else androidx.compose.animation.Crossfade(HomeState.tab to HomeState.source, animationSpec = Motion.crossfade(), label = "homeTab") { (tab, src) ->
+          val dav = src == "dav"
+          tabStates.SaveableStateProvider(homeTabKey(tab, false, src)) {
+            when (tab) {
                 // 全面审查 C2：「视频」筛选并回时间线（月份标题、捏合缩放、列数都和全部 / 照片 / 实况一致）
                 0 -> if (dav) DavPhotosTab() else PhotosTab()
                 1 -> VideosTab(dav)   // only reachable for one frame before openTab() maps it; kept as a safe fallback
@@ -180,6 +182,7 @@ fun HomeScreen() {
                 6 -> MusicTab()
                 else -> SettingsScreen()
             }
+          }
         }
         }
         HomeTopCapsule(backdrop)
@@ -647,7 +650,7 @@ private fun DavPhotosTab() {
                 ChromeTitle(if (scrolled) "$mt · $yt".trim(' ', '·') else null)
             }
         }
-        PullToRefreshContainer(state = ptr, modifier = Modifier.align(Alignment.TopCenter))
+        GlassRefreshIndicator(ptr, Modifier.align(Alignment.TopCenter))
         SelectionBar(Modifier.align(Alignment.BottomCenter), onChanged = { scope.launch { lib.scan() } })
     }
 }

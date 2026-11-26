@@ -1,6 +1,7 @@
 package com.hark.shiguang
 
 import android.os.Bundle
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
@@ -262,31 +263,33 @@ class MainActivity : ComponentActivity() {
                 BackHandler(enabled = Nav.stack.size > 1) { Nav.pop() }
                 // Home always stays composed underneath so scroll position survives.
                 val home = Nav.stack.firstOrNull() == Route.Home
-                if (home) HomeScreen()
-                // 1.6.0 转场（docs/DESIGN.md §7）：普通页面走共享 X 轴（进栈从右侧 28dp 滑入 + 淡入，出栈反向）；
-                // 大图 / 播放器用放大淡入；系统「移除动画」时只做 90ms 淡入淡出。
+                // 1.7.12：普通页面压上来时首页跟着放大到 1.04（「往里走」），返回时缩回；大图 / 播放器 / 正在播放不动首页
+                // （大图的共享元素转场要按网格原位置算落点）。移除动画时不缩放。
+                val depthOn = !Motion.reduced && Nav.stack.size > 1 && top !is Route.Viewer && top !is Route.MoviePlay && top != Route.MusicNowPlaying
+                val homeScale by androidx.compose.animation.core.animateFloatAsState(if (depthOn) Motion.PAGE_SCALE_OUT else 1f, Motion.page(), label = "homeDepth")
+                if (home) androidx.compose.foundation.layout.Box(Modifier.graphicsLayer { scaleX = homeScale; scaleY = homeScale }) { HomeScreen() }
+                // 转场规格集中在 Motion（docs/DESIGN.md §7）；系统「移除动画」时只做 90ms 淡入淡出。
                 val depth = Nav.stack.size
                 val prevDepth = remember { mutableIntStateOf(depth) }
                 val forward = depth >= prevDepth.intValue
                 SideEffect { prevDepth.intValue = depth }
-                val shift = with(androidx.compose.ui.platform.LocalDensity.current) { Motion.PAGE_SHIFT.roundToPx() }
                 AnimatedContent(
                     targetState = entry,
                     transitionSpec = {
                         val media = { r: Route -> r is Route.Viewer || r is Route.MoviePlay }
                         when {
-                            Motion.reduced -> fadeIn(Motion.enter()) togetherWith fadeOut(Motion.exit())
                             // 1.6.2：从缩略图打开的大图自己做共享元素放大（ViewerScreen），页面层不再叠一层缩放；
                             // 大图已缩回缩略图位置时（Hero.closed）直接移除，网格就在原处
-                            targetState.route is Route.Viewer && Hero.from != null -> EnterTransition.None togetherWith fadeOut(Motion.exit())
-                            initialState.route is Route.Viewer && Hero.closed -> EnterTransition.None togetherWith ExitTransition.None
+                            !Motion.reduced && targetState.route is Route.Viewer && Hero.from != null -> EnterTransition.None togetherWith fadeOut(Motion.exit())
+                            !Motion.reduced && initialState.route is Route.Viewer && Hero.closed -> EnterTransition.None togetherWith ExitTransition.None
                             // 1.6.6：正在播放页像从迷你播放条展开的面板——从下往上滑入（面板弹簧），收起时向下滑出并压在上层
-                            targetState.route == Route.MusicNowPlaying -> (slideInVertically(Motion.sheet()) { it / 2 } + fadeIn(Motion.enter())) togetherWith fadeOut(Motion.exit())
-                            initialState.route == Route.MusicNowPlaying -> (fadeIn(Motion.enter()) togetherWith (slideOutVertically(Motion.page()) { it / 2 } + fadeOut(Motion.exit()))).apply { targetContentZIndex = -1f }
-                            media(targetState.route) -> (fadeIn(Motion.enter()) + scaleIn(Motion.zoom(), initialScale = 0.94f)) togetherWith fadeOut(Motion.exit())
-                            media(initialState.route) -> fadeIn(Motion.enter()) togetherWith (fadeOut(Motion.exit()) + scaleOut(Motion.exit(), targetScale = 0.96f))
-                            else -> (slideInHorizontally(Motion.page()) { if (forward) shift else -shift } + fadeIn(Motion.enter())) togetherWith
-                                (slideOutHorizontally(Motion.page()) { if (forward) -shift / 2 else shift / 2 } + fadeOut(Motion.exit()))
+                            !Motion.reduced && targetState.route == Route.MusicNowPlaying -> (slideInVertically(Motion.sheet()) { it / 2 } + fadeIn(Motion.enter())) togetherWith fadeOut(Motion.exit())
+                            !Motion.reduced && initialState.route == Route.MusicNowPlaying -> (fadeIn(Motion.enter()) togetherWith (slideOutVertically(Motion.page()) { it / 2 } + fadeOut(Motion.exit()))).apply { targetContentZIndex = -1f }
+                            media(targetState.route) -> Motion.mediaEnter() togetherWith Motion.pageExit(true)
+                            media(initialState.route) -> (Motion.pageEnter(false) togetherWith Motion.mediaExit()).apply { targetContentZIndex = -1f }
+                            // 1.7.12 统一转场（Motion.pageEnter / pageExit）：进栈时新页面从 0.92 放大淡入、下层放大到 1.04 淡出（往里走）；
+                            // 出栈反过来，被弹出的页面压在上层缩小淡出。移除动画时只做淡入淡出。
+                            else -> (Motion.pageEnter(forward) togetherWith Motion.pageExit(forward)).apply { if (!forward) targetContentZIndex = -1f }
                         }
                     },
                     label = "nav",

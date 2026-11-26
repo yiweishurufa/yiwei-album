@@ -263,7 +263,7 @@ object Motion {
     fun <T> move(): FiniteAnimationSpec<T> = if (reduced) snap() else spring(dampingRatio = 1f, stiffness = 700f)
     /** 底部面板 / 对话框弹出：bounce 0.1。 */
     fun <T> sheet(): FiniteAnimationSpec<T> = if (reduced) tween(90) else spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow)
-    /** 页面转场（共享 X 轴：位移 [PAGE_SHIFT] + 淡入）。 */
+    /** 页面转场的缩放弹簧（1.7.12 起是缩放 + 淡入，见 [pageEnter]）。 */
     fun <T> page(): FiniteAnimationSpec<T> = if (reduced) tween(90) else spring(dampingRatio = 1f, stiffness = 420f)
     /** 大图打开 / 关闭（共享元素式放大）：带一点点余量。 */
     fun <T> zoom(): FiniteAnimationSpec<T> = if (reduced) tween(90) else spring(dampingRatio = 0.86f, stiffness = 320f)
@@ -271,10 +271,41 @@ object Motion {
     fun <T> liquid(): FiniteAnimationSpec<T> = if (reduced) snap() else spring(dampingRatio = 0.62f, stiffness = 380f)
     /** 1.7.0 玻璃出现：缩放 + 透明度一起（「材质到来」，不只是淡入）。 */
     fun <T> materialize(): FiniteAnimationSpec<T> = if (reduced) tween(90) else spring(dampingRatio = 0.72f, stiffness = 520f)
-    /** 页面转场的横向位移（dp），只走一小段，不整屏推。 */
-    val PAGE_SHIFT = 28.dp
     /** 列表 / 面板内容进入时上浮的距离。 */
     val RISE = 8.dp
+
+    // ---------------------------------------------------------------- 1.7.12 统一页面转场（DESIGN §7）
+    /** 进栈时新页面从这个比例放大到位；出栈时被弹出的页面缩到这个比例淡出。 */
+    const val PAGE_SCALE_IN = 0.92f
+    /** 进栈时下层页面放大到这个比例淡出（「往里走」）；出栈时露出来的页面从这个比例缩回到位。 */
+    const val PAGE_SCALE_OUT = 1.04f
+    /** 照片网格首屏错落淡入：每格按（行 + 列）延迟这么多 ms，单格淡入 [GRID_INTRO_CELL] ms，只给前 [GRID_INTRO_MAX] 格。 */
+    const val GRID_INTRO_STEP = 22
+    const val GRID_INTRO_CELL = 280
+    const val GRID_INTRO_MAX = 60
+
+    /** 普通页面进入：缩放 + 淡入。[forward] = 进栈。移除动画时只做 90ms 淡入。 */
+    fun pageEnter(forward: Boolean): androidx.compose.animation.EnterTransition =
+        if (reduced) androidx.compose.animation.fadeIn(tween(90))
+        else androidx.compose.animation.fadeIn(tween(ENTER, delayMillis = if (forward) 40 else 0, easing = EaseOut)) +
+            androidx.compose.animation.scaleIn(page(), initialScale = if (forward) PAGE_SCALE_IN else PAGE_SCALE_OUT)
+
+    /** 普通页面离开：缩放 + 淡出。[forward] = 进栈（离开的是下层页面）。 */
+    fun pageExit(forward: Boolean): androidx.compose.animation.ExitTransition =
+        if (reduced) androidx.compose.animation.fadeOut(tween(60))
+        else androidx.compose.animation.fadeOut(tween(if (forward) PAGE - 60 else EXIT, easing = EaseOut)) +
+            androidx.compose.animation.scaleOut(page(), targetScale = if (forward) PAGE_SCALE_OUT else PAGE_SCALE_IN)
+
+    /** 大图 / 播放器（不是从缩略图打开时）：放大淡入；关闭时略缩淡出。 */
+    fun mediaEnter(): androidx.compose.animation.EnterTransition =
+        if (reduced) androidx.compose.animation.fadeIn(tween(90))
+        else androidx.compose.animation.fadeIn(enter()) + androidx.compose.animation.scaleIn(zoom(), initialScale = 0.94f)
+    fun mediaExit(): androidx.compose.animation.ExitTransition =
+        if (reduced) androidx.compose.animation.fadeOut(tween(60))
+        else androidx.compose.animation.fadeOut(exit()) + androidx.compose.animation.scaleOut(exit(), targetScale = 0.96f)
+
+    /** 首页 Tab 切换：内容交叉淡入（不位移）。移除动画时直接切换。 */
+    fun <T> crossfade(): FiniteAnimationSpec<T> = if (reduced) snap() else tween(220, easing = EaseOut)
 }
 
 @Composable

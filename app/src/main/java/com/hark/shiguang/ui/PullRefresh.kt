@@ -1,10 +1,22 @@
 package com.hark.shiguang.ui
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
+import androidx.compose.material3.pulltorefresh.PullToRefreshState
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -12,13 +24,26 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 
 /**
- * 全面审查 B7：下拉刷新（原来只有 WebDAV 照片页有）。影视、音乐页用它包住列表。
+ * 全面审查 B7：下拉刷新（原来只有 WebDAV 照片页有）。影视、音乐、飞牛照片页用它包住列表。
  * [onRefresh] 只负责发起后台增量扫描（扫描进度仍由页内的「正在更新」一行显示），圆圈转一下就收起，不挡列表。
  * [enabled] 为 false（没有文件夹 / 正在扫描）时下拉不触发。
+ * 1.7.12：指示器换成 [GlassRefreshIndicator]（玻璃圆片 + 强调色进度弧）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -31,6 +56,61 @@ fun PullRefreshBox(enabled: Boolean, onRefresh: () -> Unit, content: @Composable
     }
     Box(Modifier.fillMaxSize().nestedScroll(ptr.nestedScrollConnection)) {
         content()
-        PullToRefreshContainer(state = ptr, modifier = Modifier.align(Alignment.TopCenter))
+        GlassRefreshIndicator(ptr, Modifier.align(Alignment.TopCenter))
+    }
+}
+
+/**
+ * 1.7.12 玻璃下拉刷新指示器（DESIGN §7 / §9）：44dp 磨砂玻璃圆片，跟着手指从状态栏下方落下、由小长大；
+ * 里面一道强调色弧随下拉长到 300°（同时转动，提示「再拉就刷新」），过了阈值弧变粗；刷新中弧持续旋转。
+ * 不在 glassSource 外面，所以总是降级外观（着色 + 噪点 + 高光边）；简洁风格纯色圆片。
+ * 移除动画时：不旋转、不缩放，刷新中显示一道静止的 270° 弧。读屏：出现时读「下拉刷新」，刷新中礼貌播报「正在刷新」。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GlassRefreshIndicator(state: PullToRefreshState, modifier: Modifier = Modifier) {
+    val statusTop = with(LocalDensity.current) { WindowInsets.statusBars.asPaddingValues().calculateTopPadding().toPx() }
+    val gapPx = with(LocalDensity.current) { 8.dp.toPx() }
+    val refreshing = state.isRefreshing
+    val spin = if (refreshing && !Motion.reduced) {
+        val inf = rememberInfiniteTransition(label = "ptrSpin")
+        inf.animateFloat(0f, 360f, infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Restart), label = "ptrSpinA").value
+    } else 0f
+    val visible = refreshing || state.verticalOffset > 0.5f
+    val accent = C.Accent
+    val track = C.Text.copy(alpha = 0.12f)
+    Box(
+        modifier
+            .graphicsLayer {
+                val p = state.progress.coerceIn(0f, 1.5f)
+                // 落点：状态栏下方 8dp + 下拉距离；收起时向上退出屏幕
+                translationY = statusTop + gapPx + state.verticalOffset - size.height
+                alpha = if (refreshing) 1f else (p * 1.8f).coerceIn(0f, 1f)
+                if (!Motion.reduced && !refreshing) { val s = 0.7f + 0.3f * p.coerceAtMost(1f); scaleX = s; scaleY = s }
+            }
+            .then(if (visible) Modifier.semantics {
+                contentDescription = if (refreshing) "正在刷新" else "下拉刷新"
+                if (refreshing) liveRegion = LiveRegionMode.Polite
+            } else Modifier.clearAndSetSemantics { }),
+        contentAlignment = Alignment.Center,
+    ) {
+        GlassSurface(Modifier.size(44.dp), shape = CircleShape, shadow = 8.dp) {
+            Canvas(Modifier.size(44.dp)) {
+                val p = state.progress.coerceIn(0f, 1f)
+                val armed = refreshing || state.progress >= 1f
+                val w = (if (armed) 2.6.dp else 2.dp).toPx()
+                val r = 11.dp.toPx()
+                val tl = Offset(center.x - r, center.y - r)
+                val sz = Size(r * 2, r * 2)
+                drawArc(track, 0f, 360f, false, tl, sz, style = Stroke(w))
+                val sweep = when {
+                    // 刷新中：弧长在 100°–220° 之间呼吸，同时整体旋转
+                    refreshing -> if (Motion.reduced) 270f else 160f + 60f * kotlin.math.sin(Math.toRadians(spin * 2.0)).toFloat()
+                    else -> 300f * p
+                }
+                val start = if (refreshing) spin - 90f else -90f + (if (Motion.reduced) 0f else 160f * p)
+                drawArc(accent, start, sweep, false, tl, sz, style = Stroke(w, cap = StrokeCap.Round))
+            }
+        }
     }
 }

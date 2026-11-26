@@ -171,6 +171,20 @@ fun PhotoGrid(
             levelAnim.animateTo(1f, Motion.zoom())
         } else lastCols = columns
     }
+    // 1.7.12 首屏错落淡入（DESIGN §7）：网格第一次有内容、且停在顶部时，前 GRID_INTRO_MAX 格按「行 + 列」斜向依次淡入并略微放大到位。
+    // 一个 Animatable 驱动所有格子（只在绘制阶段读，不重组）；播过一次就记住（切 Tab 回来、从大图返回都不再播）。移除动画时不播。
+    var introPlayed by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    val intro = remember { androidx.compose.animation.core.Animatable(if (introPlayed || Motion.reduced) Float.MAX_VALUE else 0f) }
+    val introDiag = remember(entries, columns) { gridIntroDiagonals(entries, columns, Motion.GRID_INTRO_MAX) }
+    val hasCells = entries.isNotEmpty()
+    LaunchedEffect(hasCells) {
+        if (!hasCells || introPlayed) return@LaunchedEffect
+        introPlayed = true
+        if (Motion.reduced || state.firstVisibleItemIndex > 1) { intro.snapTo(Float.MAX_VALUE); return@LaunchedEffect }
+        val total = ((introDiag.maxOrNull() ?: 0) * Motion.GRID_INTRO_STEP + Motion.GRID_INTRO_CELL).toFloat()
+        intro.animateTo(total, androidx.compose.animation.core.tween(total.toInt(), easing = androidx.compose.animation.core.LinearEasing))
+        intro.snapTo(Float.MAX_VALUE)
+    }
     // back from the viewer: make sure the last photo looked at is on screen
     LaunchedEffect(ViewerReturn.tick) {
         val k = ViewerReturn.lastKey ?: return@LaunchedEffect
@@ -259,7 +273,17 @@ fun PhotoGrid(
                 contentType = { i -> if (entries[i] is Entry.Header) 0 else 1 }) { i ->
                 when (val e = entries[i]) {
                     is Entry.Header -> DateHeader(e, entries, i, onHeaderClick)
-                    is Entry.Cell -> SelectableThumb(e.photo, corner, { onOpen(e.index) }, small = columns >= 6)
+                    is Entry.Cell -> {
+                        val d = introDiag.getOrElse(i) { -1 }
+                        Box(if (d < 0) Modifier else Modifier.graphicsLayer {
+                            val t = intro.value
+                            if (t < Float.MAX_VALUE) {
+                                val p = ((t - d * Motion.GRID_INTRO_STEP) / Motion.GRID_INTRO_CELL).coerceIn(0f, 1f)
+                                val k = Motion.EaseOut.transform(p)
+                                alpha = k; scaleX = 0.94f + 0.06f * k; scaleY = scaleX
+                            }
+                        }) { SelectableThumb(e.photo, corner, { onOpen(e.index) }, small = columns >= 6) }
+                    }
                 }
                 if (i >= entries.size - columns * 6) LaunchedEffect(entries.size) { onEnd() }
             }
@@ -426,4 +450,25 @@ fun YearGrid(cards: List<YearCard>, top: Dp, onPick: (Int) -> Unit, onPinch: (Bo
             }
         }
     }
+}
+
+/**
+ * 1.7.12 首屏错落淡入用：前 [max] 个条目各自的「行 + 列」（日期标题占一整行，取 -1 表示不参与动画）。
+ * 只是近似的网格位置（不量实际布局），足够让格子沿对角线依次出现。
+ */
+internal fun gridIntroDiagonals(entries: List<Entry>, columns: Int, max: Int): IntArray {
+    val n = minOf(entries.size, max)
+    val out = IntArray(n) { -1 }
+    var row = 0; var col = 0; var started = false
+    for (i in 0 until n) {
+        when (entries[i]) {
+            is Entry.Header -> { if (started) row += if (col > 0) 2 else 1; col = 0 }
+            is Entry.Cell -> {
+                if (col == columns) { col = 0; row++ }
+                out[i] = row + col
+                col++; started = true
+            }
+        }
+    }
+    return out
 }
