@@ -137,6 +137,10 @@
 | 大图 / 播放器打开 | 放大淡入 0.94→1，`spring(0.86, 320)`；关闭淡出 + 缩到 0.96 | 1.6.3 起是共享元素式：从缩略图位置展开；下拉时照片跟手缩小、背景变透明，松手按距离 96dp 或向下速度关闭，缩回网格里那一格（`ViewerScreen` + `Hero`），找不到格子时退回整页淡出。【impeccable android.md · container transform；gestures】 |
 | 底部面板 / 对话框 | `spring(0.9, StiffnessMediumLow)`（bounce ≈ 0.1） | `Motion.sheet()`；拖动关闭要带速度判定。页面里只用 `ui/Dialogs.kt` 的 `AppAlertDialog`（0.94→1 弹出、标题 titleLarge、圆角 28）、`AppBottomSheet`（统一拖动条、上沿 28；弹簧与速度判定用 Material 自带）、`AppDropdownMenu`（圆角 14）。【emil-design-eng · drawer；gestures】 |
 | 列表进入 | 只给首屏前 6 项：上浮 8dp + 淡入，间隔 32ms | `Modifier.enterRise(index)`（UiKit，只播一次）；`Motion.STAGGER / STAGGER_MAX / RISE`；不阻塞交互，滚动加载的项不做。【choreograph；emil-design-eng · stagger 30–80ms】 |
+| 迷你播放条 / 正在播放页 | 播放条从底栏上方滑入（`Motion.sheet`）；正在播放页从下往上滑入半屏距离 + 淡入，收起时向下滑出并压在上层 | 1.6.6 起；`Home` 的 AnimatedVisibility + `MainActivity` 转场。像从播放条展开的面板。 |
+| 播放 ↔ 暂停 / 进度条 | 换图标：0.6→1 缩放（`Motion.move`）+ 淡入；进度条按住 4→8dp 并出现 14dp 圆点 | `ui/PlayerKit.kt`：`PlayPauseIcon`、`ScrubBar`（点哪跳哪、读屏 setProgress）。音乐与视频播放器共用。 |
+| 视频播放器控制层 | 整体淡入淡出；顶栏从上、底栏从下各滑 1/3 自身高度；手势气泡 0.92→1 放大淡入 | 布局保持飞牛影视（用户决定），只换视觉与动效。 |
+| 提示条（代替 Toast） | 从下方滑入（`Motion.sheet`）、淡出；普通 2.5 s，带「撤销」4 s | `ui/Snack.kt`：反色胶囊、圆角 14、liveRegion；App 在后台时仍用系统 Toast。 |
 | 骨架屏扫光 | 1600ms 线性循环，只在首屏 | 循环只给「正在加载」这一真实状态。【loading-states；unslop §9】 |
 
 - **遵守系统「移除动画」**：`ShiGuangTheme` 读 `Settings.Global.ANIMATOR_DURATION_SCALE`，为 0 时 `Motion.reduced = true`：缩放、位移、弹簧改成直接切换，转场只剩 90ms 淡入淡出，骨架不扫光；颜色变化保留（不会引起晕动），状态变化同时有颜色 / 文字变化，不只靠动画表达。【emil-design-eng · reduced motion；interaction-physics「反馈不只靠动作」；impeccable android.md】
@@ -164,6 +168,9 @@
 - **圆形按钮 `RoundIcon`**：40–44dp，按下缩到 0.92；照片上的半透明底保持扁平。
 - **底栏**：不透明底 + 顶部发丝线；整格可点；选中 = 双色图标 + 浅色胶囊横向展开 + 文字正文色 500。宽屏（≥ 600dp）换 NavigationRail，同一套图标与颜色。【impeccable android.md · 导航随尺寸变化】
 - **顶栏**：来源胶囊（状态点 + 名称 + 下拉）+ 日历 / 搜索 24dp 图标按钮；吸顶栏 = 98% 页面底 + 底部发丝线，标题 titleLarge（Allo 数字）。二级页顶栏：44dp 返回圆钮 + headlineSmall 标题。
+- **海报 `PosterCard`**（1.6.6）：2:3、圆角 10、质感轻影、按压 0.985、角标深色 60% 底 + 白字（不用强调色块）、观看进度 3dp 线压在白 24% 底轨上。
+- **播放器小部件 `PlayerKit`**（1.6.7）：`PlayPauseIcon`、`ScrubBar`、`popOnChange`（收藏心形回弹）、`NowPlayingBars`（正在播放三根小柱，只在真在播时动）。
+- **提示条 `Snack`**（1.6.9）：`toast()` 在前台时自动走它；可逆操作用 `toastUndo()` 带「撤销」。
 - **空状态 / 错误**：一个 44dp 弱色线性图标 + titleLarge 标题 + 一句 bodyMedium + 一个主按钮；去掉彩色圆底。需要用户处理的错误（密码、证书、空间）图标用错误色。【unslop · 空状态；loading-states；impeccable onboard】
 
 ## 10. 读屏与无障碍
