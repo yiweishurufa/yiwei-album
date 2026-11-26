@@ -315,7 +315,7 @@ private fun TrackRow(t: Track, sourceKey: String, showNo: Boolean = false, index
         }
         AppDropdownMenu(menu, onDismissRequest = { menu = false }, modifier = Modifier.background(C.Surface)) {
             DropdownMenuItem(text = { Text(if (fav) "取消喜欢" else "加入我喜欢", color = C.Text) }, onClick = {
-                menu = false; toast(ctx, if (lib.toggleFav(t.id)) "已加入我喜欢" else "已取消喜欢")
+                menu = false; toastUndo(ctx, if (lib.toggleFav(t.id)) "已加入我喜欢" else "已取消喜欢") { lib.toggleFav(t.id) }
             })
             DropdownMenuItem(text = { Text("下一首播放", color = C.Text) }, onClick = { menu = false; MusicState.playNext(sourceKey, t); toast(ctx, "下一首播放") })
             DropdownMenuItem(text = { Text("加到播放列表", color = C.Text) }, onClick = { menu = false; MusicState.enqueue(sourceKey, t); toast(ctx, "已加到播放列表") })

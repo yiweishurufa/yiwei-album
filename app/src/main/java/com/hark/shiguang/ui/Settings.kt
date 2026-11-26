@@ -155,7 +155,7 @@ fun SettingsScreen() {
             Div()
             NavRow(Icons.Rounded.DeleteSweep, "清理缓存", value = if (clearing) "清理中…" else if (cacheSize == 0L) "无缓存" else if (cacheSize >= 0) sizeLabel(cacheSize) else null) {
                 if (clearing) return@NavRow
-                if (cacheSize == 0L) { Toast.makeText(ctx, "没有可清理的缓存", Toast.LENGTH_SHORT).show(); return@NavRow }
+                if (cacheSize == 0L) { toast(ctx, "没有可清理的缓存"); return@NavRow }
                 clearing = true
                 scope.launch {
                   try {
@@ -170,7 +170,7 @@ fun SettingsScreen() {
                     }
                     val freed = (cacheSize - left).coerceAtLeast(0L)
                     cacheSize = left
-                    Toast.makeText(ctx, if (freed > 0) "缓存已清理，释放 ${sizeLabel(freed)}" else "缓存已清理", Toast.LENGTH_SHORT).show()
+                    toast(ctx, if (freed > 0) "缓存已清理，释放 ${sizeLabel(freed)}" else "缓存已清理")
                   } finally { clearing = false }
                 }
             }
@@ -182,7 +182,7 @@ fun SettingsScreen() {
         Section("通用")
         Card {
             NavRow(LI.refresh(), "检查更新", value = if (AppUpdate.checking) "检查中…" else AppUpdate.offer?.let { "有新版本 ${it.version}" }) {
-                if (!AppUpdate.checking) scope.launch { AppUpdate.manualCheck()?.let { Toast.makeText(ctx, it, Toast.LENGTH_SHORT).show() } }
+                if (!AppUpdate.checking) scope.launch { AppUpdate.manualCheck()?.let { toast(ctx, it) } }
             }
             Div()
             NavRow(LI.sparkle(), "使用引导") { Onboarding.open(0) }
@@ -201,7 +201,7 @@ fun SettingsScreen() {
             NavRow(Icons.Rounded.BugReport, "导出诊断日志", value = "遇到问题时发给开发者") {
                 scope.launch {
                     val f = runCatching { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { Diag.writeExport() } }.getOrNull()
-                    if (f == null) Toast.makeText(ctx, "导出失败", Toast.LENGTH_SHORT).show() else Diag.share(ctx, f)
+                    if (f == null) toast(ctx, "导出失败") else Diag.share(ctx, f)
                 }
             }
             Div()
@@ -230,7 +230,7 @@ fun SettingsScreen() {
                     scope.launch { lib.scan() }
                 }
                 showDavFolders = false
-                Toast.makeText(ctx, "已保存，将只显示选中文件夹的照片", Toast.LENGTH_SHORT).show()
+                toast(ctx, "已保存，将只显示选中文件夹的照片")
             }
         )
     }
@@ -330,12 +330,14 @@ fun FillSegmented(items: List<String>, sel: Int, onPick: (Int) -> Unit) {
 @Composable
 fun InfoDot(text: String, title: String = "说明") {
     var open by remember { mutableStateOf(false) }
-    Box(Modifier.size(32.dp).clip(CircleShape).clickable { open = true }, contentAlignment = Alignment.Center) {
-        Icon(Icons.Outlined.Info, "说明", tint = C.Faint, modifier = Modifier.size(16.dp))
+    // 1.6.6：Kubai「info」图标、触控区补到 48dp（视觉仍是 32dp 的小圆）、读屏读出说明的标题
+    Box(Modifier.minimumInteractiveComponentSize().size(32.dp).clip(CircleShape).clickable(onClickLabel = "查看说明", role = androidx.compose.ui.semantics.Role.Button) { open = true }
+        .semantics { contentDescription = "$title 说明" }, contentAlignment = Alignment.Center) {
+        Icon(KI.info(), null, tint = C.Sub, modifier = Modifier.size(18.dp))
     }
     if (open) AppAlertDialog(onDismissRequest = { open = false }, containerColor = C.Surface,
-        title = { Text(title, color = C.Text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold) },
-        text = { Text(text, color = C.Sub, fontSize = 14.sp, lineHeight = 21.sp) },
+        title = { Text(title, color = C.Text, style = MaterialTheme.typography.titleLarge) },
+        text = { Text(text, color = C.Sub, style = MaterialTheme.typography.bodyMedium) },
         confirmButton = { TextButton(onClick = { open = false }) { Text("知道了", color = C.Accent) } })
 }
 
@@ -436,7 +438,7 @@ fun UserCaDialog(onDismiss: () -> Unit) {
     val hosts = remember { (TlsTrust.accountHosts() + TlsTrust.allowedHosts()).distinct().sorted() }
     var allowed by remember { mutableStateOf(TlsTrust.allowedHosts()) }
     val changed = remember { mutableStateOf(false) }
-    val close = { if (changed.value) Toast.makeText(ctx, "已保存，新建的连接生效", Toast.LENGTH_SHORT).show(); onDismiss() }
+    val close = { if (changed.value) toast(ctx, "已保存，新建的连接生效"); onDismiss() }
     AppAlertDialog(onDismissRequest = close, containerColor = C.Surface, title = {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(CA_TITLE, color = C.Text, modifier = Modifier.weight(1f, fill = false))

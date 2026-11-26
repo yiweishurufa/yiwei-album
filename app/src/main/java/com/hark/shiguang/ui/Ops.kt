@@ -57,7 +57,8 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
-fun toast(ctx: Context, msg: String) = Toast.makeText(ctx.applicationContext, msg, Toast.LENGTH_SHORT).show()
+/** 1.6.6：App 在前台时用 App 自己画的提示条（[Snack]，跟随主题、在底栏上方、可读屏），后台时仍是系统 Toast。 */
+fun toast(ctx: Context, msg: String) { if (Snack.hostActive) Snack.show(msg) else Toast.makeText(ctx.applicationContext, msg, Toast.LENGTH_SHORT).show() }
 
 /** B6: a failed action as one plain Chinese line (FriendlyError); the raw message goes to the diagnostic log. */
 fun failToast(ctx: Context, e: Throwable, action: String) {

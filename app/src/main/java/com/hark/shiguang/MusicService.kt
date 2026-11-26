@@ -189,5 +189,5 @@ object MusicState {
     // ------------------------------------------------------------------ from the player
 
     fun durationLearnt(mediaId: String, ms: Long) { main.post { runCatching { Music.lib(mediaId.substringBefore('|')).setDuration(mediaId.substringAfter('|'), ms) } } }
-    fun toast(msg: String) { main.post { Toast.makeText(App.ctx, msg, Toast.LENGTH_SHORT).show() } }
+    fun toast(msg: String) { main.post { com.hark.shiguang.ui.toast(App.ctx, msg) } }   // 1.6.6：前台时走 App 内提示条
 }

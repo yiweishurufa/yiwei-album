@@ -135,7 +135,7 @@ fun MovieDetailScreen(r: Route.MovieDetail) {
                     Row(Modifier.fillMaxWidth().padding(top = Space.m)) {
                         val wished = lib.isWish(m.id)
                         DetailAction(KI.heart(wished), if (wished) "已收藏" else "收藏", tint = if (wished) C.Accent else C.Text) {
-                            lib.toggleWish(m.id); toast(ctx, if (wished) "已取消收藏" else "已收藏，影视页顶部可以找到")
+                            lib.toggleWish(m.id); toastUndo(ctx, if (wished) "已取消收藏" else "已收藏，影视页顶部可以找到") { lib.toggleWish(m.id) }
                         }
                         if (m.kind == "movie" && allVersions.size > 1) DetailAction(KI.layers(), "版本 ${allVersions.size}") { versions = true }
                         DetailAction(KI.refresh(), "重新识别") { fixing = true }

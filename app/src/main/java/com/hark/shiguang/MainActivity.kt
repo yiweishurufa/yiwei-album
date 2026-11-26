@@ -25,6 +25,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.unit.dp
 import com.hark.shiguang.data.FnClient
 import com.hark.shiguang.data.Photo
 import com.hark.shiguang.ui.*
@@ -243,7 +244,7 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(Nav.restoredFallback) {
                     if (Nav.restoredFallback) {
                         Nav.restoredFallback = false
-                        android.widget.Toast.makeText(this@MainActivity, "上次页面无法恢复，已回到首页", android.widget.Toast.LENGTH_SHORT).show()
+                        com.hark.shiguang.ui.toast(this@MainActivity, "上次页面无法恢复，已回到首页")
                     }
                 }
                 val top = Nav.stack.lastOrNull() ?: Route.Login
@@ -334,6 +335,9 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 AppOverlays() // 1.0.9: crash report + update dialogs
+                // 1.6.6 阶段 7：App 内提示条（代替前台 Toast）。首页要让过底栏（约 72dp）和迷你播放条（64dp）
+                val onHome = Nav.stack.size == 1 && Nav.stack.firstOrNull() == Route.Home
+                com.hark.shiguang.ui.SnackHost(if (onHome) 76.dp + com.hark.shiguang.ui.miniPlayerPad else 24.dp)
                 if (AppLock.locked) LockOverlay { unlock() }
             }
         }
