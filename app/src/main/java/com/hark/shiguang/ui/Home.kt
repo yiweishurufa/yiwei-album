@@ -147,7 +147,6 @@ internal fun PhotoModeSwitch() {
 
 @Composable
 fun HomeScreen() {
-    val dav = HomeState.source == "dav"
     // NAS connection: pick 内网/外网 and keep measuring latency while a 飞牛 source is shown
     LaunchedEffect(HomeState.source, NasAccounts.currentId) {
         if (HomeState.source != "fn" || NasAccounts.current == null) return@LaunchedEffect
@@ -367,9 +366,11 @@ fun TopSwitch(search: SearchScope = SearchScope.Photos, showDate: Boolean = true
     Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 14.dp, end = 10.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Box {
             // 1.7.0：来源胶囊 = 玻璃胶囊（压在照片上时深色着色 + 白字），按下液体形变；状态点 7dp（绿 = 在线，红 = 连不上）
+            // 1.7.16：压在照片上必须 onDark = true（和右边的 GlassIconButton 一致）。以前漏了：浅色主题 + 简洁风格时
+            // 底色取 Glass.flatFill（浅色 = 纯白）而字和图标是白色 → 一块看不见内容的白胶囊；浅色 + 玻璃时高光按浅色画（35% 白），白字约 3.4:1。
             val srcPress = remember { MutableInteractionSource() }
             Row(Modifier.heightIn(min = 44.dp).glassPress(srcPress)
-                .glass(CircleShape, null, tint = if (overPhoto) Color.Black.copy(alpha = 0.6f) else Color.Unspecified, shadow = if (overPhoto) 0.dp else 8.dp, highlight = if (overPhoto) 0.7f else 1f)
+                .glass(CircleShape, null, tint = if (overPhoto) Color.Black.copy(alpha = 0.6f) else Color.Unspecified, shadow = if (overPhoto) 0.dp else 8.dp, highlight = if (overPhoto) 0.7f else 1f, onDark = overPhoto)
                 .clip(CircleShape)
                 .clickable(srcPress, null, role = Role.Button, onClickLabel = "切换来源") { open = true }.padding(start = 16.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically) {
@@ -473,6 +474,17 @@ internal fun PhotoHero(cover: Photo?, kicker: String?, title: String, sub: Strin
     }
 }
 
+/**
+ * 1.7.16：照片页网格 / 沉浸流的底部留白 = 悬浮底栏（66dp + 离底 10dp）+ 系统导航条 + 14dp 间隙 + 迷你播放条。
+ * 以前固定 100dp，三键导航（约 48dp）时 66 + 10 + 48 = 124dp > 100dp，滚到底最后一行被底栏盖住。
+ * 滚动途中内容从悬浮玻璃底栏后面透过去是设计如此（DESIGN §9），只保证到底时能完整露出来。宽屏（侧边栏、没有底栏）保持原来的 100dp。
+ */
+@Composable
+private fun homeListBottom(): androidx.compose.ui.unit.Dp {
+    if (isWide()) return 100.dp + miniPlayerPad   // 宽屏不变
+    return 90.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + miniPlayerPad
+}
+
 /** 第一项（大图所在的页头）滚动了多少 px；页头已经滚出去时返回一个很大的值。 */
 private fun heroScroll(index: Int, offset: Int): Int = if (index == 0) offset else Int.MAX_VALUE / 4
 
@@ -488,14 +500,14 @@ private fun heroPx(): Float {
 private fun PhotoHeader(memories: List<MemoryGroup>, shown: List<Photo>, mt: String, sub: String, scroll: () -> Int, extra: @Composable () -> Unit = {}) {
     val mem = remember(memories, Hidden.version) { memories.firstNotNullOfOrNull { g -> Hidden.visible(g.photos).takeIf { it.isNotEmpty() }?.let { g to it } } }
     val cover = mem?.second?.first() ?: shown.firstOrNull()
-    val kicker = mem?.first?.let { if (it.yearsAgo == 1) "一年前的今天" else "${it.yearsAgo} 年前的今天" }
+    val labels = HeroText.labels(mem?.first, mem?.second?.size ?: 0, mem?.second?.first()?.time, java.time.LocalDate.now(), mt, sub)
     val open: (() -> Unit)? = when {
         mem != null -> { { Nav.push(Route.Viewer(mem.second, 0)) } }
         shown.isNotEmpty() -> { { Nav.push(Route.Viewer(shown, 0)) } }
         else -> null
     }
     Column {
-        PhotoHero(cover, kicker, mt, sub, scroll, open)
+        PhotoHero(cover, labels.kicker, labels.title, labels.sub, scroll, open)
         Spacer(Modifier.height(4.dp))
         PhotoModeSwitch(); PhotoFilterChips(); MemoriesRow(memories); extra()
     }
@@ -561,14 +573,14 @@ private fun PhotosTab() {
             }
             HomeState.immersive -> {
                 ImmersiveFeed(entries, tl.loading, onEnd = { scope.launch { tl.next() } }, onOpen = { Nav.push(Route.Viewer(shown, it)) },
-                    state = feed, bottom = 100.dp + miniPlayerPad,
+                    state = feed, bottom = homeListBottom(),
                     header = { PhotoHeader(memories, shown, mt, sub, { heroScroll(feed.firstVisibleItemIndex, feed.firstVisibleItemScrollOffset) }) })
                 ChromeTitle(if (scrolled) "$mt · $yt".trim(' ', '·') else null)
             }
             else -> {
                 PhotoGrid(
                     entries, cols, tl.loading, onEnd = { scope.launch { tl.next() } },
-                    onOpen = { Nav.push(Route.Viewer(shown, it)) }, state = grid, top = 0.dp, bottom = 100.dp + miniPlayerPad,
+                    onOpen = { Nav.push(Route.Viewer(shown, it)) }, state = grid, top = 0.dp, bottom = homeListBottom(),
                     header = { PhotoHeader(memories, shown, mt, sub, { heroScroll(grid.firstVisibleItemIndex, grid.firstVisibleItemScrollOffset) }) {
                         if (shown.isEmpty()) Text(if (tl.loading || !tl.done) "正在查找…" else if (filter == 2) "没有视频" else "没有实况照片",
                             style = MaterialTheme.typography.bodySmall, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(vertical = 60.dp))
@@ -640,12 +652,12 @@ private fun DavPhotosTab() {
                 else StateMessage(LI.photos(), "没有找到照片", "把照片放进这个 WebDAV 后下拉刷新。", "重新扫描") { scope.launch { lib.scan(full = true) } } } }
             HomeState.immersive -> {
                 ImmersiveFeed(entries, lib.scanning, onEnd = {}, onOpen = { Nav.push(Route.Viewer(shown, it)) },
-                    state = feed, bottom = 100.dp + miniPlayerPad,
+                    state = feed, bottom = homeListBottom(),
                     header = { PhotoHeader(memories, shown, mt, sub, { heroScroll(feed.firstVisibleItemIndex, feed.firstVisibleItemScrollOffset) }) })
                 ChromeTitle(if (scrolled) "$mt · $yt".trim(' ', '·') else null)
             }
             else -> {
-                PhotoGrid(entries, adaptiveCols(level.cols.coerceAtMost(7)), lib.scanning, onEnd = {}, onOpen = { Nav.push(Route.Viewer(shown, it)) }, state = grid, top = 0.dp, bottom = 100.dp + miniPlayerPad,
+                PhotoGrid(entries, adaptiveCols(level.cols.coerceAtMost(7)), lib.scanning, onEnd = {}, onOpen = { Nav.push(Route.Viewer(shown, it)) }, state = grid, top = 0.dp, bottom = homeListBottom(),
                     header = { PhotoHeader(memories, shown, mt, sub, { heroScroll(grid.firstVisibleItemIndex, grid.firstVisibleItemScrollOffset) }) }, onPinch = ::pinch)
                 ChromeTitle(if (scrolled) "$mt · $yt".trim(' ', '·') else null)
             }

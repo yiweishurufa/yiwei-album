@@ -75,6 +75,26 @@ object OnThisDay {
     }
 }
 
+/**
+ * 1.7.16：照片页大图下方三行字（kicker / 大标题 / 副标题）。大图是回忆封面时三行都说这组回忆
+ * （「一年前的今天」/「11月26日」/「2025年 · 2 张」），以前标题是时间线当前月份（「11月」/「2026年 · 19,412 项」），
+ * 和压在上面的「一年前的今天」、和封面那张照片都对不上。没有回忆时照旧显示时间线月份与总数。
+ * 滚过大图后顶栏胶囊仍显示时间线位置（那是网格里滚到哪个月，与封面无关）。
+ */
+object HeroText {
+    data class Labels(val kicker: String?, val title: String, val sub: String)
+
+    fun kicker(yearsAgo: Int): String = if (yearsAgo == 1) "一年前的今天" else "$yearsAgo 年前的今天"
+
+    /** [memTime] = 回忆封面那张照片的拍摄时间（"YYYY:MM:DD …"），读不出月日时用 [today]。 */
+    fun labels(mem: MemoryGroup?, count: Int, memTime: String?, today: LocalDate, timelineTitle: String, timelineSub: String): Labels {
+        if (mem == null) return Labels(null, timelineTitle, timelineSub)
+        val m = memTime?.takeIf { it.length >= 10 }?.substring(5, 7)?.toIntOrNull()?.takeIf { it in 1..12 } ?: today.monthValue
+        val d = memTime?.takeIf { it.length >= 10 }?.substring(8, 10)?.toIntOrNull()?.takeIf { it in 1..31 } ?: today.dayOfMonth
+        return Labels(kicker(mem.yearsAgo), "${m}月${d}日", "${mem.year}年 · ${"%,d".format(java.util.Locale.US, count)} 张")
+    }
+}
+
 /** Horizontal row of 那年今天 cards; nothing when there are no memories. Tap opens the viewer for that year. */
 @Composable
 fun MemoriesRow(groups: List<MemoryGroup>) {
