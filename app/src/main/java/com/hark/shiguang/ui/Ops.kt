@@ -17,6 +17,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.animation.togetherWith
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -491,7 +495,16 @@ fun AlbumPicker(onDismiss: () -> Unit, onPick: (Album) -> Unit) {
 fun SelectionBar(modifier: Modifier = Modifier, onChanged: () -> Unit = {}) {
     // 审查 4 / 5：多选时第一次返回只取消选择（首页不再直接退出 App，二级页也不会把选择带回上一页）
     androidx.activity.compose.BackHandler(enabled = Selection.active) { Selection.clear() }
-    if (!Selection.active) return
+    // 1.6.2：多选栏从底部滑上来、退出更快（DESIGN §7 进入 / 退出）；数量用等宽数字，变化时上下滚动
+    androidx.compose.animation.AnimatedVisibility(Selection.active, modifier = modifier,
+        enter = androidx.compose.animation.slideInVertically(Motion.enter()) { it } + androidx.compose.animation.fadeIn(Motion.enter()),
+        exit = androidx.compose.animation.slideOutVertically(Motion.exit()) { it } + androidx.compose.animation.fadeOut(Motion.exit())) {
+        SelectionBarContent(onChanged)
+    }
+}
+
+@Composable
+private fun SelectionBarContent(onChanged: () -> Unit) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     var albumPick by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf(false) }
@@ -500,22 +513,35 @@ fun SelectionBar(modifier: Modifier = Modifier, onChanged: () -> Unit = {}) {
     val allCloud = sel.isNotEmpty() && sel.all { it.isCloud }
     val inAlbum = AlbumCtx.current
     var davPick by remember { mutableStateOf(false) }
-    Column(modifier.fillMaxWidth().background(C.Surface).navigationBarsPadding()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("已选 ${sel.size} 项", color = C.Text, fontSize = 15.sp, modifier = Modifier.weight(1f))
-            TextButton(onClick = { Selection.clear() }) { Text("取消", color = C.Sub) }
+    // 退出动画期间选择已经清空：数量停在最后一个非零值，不闪成 0
+    var shownCount by remember { mutableIntStateOf(sel.size) }
+    if (sel.isNotEmpty()) shownCount = sel.size
+    Column(Modifier.fillMaxWidth().background(C.Surface).drawBehind { drawLine(C.Line, androidx.compose.ui.geometry.Offset(0f, 0f), androidx.compose.ui.geometry.Offset(size.width, 0f), 1f) }.navigationBarsPadding()) {
+        Row(Modifier.fillMaxWidth().padding(start = Space.l, end = Space.xs, top = Space.xs), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.weight(1f).semantics(mergeDescendants = true) { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite }, verticalAlignment = Alignment.CenterVertically) {
+                Text("已选 ", color = C.Text, style = MaterialTheme.typography.titleMedium)
+                androidx.compose.animation.AnimatedContent(shownCount, transitionSpec = {
+                    val up = targetState > initialState
+                    (androidx.compose.animation.slideInVertically(Motion.enter()) { if (up) it / 2 else -it / 2 } + androidx.compose.animation.fadeIn(Motion.enter()))
+                        .togetherWith(androidx.compose.animation.slideOutVertically(Motion.exit()) { if (up) -it / 2 else it / 2 } + androidx.compose.animation.fadeOut(Motion.exit()))
+                }, label = "selCount") { n ->
+                    Text("$n", color = C.Accent, style = MaterialTheme.typography.titleMedium.copy(fontFamily = C.P.display, fontWeight = FontWeight.SemiBold, fontFeatureSettings = Type.TNUM))
+                }
+                Text(" 项", color = C.Text, style = MaterialTheme.typography.titleMedium)
+            }
+            TextButton(onClick = { Selection.clear() }) { Text("取消", color = C.Sub, style = MaterialTheme.typography.labelLarge) }
         }
-        Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(bottom = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-            if (anyNas) SelAction(Icons.Rounded.FavoriteBorder, "收藏") {
+        Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = Space.xs).padding(bottom = Space.s), horizontalArrangement = Arrangement.SpaceEvenly) {
+            if (anyNas) SelAction(KI.heart(), "收藏") {
                 val l = Selection.list
                 Ops.launch { runCatching { Ops.collect(l, true) }.onSuccess { toast(ctx, "已收藏 ${l.size} 项"); Selection.clear() }.onFailure { failToast(ctx, it, "失败") } }
             }
-            SelAction(Icons.Rounded.Download, "下载") { Ops.download(ctx, Selection.list); Selection.clear() }
-            SelAction(Icons.Rounded.Share, "分享") { Ops.share(ctx, Selection.list) }
-            if (anyNas) SelAction(Icons.Rounded.PhotoAlbum, "加入相册") { albumPick = true }
-            if (allCloud) SelAction(Icons.Rounded.PhotoAlbum, "加入相册") { davPick = true }
+            SelAction(KI.download(), "下载") { Ops.download(ctx, Selection.list); Selection.clear() }
+            SelAction(KI.share(), "分享") { Ops.share(ctx, Selection.list) }
+            if (anyNas) SelAction(KI.album(), "加入相册") { albumPick = true }
+            if (allCloud) SelAction(KI.album(), "加入相册") { davPick = true }
             if (inAlbum != null) {
-                if (sel.size == 1) SelAction(Icons.Rounded.Image, "设为封面") {
+                if (sel.size == 1) SelAction(KI.photos(), "设为封面") {
                     val p = sel.first()
                     Ops.launch { runCatching { AlbumOps.setCover(inAlbum, p) }.onSuccess { toast(ctx, "已设为封面"); Selection.clear() }.onFailure { failToast(ctx, it, "失败") } }
                 }
@@ -525,11 +551,11 @@ fun SelectionBar(modifier: Modifier = Modifier, onChanged: () -> Unit = {}) {
                 }
             }
             SelExtra.actions.forEach { a -> SelAction(a.icon, a.label, if (a.danger) C.Danger else C.Text) { a.run(Selection.list) } }
-            if (SelExtra.actions.none { it.label.contains("隐藏") }) SelAction(Icons.Rounded.VisibilityOff, "隐藏") {
+            if (SelExtra.actions.none { it.label.contains("隐藏") }) SelAction(KI.eye(), "隐藏") {
                 val l = Selection.list
                 com.hark.shiguang.Hidden.hide(l, true); toast(ctx, "已隐藏 ${l.size} 项，可在「相册 · 隐藏相册」查看"); Selection.clear(); onChanged()
             }
-            SelAction(Icons.Rounded.DeleteOutline, "删除", C.Danger) { confirm = true }
+            SelAction(KI.trash(), "删除", C.Danger) { confirm = true }
         }
     }
     if (albumPick) AlbumPicker(onDismiss = { albumPick = false }) { a ->
@@ -559,8 +585,10 @@ fun SelectionBar(modifier: Modifier = Modifier, onChanged: () -> Unit = {}) {
 
 @Composable
 private fun SelAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, tint: androidx.compose.ui.graphics.Color = C.Text, onClick: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 6.dp)) {
+    // 1.6.2：图标 24dp + 标签 labelMedium；整块 ≥ 56dp 宽、按下缩 0.94（底栏项同款），读屏是「按钮：标签」
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.widthIn(min = 56.dp).pressScale(0.94f).clip(RoundedCornerShape(Radius.m))
+        .clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick).padding(horizontal = Space.m, vertical = Space.s)) {
         Icon(icon, null, tint = tint, modifier = Modifier.size(24.dp))
-        Text(label, color = C.Sub, fontSize = 11.sp, modifier = Modifier.padding(top = 3.dp))
+        Text(label, color = if (tint == C.Text) C.Sub else tint, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = Space.xs))
     }
 }
