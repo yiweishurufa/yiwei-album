@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.ui.semantics.heading
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -73,9 +75,10 @@ internal fun CollectionsTab(dav: Boolean) {
         item { TopSwitch() }
         item { PhotoModeSwitch() }
         item {
-            Row(Modifier.padding(start = 18.dp, end = 8.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("合集", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = C.Text, letterSpacing = (-0.5).sp, modifier = Modifier.weight(1f))
-                TextButton(onClick = { sorting = true }) { Text("调整排序", color = C.Sub, fontSize = 14.sp) }
+            // 1.6.2：页面大标题与照片页一致（displaySmall），「调整排序」是次要色文字按钮
+            Row(Modifier.padding(start = Space.l, end = Space.xs, top = Space.s, bottom = Space.xs), verticalAlignment = Alignment.CenterVertically) {
+                Text("合集", style = MaterialTheme.typography.displaySmall, color = C.Text, modifier = Modifier.weight(1f).semantics { heading() })
+                HeaderTextButton("调整排序", C.Sub) { sorting = true }
             }
         }
         order.forEach { id ->
@@ -121,64 +124,35 @@ internal fun CollectionsTab(dav: Boolean) {
 
 @Composable
 private fun SectionHeader(title: String, open: Boolean, trailing: String?, onFold: () -> Unit, onTrailing: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 4.dp, top = 18.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Row(Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).then(if (trailing != null) Modifier.clickable(onClick = onTrailing) else Modifier),
-            verticalAlignment = Alignment.CenterVertically) {
-            Text(title, color = C.Text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-            if (trailing != null) {
-                Text("  $trailing", color = C.Sub, fontSize = 13.sp)
-                Icon(LI.chevron(), null, tint = C.Sub, modifier = Modifier.size(16.dp))
-            }
-        }
+    // 1.6.2：标题 titleMedium（读屏「标题」）；右侧「全部 / 地图」文字按钮 + 折叠箭头（旋转跟随 Motion.move）
+    val turn by androidx.compose.animation.core.animateFloatAsState(if (open) 180f else 0f, Motion.move(), label = "fold")
+    Row(Modifier.fillMaxWidth().padding(start = Space.l, end = Space.xs, top = Space.l, bottom = Space.xs), verticalAlignment = Alignment.CenterVertically) {
+        Text(title, color = C.Text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f).semantics { heading() })
+        if (trailing != null) HeaderTextButton(trailing, C.Sub, onTrailing)
         IconButton(onClick = onFold) {
-            Icon(Icons.Rounded.ExpandMore, if (open) "收起$title" else "展开$title", tint = C.Sub, modifier = Modifier.rotate(if (open) 180f else 0f))
+            Icon(KI.down(), if (open) "收起$title" else "展开$title", tint = C.Sub, modifier = Modifier.size(20.dp).rotate(turn))
         }
     }
 }
 
 @Composable
 private fun EmptyCard(text: String) {
-    Text(text, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()
-        .clip(RoundedCornerShape(C.Card)).background(C.Surface).padding(horizontal = 16.dp, vertical = 18.dp))
-}
-
-/** 横滑卡片（相册 / 分类共用）。 */
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun CoverTile(title: String, sub: String, cover: String?, icon: ImageVector? = null, onClick: () -> Unit) {
-    Column(Modifier.width(128.dp).semantics(mergeDescendants = true) { contentDescription = if (sub.isEmpty()) title else "$title，$sub" }.clickable(onClick = onClick)) {
-        Box(Modifier.size(128.dp).clip(RoundedCornerShape(C.Card)).background(C.Surface2), contentAlignment = Alignment.Center) {
-            if (cover != null) NetImage(cover, Modifier.fillMaxSize())
-            else if (icon != null) Icon(icon, null, tint = C.Accent, modifier = Modifier.size(32.dp))
-        }
-        Text(title, color = C.Text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
-        if (sub.isNotEmpty()) Text(sub, color = C.Sub, fontSize = 12.sp, maxLines = 1)
-    }
-}
-
-/** 横滑卡片加载中的占位块。 */
-@Composable
-private fun TileSkeleton() {
-    Box(Modifier.size(128.dp).clip(RoundedCornerShape(C.Card)).background(shimmerBrush()))
-}
-
-/** 人物行加载中的圆形占位。 */
-@Composable
-private fun PersonSkeleton() {
-    Box(Modifier.size(68.dp).clip(CircleShape).background(shimmerBrush()))
+    // 空分区：一句话，次要色，放在与封面同圆角的浅卡里
+    Text(text, style = MaterialTheme.typography.bodyMedium, color = C.Sub, modifier = Modifier.padding(horizontal = Space.l).fillMaxWidth()
+        .clip(RoundedCornerShape(Radius.l)).background(C.Surface).padding(horizontal = Space.l, vertical = Space.l))
 }
 
 @Composable
 private fun FnAlbumsRow() {
     val albums = HomeState.albums
-    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        item(key = "fav") { CoverTile("收藏", "", null, LI.heart()) { Nav.push(Route.Collection("收藏", "", PhotoSource { o, l -> Repo.photos(Repo.FAR_START, Repo.FAR_END, o, l, collect = true) })) } }
-        item(key = "recent") { CoverTile("最近添加", "", null, LI.clock()) {
+    LazyRow(contentPadding = PaddingValues(horizontal = Space.l), horizontalArrangement = Arrangement.spacedBy(CoverSize.gap)) {
+        item(key = "fav") { CoverTile("收藏", "", null, KI.heart(), index = 0) { Nav.push(Route.Collection("收藏", "", PhotoSource { o, l -> Repo.photos(Repo.FAR_START, Repo.FAR_END, o, l, collect = true) })) } }
+        item(key = "recent") { CoverTile("最近添加", "", null, KI.clock(), index = 1) {
             Nav.push(Route.Collection("最近添加", "", PhotoSource(grouped = false) { o, l -> Repo.photos(Repo.FAR_START, Repo.FAR_END, o, l, mode = "createdAt") }))
         } }
-        item(key = "hidden") { CoverTile("隐藏相册", "", null, LI.lock()) { Nav.push(Route.X(ExtScreen.HiddenAlbum)) } }
-        if (albums == null) items(3) { TileSkeleton() }
-        else items(albums, key = { "a" + it.id }) { a -> CoverTile(a.name, if (a.photos + a.videos > 0) "${a.photos + a.videos} 项" else "空相册", a.poster) { openAlbum(a) } }
+        item(key = "hidden") { CoverTile("隐藏相册", "", null, KI.lock(), index = 2) { Nav.push(Route.X(ExtScreen.HiddenAlbum)) } }
+        if (albums == null) items(3) { CoverTileSkeleton() }
+        else itemsIndexed(albums, key = { _, a -> "a" + a.id }) { i, a -> CoverTile(a.name, if (a.photos + a.videos > 0) "${a.photos + a.videos} 项" else "空相册", a.poster, index = i + 3) { openAlbum(a) } }
     }
 }
 
@@ -186,12 +160,12 @@ private fun FnAlbumsRow() {
 private fun DavAlbumsRow(lib: DavLib?) {
     if (lib == null) { EmptyCard("还没有 WebDAV 账户。"); return }
     val als = lib.albums
-    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        item(key = "hidden") { CoverTile("隐藏相册", "", null, LI.lock()) { Nav.push(Route.X(ExtScreen.HiddenAlbum)) } }
-        if (als == null) items(2) { TileSkeleton() }
-        else items(als, key = { "v" + it.id }) { a ->
+    LazyRow(contentPadding = PaddingValues(horizontal = Space.l), horizontalArrangement = Arrangement.spacedBy(CoverSize.gap)) {
+        item(key = "hidden") { CoverTile("隐藏相册", "", null, KI.lock(), index = 0) { Nav.push(Route.X(ExtScreen.HiddenAlbum)) } }
+        if (als == null) items(2) { CoverTileSkeleton() }
+        else itemsIndexed(als, key = { _, a -> "v" + a.id }) { i, a ->
             val cover = (lib.photoAt(a.cover) ?: lib.photosOf(a).firstOrNull())?.thumbM
-            CoverTile(a.name, "${a.items.size} 项", cover) { openDavAlbum(lib, a) }
+            CoverTile(a.name, "${a.items.size} 项", cover, index = i + 1) { openDavAlbum(lib, a) }
         }
     }
 }
@@ -201,13 +175,10 @@ private fun PeopleRow() {
     val hidden = FnPersonHide.version.let { FnPersonHide.ids() }
     val ps = HomeState.persons?.filter { it.id !in hidden }
     if (ps != null && ps.isEmpty()) { EmptyCard("飞牛相册识别出人脸后，人物会出现在这里。"); return }
-    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        if (ps == null) items(5) { PersonSkeleton() }
-        else items(ps, key = { it.id }) { p ->
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(72.dp).clickable(onClickLabel = "查看${p.name.ifEmpty { "未命名人物" }}的照片") { openPerson(p) }) {
-                Box(Modifier.size(68.dp).clip(CircleShape).background(C.Surface2)) { NetImage(FnClient.abs("/p/api/v1/stream/face/${p.faceId}"), Modifier.fillMaxSize()) }
-                Text(p.name.ifEmpty { "未命名" }, fontSize = 12.sp, color = C.Sub, maxLines = 1, modifier = Modifier.padding(top = 6.dp))
-            }
+    LazyRow(contentPadding = PaddingValues(horizontal = Space.m), horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
+        if (ps == null) items(5) { PersonChipSkeleton() }
+        else itemsIndexed(ps, key = { _, p -> p.id }) { i, p ->
+            PersonChip(p.name, FnClient.abs("/p/api/v1/stream/face/${p.faceId}"), index = i) { openPerson(p) }
         }
     }
 }
@@ -216,10 +187,11 @@ private fun PeopleRow() {
 private fun PlacesRow() {
     val places = HomeState.places
     if (places != null && places.isEmpty()) { EmptyCard("带拍摄地点的照片会按城市归到这里。"); return }
-    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (places == null) items(3) { TileSkeleton() }
-        else items(places) { pl ->
-            CoverTile(pl.city.ifEmpty { pl.country }, "${pl.count} 张", pl.poster) {
+    // C3：地点在合集页和发现页是同一款竖向封面卡（标题压在照片上）
+    LazyRow(contentPadding = PaddingValues(horizontal = Space.l), horizontalArrangement = Arrangement.spacedBy(CoverSize.gap)) {
+        if (places == null) items(3) { CoverCardSkeleton() }
+        else itemsIndexed(places) { i, pl ->
+            CoverCard(pl.city.ifEmpty { pl.country }, "${pl.count} 张", pl.poster, index = i) {
                 Nav.push(Route.Collection(pl.city.ifEmpty { pl.country }, pl.country, PhotoSource(pageSize = 200, grouped = true) { o, l -> Repo.placePhotos(pl, o, l) }))
             }
         }
@@ -229,10 +201,10 @@ private fun PlacesRow() {
 @Composable
 private fun CategoryRow(cats: List<SmartCategory>?, empty: String) {
     if (cats != null && cats.isEmpty()) { EmptyCard(empty); return }
-    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (cats == null) items(3) { TileSkeleton() }
-        else items(cats, key = { it.name }) { c ->
-            CoverTile(c.name, "${c.count} 张", c.cover) {
+    LazyRow(contentPadding = PaddingValues(horizontal = Space.l), horizontalArrangement = Arrangement.spacedBy(CoverSize.gap)) {
+        if (cats == null) items(3) { CoverTileSkeleton() }
+        else itemsIndexed(cats, key = { _, c -> c.name }) { i, c ->
+            CoverTile(c.name, "${c.count} 张", c.cover, index = i) {
                 Nav.push(Route.Collection(c.name, "${c.count} 项", PhotoSource(pageSize = 100) { o, l -> val r = NasX.categoryPhotos(c.name, o, l); r to (r.size >= l) }))
             }
         }
@@ -244,23 +216,24 @@ private fun CategoryRow(cats: List<SmartCategory>?, empty: String) {
 private fun MediaTypeGrid(dav: Boolean, media: List<MediaCategory>?) {
     data class Btn(val label: String, val icon: ImageVector, val open: () -> Unit)
     val btns: List<Btn> = if (dav) listOf(
-        Btn("视频", Icons.Rounded.PlayCircleOutline) { HomeState.setFilter(2); HomeState.tab = 0 },
-        Btn("实况照片", Icons.Rounded.MotionPhotosOn) { HomeState.setFilter(3); HomeState.tab = 0 },
+        Btn("视频", KI.videos()) { HomeState.setFilter(2); HomeState.tab = 0 },
+        Btn("实况照片", KI.live()) { HomeState.setFilter(3); HomeState.tab = 0 },
     ) else media.orEmpty().filter { it.count > 0 && it.key != "photo" }.map { m ->
         Btn(mediaTypeLabel(m.key) + "  ${m.count}", mediaTypeIcon(m.key)) {
             Nav.push(Route.Collection(mediaTypeLabel(m.key), "${m.count} 项", PhotoSource(grouped = true) { o, _ -> if (o > 0) emptyList<Photo>() to false else NasX.mediaCategoryPhotos(m.key) to false }))
         }
     }
-    if (!dav && media == null) { Box(Modifier.padding(horizontal = 16.dp).fillMaxWidth().height(52.dp).clip(RoundedCornerShape(C.Card)).background(shimmerBrush())); return }
+    if (!dav && media == null) { Box(Modifier.padding(horizontal = Space.l).fillMaxWidth().height(Space.row).clip(RoundedCornerShape(Radius.l)).background(shimmerBrush())); return }
     if (btns.isEmpty()) { EmptyCard("还没有视频、实况、截图这类特殊媒体。"); return }
-    Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(Modifier.padding(horizontal = Space.l), verticalArrangement = Arrangement.spacedBy(Space.m)) {
         btns.chunked(2).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Space.m)) {
                 row.forEach { b ->
-                    Row(Modifier.weight(1f).heightIn(min = 52.dp).clip(RoundedCornerShape(C.Card)).background(C.Surface).clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = b.open).padding(horizontal = 14.dp),
+                    // 1.6.2：入口块 = 质感卡片 + 次要色线性图标（不再用强调色），按下 0.97
+                    Row(Modifier.weight(1f).pressScale().heightIn(min = Space.row).skeuoCard(RoundedCornerShape(Radius.l)).clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = b.open).padding(horizontal = Space.l),
                         verticalAlignment = Alignment.CenterVertically) {
-                        Icon(b.icon, null, tint = C.Accent, modifier = Modifier.size(20.dp))
-                        Text(b.label, color = C.Text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 10.dp))
+                        Icon(b.icon, null, tint = C.Sub, modifier = Modifier.size(22.dp))
+                        Text(b.label, color = C.Text, style = MaterialTheme.typography.bodyMedium.merge(Type.num), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = Space.m))
                     }
                 }
                 if (row.size == 1) Spacer(Modifier.weight(1f))
@@ -275,7 +248,7 @@ private fun mediaTypeLabel(k: String) = when (k) {
 }
 
 private fun mediaTypeIcon(k: String): ImageVector = when (k) {
-    "video" -> Icons.Rounded.PlayCircleOutline; "live_photo" -> Icons.Rounded.MotionPhotosOn; "gif" -> Icons.Rounded.Gif
+    "video" -> KI.videos(); "live_photo" -> KI.live(); "gif" -> Icons.Rounded.Gif
     "raw" -> Icons.Rounded.RawOn; "360" -> Icons.Rounded.Panorama; "panorama" -> Icons.Rounded.Panorama; "screenshot" -> Icons.Rounded.Screenshot
     else -> Icons.Rounded.Image
 }
@@ -291,7 +264,6 @@ private fun SortDialog(order: List<String>, onMove: (String, Int) -> Unit, onRes
                     IconButton(onClick = { onMove(id, 1) }, enabled = i < order.size - 1) { Icon(Icons.Rounded.KeyboardArrowDown, "下移", tint = if (i < order.size - 1) C.Text else C.Faint) }
                 }
             }
-            Text("顺序和折叠状态只保存在这台手机上。", color = C.Faint, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
         }
     }, confirmButton = { TextButton(onClick = onDismiss) { Text("完成", color = C.Accent) } },
         dismissButton = { TextButton(onClick = onReset) { Text("恢复默认", color = C.Sub) } })

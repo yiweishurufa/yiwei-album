@@ -24,6 +24,8 @@ import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.ui.semantics.heading
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -107,12 +109,9 @@ internal fun DiscoverTab() {
         if (ps.isNotEmpty() || hiddenIds.isNotEmpty()) {
             item { RowHeader("人物", "${ps.size} 位", extra = if (hiddenIds.isNotEmpty()) ("已隐藏 ${hiddenIds.size}" to { Nav.push(Route.X(ExtScreen.FnHiddenPersons)) }) else null) }
             item {
-                LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    items(ps, key = { it.id }) { p ->
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(72.dp).combinedClickable(onLongClick = { menuPerson = p }) { openPerson(p) }) {
-                            Box(Modifier.size(68.dp).clip(CircleShape).background(C.Surface2)) { NetImage(FnClient.abs("/p/api/v1/stream/face/${p.faceId}"), Modifier.fillMaxSize()) }
-                            Text(p.name.ifEmpty { "未命名" }, fontSize = 12.sp, color = C.Sub, maxLines = 1, modifier = Modifier.padding(top = 6.dp))
-                        }
+                LazyRow(contentPadding = PaddingValues(horizontal = Space.m), horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
+                    itemsIndexed(ps, key = { _, p -> p.id }) { i, p ->
+                        PersonChip(p.name, FnClient.abs("/p/api/v1/stream/face/${p.faceId}"), index = i, onLong = { menuPerson = p }) { openPerson(p) }
                     }
                 }
             }
@@ -121,20 +120,13 @@ internal fun DiscoverTab() {
         if (places == null || places.isNotEmpty()) {
             item { RowHeader("地点", places?.let { "${it.size} 处" } ?: "", "地图") { Nav.push(Route.X(ExtScreen.Map(false))) } }
             item {
-                if (places == null) LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(3) { Box(Modifier.size(150.dp, 180.dp).clip(RoundedCornerShape(18.dp)).background(shimmerBrush())) }
+                if (places == null) LazyRow(contentPadding = PaddingValues(horizontal = Space.l), horizontalArrangement = Arrangement.spacedBy(CoverSize.gap)) {
+                    items(3) { CoverCardSkeleton() }
                 }
-                else LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(places) { pl ->
-                        Box(Modifier.size(150.dp, 180.dp).pressScale().skeuoPhoto().combinedClickable(onLongClick = { menuPlace = pl }) {
+                else LazyRow(contentPadding = PaddingValues(horizontal = Space.l), horizontalArrangement = Arrangement.spacedBy(CoverSize.gap)) {
+                    itemsIndexed(places) { i, pl ->
+                        CoverCard(pl.city.ifEmpty { pl.country }, "${pl.country} · ${n(pl.count)}", pl.poster, index = i, onLong = { menuPlace = pl }) {
                             Nav.push(Route.Collection(pl.city.ifEmpty { pl.country }, pl.country, PhotoSource(pageSize = 200, grouped = true) { o, l -> Repo.placePhotos(pl, o, l) }))
-                        }) {
-                            NetImage(pl.poster, Modifier.fillMaxSize())
-                            Box(Modifier.matchParentSize().background(C.Scrim))
-                            Column(Modifier.align(Alignment.BottomStart).padding(12.dp)) {
-                                Text(pl.city.ifEmpty { pl.country }, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                                Text("${pl.country} · ${n(pl.count)}", color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp)
-                            }
                         }
                     }
                 }
@@ -171,13 +163,13 @@ internal fun DiscoverTab() {
 @Composable
 private fun SearchBar() {
     Row(
-        Modifier.padding(horizontal = 16.dp, vertical = 6.dp).fillMaxWidth().height(50.dp).skeuoInset(RoundedCornerShape(16.dp), C.Surface)
-            .clickable { Nav.push(Route.GlobalSearch) }.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically
+        Modifier.padding(horizontal = Space.l, vertical = Space.xs).fillMaxWidth().height(50.dp).skeuoInset(RoundedCornerShape(Radius.m), C.Surface)
+            .clickable(role = Role.Button, onClickLabel = "搜索") { Nav.push(Route.GlobalSearch) }.padding(horizontal = Space.l), verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(LI.search(), null, tint = C.Sub, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(10.dp))
         // 优化 18：一个框搜照片、影视、歌曲
-        Text("搜照片、电影剧集、歌曲", color = C.Faint, fontSize = 15.sp, modifier = Modifier.weight(1f))
+        Text("搜照片、电影剧集、歌曲", color = C.Sub, style = MaterialTheme.typography.bodyLarge, maxLines = 1, modifier = Modifier.weight(1f))
         if (!AiConfig.configured && HomeState.source == "dav") Text("需配置 AI", color = C.Gold, fontSize = 11.sp, modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(C.Gold.copy(alpha = 0.14f)).padding(horizontal = 6.dp, vertical = 3.dp))
     }
 }
@@ -185,18 +177,19 @@ private fun SearchBar() {
 /** 发现页三区（回忆 / 整理 / 工具）的区标题：比 [RowHeader] 大一号。 */
 @Composable
 private fun ZoneHeader(title: String) {
-    Text(title, color = C.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.2).sp,
-        modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 26.dp, bottom = 2.dp))
+    // 1.6.2：headlineMedium（22/28 SemiBold），读屏「标题」；上 32 下 4：区与区之间明显分开
+    Text(title, color = C.Text, style = MaterialTheme.typography.headlineMedium,
+        modifier = Modifier.padding(start = Space.l, end = Space.l, top = Space.xxl, bottom = Space.xs).semantics { heading() })
 }
 
 /** 发现页里成组的入口卡片（白色卡片 + 细分隔线）。 */
 @Composable
 private fun GroupCard(content: @Composable ColumnScope.() -> Unit) {
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth().skeuoCard(), content = content)
+    Column(Modifier.padding(horizontal = Space.l, vertical = Space.xs).fillMaxWidth().skeuoCard(RoundedCornerShape(Radius.l)), content = content)
 }
 
 @Composable
-private fun GroupDivider() = HorizontalDivider(color = C.Line, thickness = 0.6.dp, modifier = Modifier.padding(start = 58.dp))
+private fun GroupDivider() = Div()
 
 // ============================================================ discover (WebDAV)
 
@@ -241,15 +234,9 @@ internal fun DavDiscoverTab() {
                 extra = if (fl.hiddenPersons.isNotEmpty()) ("已隐藏 ${fl.hiddenPersons.size}" to { Nav.push(Route.X(ExtScreen.HiddenPersons(lib.accountId))) }) else null)
         }
         item {
-            if (fl.persons.isNotEmpty()) LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                items(fl.persons, key = { it.key }) { p ->
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(76.dp).combinedClickable(onLongClick = { menuPerson = p }) {
-                        openDavPerson(lib.accountId, p)
-                    }) {
-                        Box(Modifier.size(72.dp).clip(CircleShape).background(C.Surface2)) { NetImage(fl.cropFile(p.cover).absolutePath, Modifier.fillMaxSize()) }
-                        Text(p.name.ifEmpty { "未命名" }, fontSize = 13.sp, color = if (p.name.isEmpty()) C.Sub else C.Text, maxLines = 1, modifier = Modifier.padding(top = 8.dp))
-                        Text("${p.photos.size} 张", fontSize = 11.sp, color = C.Faint)
-                    }
+            if (fl.persons.isNotEmpty()) LazyRow(contentPadding = PaddingValues(horizontal = Space.m), horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
+                itemsIndexed(fl.persons, key = { _, p -> p.key }) { i, p ->
+                    PersonChip(p.name, fl.cropFile(p.cover).absolutePath, count = p.photos.size, index = i, onLong = { menuPerson = p }) { openDavPerson(lib.accountId, p) }
                 }
             }
             FaceStatusLine(lib, fl, imgs, faceTodo)   // 用户 2026-10-23 反馈 #7：人脸识别状态 / 原因 / 重试
@@ -257,9 +244,9 @@ internal fun DavDiscoverTab() {
         if (places.isNotEmpty()) {
             item { RowHeader("地点", "${places.size} 处", "地图") { Nav.push(Route.X(ExtScreen.Map(true))) } }
             item {
-                LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(places, key = { it.first }) { pl ->
-                        CoverCard(pl.first, "${n(pl.second.size)} 张", pl.second.firstOrNull()?.thumbM, onLong = { menuPlace = pl }) { openGroup(pl.first, "地点", pl.second) }
+                LazyRow(contentPadding = PaddingValues(horizontal = Space.l), horizontalArrangement = Arrangement.spacedBy(CoverSize.gap)) {
+                    itemsIndexed(places, key = { _, pl -> pl.first }) { i, pl ->
+                        CoverCard(pl.first, "${n(pl.second.size)} 张", pl.second.firstOrNull()?.thumbM, index = i, onLong = { menuPlace = pl }) { openGroup(pl.first, "地点", pl.second) }
                     }
                 }
             }
@@ -290,8 +277,9 @@ internal fun DavDiscoverTab() {
         }
         item { RowHeader("分类", if (cats.isNotEmpty()) "${cats.size} 类" else "", if (AiConfig.configured) "AI 设置" else null) { Nav.push(Route.AiSettings) } }
         item {
-            if (cats.isNotEmpty()) LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(cats, key = { it.first }) { (c, ps) -> CoverCard(c, "${n(ps.size)} 张", ps.firstOrNull()?.thumbM, small = true) { openGroup(c, "分类", ps) } }
+            // 分类与合集页的「事物场景」同一款方形封面（标题在下）
+            if (cats.isNotEmpty()) LazyRow(contentPadding = PaddingValues(horizontal = Space.l), horizontalArrangement = Arrangement.spacedBy(CoverSize.gap)) {
+                itemsIndexed(cats, key = { _, it -> it.first }) { i, (c, ps) -> CoverTile(c, "${n(ps.size)} 张", ps.firstOrNull()?.thumbM, index = i) { openGroup(c, "分类", ps) } }
             }
             else InfoRow(LI.sparkle(), if (AiConfig.configured) "等待 AI 整理" else "接入 AI 后自动分类", null,
                 null, if (AiRunner.on) "立即整理" else "去配置") { if (!AiRunner.on) Nav.push(Route.AiSettings) else AiRunner.startDav(ctx, lib, manual = true) }
@@ -417,14 +405,14 @@ private fun ScanStatusCard(rows: List<Triple<String, Pair<Int, Int>, Boolean>>, 
     val allDone = rows.all { it.second.second > 0 && it.second.first >= it.second.second }
     // 用户 2026-10-23：全部整理完毕时整张卡隐藏，不再留一张「全部整理完毕 · 扫描设置」卡
     if (allDone) return
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().skeuoCard().padding(16.dp)) {
+    Column(Modifier.padding(horizontal = Space.l, vertical = Space.s).fillMaxWidth().skeuoCard(RoundedCornerShape(Radius.l)).padding(Space.l)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(if (running) "正在整理" else "整理暂停", color = C.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text(if (running) "正在整理" else "整理暂停", color = C.Text, style = MaterialTheme.typography.titleMedium)
                 Text(note, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
             }
-            Text(if (running) "暂停" else "立即继续", color = C.Accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(C.Accent.copy(alpha = 0.12f)).clickable(onClick = onToggle).padding(horizontal = 12.dp, vertical = 7.dp))
+            Text(if (running) "暂停" else "立即继续", color = C.Accent, style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.pressScale().clip(RoundedCornerShape(Radius.s)).background(C.AccentSoft).clickable(role = Role.Button, onClick = onToggle).padding(horizontal = Space.m, vertical = Space.s))
         }
         rows.forEach { (label, pr, on) ->
             val (d, t) = pr
@@ -433,7 +421,7 @@ private fun ScanStatusCard(rows: List<Triple<String, Pair<Int, Int>, Boolean>>, 
                 Box(Modifier.weight(1f).height(3.dp).clip(RoundedCornerShape(2.dp))) {
                     Box(Modifier.fillMaxHeight().fillMaxWidth(if (t > 0) (d.toFloat() / t).coerceIn(0f, 1f) else 0f).background(if (on) C.Accent else C.Faint))
                 }
-                Text("${n(d)}/${n(t)}", color = C.Sub, fontSize = 12.sp, modifier = Modifier.padding(start = 10.dp).widthIn(min = 72.dp), textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                Text("${n(d)}/${n(t)}", color = C.Sub, style = MaterialTheme.typography.labelMedium.merge(Type.num), modifier = Modifier.padding(start = 10.dp).widthIn(min = 72.dp), textAlign = androidx.compose.ui.text.style.TextAlign.End)
             }
         }
     }
@@ -442,63 +430,34 @@ private fun ScanStatusCard(rows: List<Triple<String, Pair<Int, Int>, Boolean>>, 
 private fun openGroup(name: String, sub: String, ps: List<Photo>) =
     Nav.push(Route.Collection(name, sub, PhotoSource(pageSize = 100000) { o, _ -> if (o > 0) emptyList<Photo>() to false else ps to false }))
 
+/** 发现页的内容分区标题：与合集页同一款（[ContentHeader]）。 */
 @Composable
-private fun RowHeader(title: String, trailing: String = "", action: String? = null, extra: Pair<String, () -> Unit>? = null, onAction: () -> Unit = {}) {
-    Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 12.dp, top = 18.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(title, color = C.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        if (trailing.isNotEmpty()) Text(trailing, color = C.Sub, fontSize = 13.sp, modifier = Modifier.padding(start = 8.dp))
-        Spacer(Modifier.weight(1f))
-        if (extra != null) Text(extra.first, color = C.Sub, fontSize = 13.sp, modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = extra.second).padding(horizontal = 8.dp, vertical = 4.dp))
-        if (action != null) Text(action, color = C.Accent, fontSize = 13.sp, modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onAction).padding(horizontal = 8.dp, vertical = 4.dp))
-    }
-}
-
-@Composable
-@OptIn(ExperimentalFoundationApi::class)
-private fun CoverCard(title: String, sub: String, cover: String?, small: Boolean = false, onLong: (() -> Unit)? = null, onClick: () -> Unit) {
-    val w = if (small) 120.dp else 150.dp; val h = if (small) 120.dp else 180.dp
-    Box(Modifier.size(w, h).pressScale().skeuoPhoto().combinedClickable(onLongClick = onLong, onClick = onClick)
-        .semantics(mergeDescendants = true) { role = Role.Button; contentDescription = "$title，$sub" }) {
-        NetImage(cover, Modifier.fillMaxSize())
-        Box(Modifier.matchParentSize().background(C.Scrim))
-        Column(Modifier.align(Alignment.BottomStart).padding(12.dp)) {
-            Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(sub, color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp)
-        }
-    }
-}
+private fun RowHeader(title: String, trailing: String = "", action: String? = null, extra: Pair<String, () -> Unit>? = null, onAction: () -> Unit = {}) =
+    ContentHeader(title, trailing, action, extra, onAction)
 
 @Composable
 private fun InfoRow(icon: ImageVector, title: String, sub: String?, progress: Float?, action: String?, onAction: () -> Unit) {
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth().skeuoCard().padding(14.dp)) {
+    Column(Modifier.padding(horizontal = Space.l, vertical = Space.xs).fillMaxWidth().skeuoCard(RoundedCornerShape(Radius.l)).padding(Space.l)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(C.Accent.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) { Icon(icon, null, tint = C.Accent, modifier = Modifier.size(19.dp)) }
-            Spacer(Modifier.width(12.dp))
+            // 1.6.2：AI 整理卡去掉彩色图标底（DESIGN §1），图标跟随次要色，与设置行同一列宽
+            RowIcon(icon, false)
+            Spacer(Modifier.width(Space.m))
             Column(Modifier.weight(1f)) {
-                Text(title, color = C.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text(title, color = C.Text, style = MaterialTheme.typography.titleSmall)
                 if (!sub.isNullOrEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            if (action != null) Text(action, color = C.Accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(C.Accent.copy(alpha = 0.12f)).clickable(onClick = onAction).padding(horizontal = 12.dp, vertical = 7.dp))
+            if (action != null) Text(action, color = C.Accent, style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.pressScale().clip(RoundedCornerShape(Radius.s)).background(C.AccentSoft).clickable(role = Role.Button, onClick = onAction).padding(horizontal = Space.m, vertical = Space.s))
         }
         if (progress != null) LinearProgressIndicator(progress = { progress.coerceIn(0f, 1f) }, color = C.Accent, trackColor = C.Surface2,
             modifier = Modifier.padding(top = 12.dp).fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)))
     }
 }
 
-/** 发现页的入口行。用户 2026-10-23：去掉说明小字和不准确的「扫描」字样，右侧只放状态值（「14 组」「230 张」）。 */
+/** 发现页的入口行。用户 2026-10-23：去掉说明小字和不准确的「扫描」字样，右侧只放状态值（「14 组」「230 张」）。1.6.2：就是设置页的 [NavRow]（图标次要色、标题起点对齐 60dp）。 */
 @Composable
-private fun ToolRow(icon: ImageVector, title: String, value: String? = null, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable(role = Role.Button, onClick = onClick).padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(32.dp).clip(RoundedCornerShape(9.dp)).background(C.Accent.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) { Icon(icon, null, tint = C.Accent, modifier = Modifier.size(18.dp)) }
-        Spacer(Modifier.width(12.dp))
-        Text(title, color = C.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-        if (!value.isNullOrEmpty()) Text(value, color = C.Sub, fontSize = 13.sp, modifier = Modifier.padding(start = 8.dp, end = 4.dp))
-        Icon(LI.chevron(), null, tint = C.Faint, modifier = Modifier.size(18.dp))
-    }
-}
+private fun ToolRow(icon: ImageVector, title: String, value: String? = null, onClick: () -> Unit) = NavRow(icon, title, value = value, onClick = onClick)
 
-/** 飞牛官方的三个人脸参数。改完只重新归类，不用重新识别。 */
 @Composable
 fun FaceSettingsDialog(onDismiss: () -> Unit) {
     var conf by remember { mutableFloatStateOf(FaceConfig.conf) }

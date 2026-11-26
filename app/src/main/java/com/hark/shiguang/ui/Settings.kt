@@ -346,7 +346,8 @@ fun InfoDot(text: String, title: String = "说明") {
 @Composable
 fun NavRow(icon: ImageVector, title: String, sub: String? = null, danger: Boolean = false, value: String? = null, alert: Boolean = false,
            info: String? = null, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().heightIn(min = Space.row).clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+    // 1.6.2：读屏角色「按钮」（发现页入口行并入 NavRow 后保持原来的按钮角色）
+    Row(Modifier.fillMaxWidth().heightIn(min = Space.row).clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         RowIcon(icon, danger)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {

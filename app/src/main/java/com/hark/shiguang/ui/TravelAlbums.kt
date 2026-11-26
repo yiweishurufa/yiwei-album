@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -98,30 +100,28 @@ fun TravelAlbumsRow(lib: DavLib, metaVersion: Int) {
     }
     val list = albums ?: return
     if (list.isEmpty()) return   // 用户 2026-10-23：没有旅行就不显示这一块，不再放说明段落
-    Column(Modifier.padding(top = 6.dp, bottom = 6.dp)) {
-        Row(Modifier.padding(start = 18.dp, end = 18.dp, bottom = 8.dp), verticalAlignment = Alignment.Bottom) {
-            Text("旅行", color = C.Text, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-            Text("${list.size} 次", color = C.Sub, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp, bottom = 1.dp))
-        }
-        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(list, key = { it.trip.id }) { a -> TripCard(a) }
+    Column(Modifier.padding(bottom = Space.s)) {
+        // 1.6.2：与人物 / 地点同一款分区标题与封面卡规格（C3）
+        ContentHeader("旅行", "${list.size} 次")
+        LazyRow(contentPadding = PaddingValues(horizontal = Space.l), horizontalArrangement = Arrangement.spacedBy(CoverSize.gap)) {
+            itemsIndexed(list, key = { _, a -> a.trip.id }) { i, a -> TripCard(a, i) }
         }
     }
 }
 
 @Composable
-private fun TripCard(a: TripAlbum) {
+private fun TripCard(a: TripAlbum, index: Int) {
     val t = a.trip
     val range = tripRange(t.start, t.end)
-    Box(Modifier.size(150.dp, 188.dp).pressScale().skeuoPhoto()
-        .semantics(mergeDescendants = true) { contentDescription = "旅行相册：${t.place}，$range，${a.photos.size} 张" }
-        .clickableNoRipple { TravelAlbums.open(a) }) {
+    Box(Modifier.enterRise(index).size(CoverSize.cardW, CoverSize.cardH).pressScale(Motion.PRESS_SCALE_LARGE).skeuoPhoto(RoundedCornerShape(Radius.l))
+        .clickable(role = androidx.compose.ui.semantics.Role.Button) { TravelAlbums.open(a) }
+        .semantics(mergeDescendants = true) { contentDescription = "旅行相册：${t.place}，$range，${a.photos.size} 张" }) {
         NetImage(a.cover.thumbM, Modifier.fillMaxSize())
-        Box(Modifier.matchParentSize().background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to Color(0xB3000000))))
-        Column(Modifier.align(Alignment.BottomStart).padding(12.dp)) {
-            Text(t.place, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 20.sp)
-            Text(range, color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
-            Text("${t.days} 天 · ${a.photos.size} 张", color = Color.White.copy(alpha = 0.72f), fontSize = 12.sp, maxLines = 1)
+        Box(Modifier.matchParentSize().background(Brush.verticalGradient(0.45f to Color.Transparent, 1f to Color(0x99000000))))
+        Column(Modifier.align(Alignment.BottomStart).padding(Space.m)) {
+            Text(t.place, color = Color.White, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(range, color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodySmall.merge(Type.num), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+            Text("${t.days} 天 · ${a.photos.size} 张", color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall.merge(Type.num), maxLines = 1)
         }
     }
 }
