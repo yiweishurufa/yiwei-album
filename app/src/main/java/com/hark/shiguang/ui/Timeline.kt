@@ -75,7 +75,9 @@ object Hero {
     val bounds = HashMap<String, Rect>()
     var from by mutableStateOf<Rect?>(null)
     var fromThumb by mutableStateOf<String?>(null)
-    fun open(p: Photo) { from = bounds[p.key]; fromThumb = p.thumbS }
+    /** 大图已经自己缩回到缩略图位置（共享元素关闭）：这次出栈不再做页面级的淡出缩放。 */
+    var closed = false
+    fun open(p: Photo) { from = bounds[p.key]; fromThumb = p.thumbS; closed = false }
 }
 
 // ============================================================ entries
@@ -108,6 +110,8 @@ fun buildEntriesBy(photos: List<Photo>, level: Level, grouped: Boolean): List<En
 fun SelectableThumb(p: Photo, corner: Dp, onOpen: () -> Unit, small: Boolean = false) {
     val sel = Selection.active && Selection.has(p)
     val s by animateFloatAsState(if (sel) 0.92f else 1f, Motion.state(), label = "sel")
+    // 滚出屏幕 / 页面离开时把位置删掉：大图缩回时只落到真正在屏幕上的那一格
+    DisposableEffect(p.key) { onDispose { Hero.bounds.remove(p.key) } }
     Box(
         Modifier.aspectRatio(1f).onGloballyPositioned { Hero.bounds[p.key] = it.boundsInRoot() }
     ) {

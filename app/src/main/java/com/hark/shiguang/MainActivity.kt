@@ -7,6 +7,8 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -269,6 +271,10 @@ class MainActivity : ComponentActivity() {
                         val media = { r: Route -> r is Route.Viewer || r is Route.MoviePlay }
                         when {
                             Motion.reduced -> fadeIn(Motion.enter()) togetherWith fadeOut(Motion.exit())
+                            // 1.6.2：从缩略图打开的大图自己做共享元素放大（ViewerScreen），页面层不再叠一层缩放；
+                            // 大图已缩回缩略图位置时（Hero.closed）直接移除，网格就在原处
+                            targetState.route is Route.Viewer && Hero.from != null -> EnterTransition.None togetherWith fadeOut(Motion.exit())
+                            initialState.route is Route.Viewer && Hero.closed -> EnterTransition.None togetherWith ExitTransition.None
                             media(targetState.route) -> (fadeIn(Motion.enter()) + scaleIn(Motion.zoom(), initialScale = 0.94f)) togetherWith fadeOut(Motion.exit())
                             media(initialState.route) -> fadeIn(Motion.enter()) togetherWith (fadeOut(Motion.exit()) + scaleOut(Motion.exit(), targetScale = 0.96f))
                             else -> (slideInHorizontally(Motion.page()) { if (forward) shift else -shift } + fadeIn(Motion.enter())) togetherWith
@@ -280,7 +286,9 @@ class MainActivity : ComponentActivity() {
                     val r = e.route
                     if (r == Route.Home) return@AnimatedContent
                     pageStates.SaveableStateProvider(e.key) {
-                    Surface(color = if (r is Route.Viewer || r is Route.MoviePlay || (r is Route.X && r.screen.dark)) Color.Black else C.Bg, modifier = Modifier.fillMaxSize()) {
+                    // 1.6.2：直接压在首页上的大图用透明底（ViewerScreen 自己画随下拉变淡的黑底），下拉时能看见下面的网格
+                    val overHome = remember(e.key) { r is Route.Viewer && Nav.stack.size == 2 && Nav.stack.firstOrNull() == Route.Home }
+                    Surface(color = if (overHome) Color.Transparent else if (r is Route.Viewer || r is Route.MoviePlay || (r is Route.X && r.screen.dark)) Color.Black else C.Bg, modifier = Modifier.fillMaxSize()) {
                         when (r) {
                             Route.Login -> LoginScreen()
                             is Route.Collection -> CollectionScreen(r)

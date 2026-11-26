@@ -4,6 +4,9 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.VectorConverter
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -70,12 +73,16 @@ fun ViewerScreen(photosIn: List<Photo>, start: Int, slideshowStart: Boolean = fa
     val pager = rememberPagerState(initialPage = start.coerceIn(0, (photos.size - 1).coerceAtLeast(0))) { photos.size }
     var more by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
-    // hero: grow from the tapped thumbnail
+    // 1.6.2 共享元素式转场（DESIGN §7「大图 / 播放器打开」）：从点到的缩略图位置长出来，下拉 / 返回时缩回它在网格里的位置
     val heroFrom = remember { Hero.from }
     val heroThumb = remember { Hero.fromThumb }
-    val heroAnim = remember { Animatable(if (heroFrom != null) 0f else 1f) }
-    LaunchedEffect(Unit) { Hero.from = null; heroAnim.animateTo(1f, spring(dampingRatio = 0.86f, stiffness = 420f)) }
-    LaunchedEffect(pager.currentPage) { photos.getOrNull(pager.currentPage)?.let { ViewerReturn.lastKey = it.key } }
+    val heroAnim = remember { Animatable(if (heroFrom != null && !Motion.reduced) 0f else 1f) }
+    LaunchedEffect(Unit) { Hero.from = null; Hero.closed = false; heroAnim.animateTo(1f, Motion.zoom()) }
+    LaunchedEffect(pager.currentPage) {
+        photos.getOrNull(pager.currentPage)?.let { ViewerReturn.lastKey = it.key }
+        // 翻页后让下面的网格把这一张滚进屏幕：下拉缩回时才有地方可落（网格只在不可见时才滚）
+        if (pager.currentPage != start) ViewerReturn.tick++
+    }
     DisposableEffect(Unit) { onDispose { ViewerReturn.tick++ } }
     if (photos.isEmpty()) { LaunchedEffect(Unit) { Nav.pop() }; return }
     var chrome by remember { mutableStateOf(true) }
@@ -84,17 +91,55 @@ fun ViewerScreen(photosIn: List<Photo>, start: Int, slideshowStart: Boolean = fa
     var albumFor by remember { mutableStateOf<Photo?>(null) }
     var favTick by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
-    val dragY = remember { Animatable(0f) }
+    // 下拉关闭：照片跟手（x / y 都跟），越往下越小、背景越透明；松手按距离或速度决定关闭还是弹回
+    val drag = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
+    val closeAnim = remember { Animatable(0f) }
+    var closeFrom by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+    var closeTo by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+    var closePhoto by remember { mutableStateOf<Photo?>(null) }
+    var closing by remember { mutableStateOf(false) }
+    val dens = androidx.compose.ui.platform.LocalDensity.current
+    var screen by remember { mutableStateOf(IntSize(1, 1)) }
+    val H = screen.height.toFloat().coerceAtLeast(1f); val W = screen.width.toFloat().coerceAtLeast(1f)
+    val dragProgress = (drag.value.y / H).coerceIn(0f, 1f)
+    val dragScale = 1f - dragProgress * 0.45f
 
-    Box(
-        Modifier.fillMaxSize().background(Color.Black.copy(alpha = (1f - abs(dragY.value) / 900f).coerceIn(0.3f, 1f)))
-    ) {
+    /** 照片在屏幕上 Fit 显示时的矩形。 */
+    fun fitRect(ph: Photo): androidx.compose.ui.geometry.Rect {
+        val ratio = ph.ratio.takeIf { it > 0f } ?: 1f
+        val fw = if (W / H > ratio) H * ratio else W; val fh = fw / ratio
+        return androidx.compose.ui.geometry.Rect((W - fw) / 2f, (H - fh) / 2f, (W + fw) / 2f, (H + fh) / 2f)
+    }
+    /** 关闭：有可落的缩略图就缩回去（共享元素），否则按原来的淡出关闭。可以从拖动中途接上。 */
+    fun requestClose() {
+        if (closing) return
+        val ph = photos.getOrNull(pager.currentPage)
+        val target = ph?.let { Hero.bounds[it.key] }?.takeIf { r -> r.width > 0f && r.bottom > 0f && r.top < H && r.right > 0f && r.left < W }
+        if (ph == null || target == null || Motion.reduced || ph.isVideo || zoomed) { Nav.pop(); return }
+        val fit = fitRect(ph)
+        val c = fit.center + drag.value
+        val w = fit.width * dragScale; val h = fit.height * dragScale
+        closeFrom = androidx.compose.ui.geometry.Rect(c.x - w / 2f, c.y - h / 2f, c.x + w / 2f, c.y + h / 2f)
+        closeTo = target; closePhoto = ph; closing = true
+        scope.launch {
+            closeAnim.snapTo(0f)
+            closeAnim.animateTo(1f, Motion.zoom())
+            Hero.closed = true
+            Nav.pop()
+        }
+    }
+    androidx.activity.compose.BackHandler(enabled = !closing) { requestClose() }
+
+    // 背景：打开时随放大淡入，下拉时变透明（下面是首页网格时能看见它），缩回时完全透明
+    val openAlpha = if (heroFrom != null) heroAnim.value.coerceIn(0f, 1f) else 1f
+    val bgAlpha = (openAlpha * (1f - dragProgress * 1.8f) * (1f - closeAnim.value)).coerceIn(0f, 1f)
+    Box(Modifier.fillMaxSize().onSizeChanged { screen = it }.background(Color.Black.copy(alpha = bgAlpha))) {
         HorizontalPager(
-            state = pager, userScrollEnabled = !zoomed, beyondBoundsPageCount = 1,
+            state = pager, userScrollEnabled = !zoomed && drag.value == Offset.Zero, beyondBoundsPageCount = 1,
             modifier = Modifier.fillMaxSize().graphicsLayer {
-                alpha = if (heroFrom != null) ((heroAnim.value - 0.75f) * 4f).coerceIn(0f, 1f) else 1f
-                translationY = dragY.value
-                val s = 1f - (abs(dragY.value) / 3000f).coerceAtMost(0.15f); scaleX = s; scaleY = s
+                alpha = if (closing) 0f else if (heroFrom != null) ((heroAnim.value - 0.75f) * 4f).coerceIn(0f, 1f) else 1f
+                translationX = drag.value.x; translationY = drag.value.y
+                scaleX = dragScale; scaleY = dragScale
             },
             key = { photos[it].id },
         ) { page ->
@@ -103,72 +148,91 @@ fun ViewerScreen(photosIn: List<Photo>, start: Int, slideshowStart: Boolean = fa
             if (p.isVideo) VideoPage(p, current) { chrome = !chrome }
             else ZoomImage(
                 p, onTap = { chrome = !chrome }, onZoom = { if (current) zoomed = it },
-                onDismissDrag = { dy, end ->
+                onDismissDrag = { delta, end, vy ->
                     scope.launch {
-                        if (!end) dragY.snapTo(dragY.value + dy)
-                        else if (abs(dragY.value) > 220f) Nav.pop() else dragY.animateTo(0f, spring())
+                        if (!end) drag.snapTo(drag.value + delta)
+                        else {
+                            val far = drag.value.y > with(dens) { 96.dp.toPx() }
+                            val flung = vy > with(dens) { 900.dp.toPx() } && drag.value.y > 0f
+                            if ((far || flung) && vy > -with(dens) { 300.dp.toPx() }) requestClose()
+                            else drag.animateTo(Offset.Zero, Motion.zoom())
+                        }
                     }
                 },
             )
         }
 
-        if (heroFrom != null && heroAnim.value < 1f) {
-            BoxWithConstraints(Modifier.fillMaxSize()) {
-                val dens = androidx.compose.ui.platform.LocalDensity.current
-                val W = with(dens) { maxWidth.toPx() }; val H = with(dens) { maxHeight.toPx() }
-                val sp = photos.getOrNull(start)
-                val ratio = sp?.ratio?.takeIf { it > 0f } ?: 1f
-                val fw = if (W / H > ratio) H * ratio else W; val fh = fw / ratio
-                val t = heroAnim.value
-                val w = heroFrom.width + (fw - heroFrom.width) * t; val h = heroFrom.height + (fh - heroFrom.height) * t
-                val x = heroFrom.left + ((W - fw) / 2f - heroFrom.left) * t; val y = heroFrom.top + ((H - fh) / 2f - heroFrom.top) * t
-                AsyncImage(
-                    ImageRequest.Builder(ctx).data(sp?.thumbM ?: heroThumb).placeholderMemoryCacheKey(heroThumb).build(), null,
-                    Modifier.offset { androidx.compose.ui.unit.IntOffset(x.toInt(), y.toInt()) }.size(with(dens) { w.toDp() }, with(dens) { h.toDp() }).clip(RoundedCornerShape(((1 - t) * 8).dp)),
-                    contentScale = ContentScale.Crop,
-                )
-            }
+        // 打开：缩略图位置 → 全屏 Fit；关闭：当前位置（含下拉位移 / 缩放）→ 网格里的缩略图
+        val flying: Triple<androidx.compose.ui.geometry.Rect, androidx.compose.ui.geometry.Rect, Float>? = when {
+            closing && closeFrom != null && closeTo != null -> Triple(closeFrom!!, closeTo!!, closeAnim.value)
+            heroFrom != null && heroAnim.value < 1f -> photos.getOrNull(start)?.let { Triple(heroFrom, fitRect(it), heroAnim.value) }
+            else -> null
+        }
+        if (flying != null) {
+            val (from, to, t) = flying
+            val l = from.left + (to.left - from.left) * t; val tp = from.top + (to.top - from.top) * t
+            val w = from.width + (to.width - from.width) * t; val h = from.height + (to.height - from.height) * t
+            val sp = if (closing) closePhoto else photos.getOrNull(start)
+            // 网格那一端是方形裁切 + 小圆角；全屏那一端是 Fit（Crop 在照片本身比例的框里等于 Fit）
+            val gridCorner = C.Corner.value
+            val corner = if (closing) gridCorner * t else gridCorner * (1f - t)
+            AsyncImage(
+                ImageRequest.Builder(ctx).data(sp?.thumbM ?: heroThumb).placeholderMemoryCacheKey(if (closing) sp?.thumbS else heroThumb).build(), null,
+                Modifier.offset { androidx.compose.ui.unit.IntOffset(l.toInt(), tp.toInt()) }
+                    .size(with(dens) { w.coerceAtLeast(1f).toDp() }, with(dens) { h.coerceAtLeast(1f).toDp() })
+                    .clip(RoundedCornerShape(corner.dp)),
+                contentScale = ContentScale.Crop,
+            )
         }
         val p = photos.getOrNull(pager.currentPage)
-        AnimatedVisibility(chrome && p != null, enter = fadeIn() + slideInVertically { -it / 2 }, exit = fadeOut() + slideOutVertically { -it / 2 }) {
-            Box(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0xCC000000), Color.Transparent)))) {
-                Row(Modifier.statusBarsPadding().padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    RoundIcon(Icons.Rounded.ArrowBackIosNew, bg = Color(0x40000000), tint = Color.White, desc = "返回") { Nav.pop() }
-                    Spacer(Modifier.width(12.dp))
-                    if (p != null) Column(Modifier.weight(1f)) {
+        val chromeOn = chrome && p != null && !closing && dragProgress < 0.02f && (heroFrom == null || heroAnim.value > 0.6f)
+        AnimatedVisibility(chromeOn, enter = fadeIn(Motion.enter()) + slideInVertically(Motion.enter()) { -it / 3 }, exit = fadeOut(Motion.exit()) + slideOutVertically(Motion.exit()) { -it / 3 }) {
+            Box(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0x99000000), Color.Transparent)))) {
+                Row(Modifier.statusBarsPadding().padding(start = Space.m, end = Space.m, top = Space.s, bottom = Space.xl), verticalAlignment = Alignment.CenterVertically) {
+                    RoundIcon(KI.back(), bg = ViewerChrome.btnBg, tint = Color.White, size = ViewerChrome.btn, desc = "返回") { requestClose() }
+                    Spacer(Modifier.width(Space.m))
+                    if (p != null) Column(Modifier.weight(1f).semantics(mergeDescendants = true) {}) {
                         val (t, w) = dayTitle(p.day)
-                        Text("$t $w", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                        Text("$t $w", color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1)
                         // 第 4 批：飞牛实况 type-1 的独立视频流映射未验证（FnExtra.motionVideo），这里标注「未验证」，不要宣称已验证。
                         // WebDAV 的 MOV 配对也用 liveType=1，但 isCloud=true，不受影响。
-                        Text(p.time.drop(11).take(5) + (if (p.isLive) "  ·  实况" + (if (!p.isCloud && p.liveType == 1) "（未验证）" else "") else ""), color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(p.time.drop(11).take(5), color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall.merge(Type.num))
+                            if (p.isLive) {
+                                Icon(KI.live(), null, tint = Color.White.copy(alpha = 0.75f), modifier = Modifier.padding(start = Space.s, end = Space.xxs).size(14.dp))
+                                Text("实况" + (if (!p.isCloud && p.liveType == 1) "（未验证）" else ""), color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
                     }
-                    Text("${pager.currentPage + 1} / ${photos.size}", color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp,
-                        modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(Color(0x40000000)).padding(horizontal = 9.dp, vertical = 4.dp))
-                    Spacer(Modifier.width(10.dp))
-                    Spacer(Modifier.width(8.dp))
-                    RoundIcon(Icons.Rounded.MoreHoriz, bg = Color(0x40000000), tint = Color.White, desc = "更多") { more = true }
+                    Text("${pager.currentPage + 1} / ${photos.size}", color = Color.White.copy(alpha = 0.9f),
+                        style = MaterialTheme.typography.labelMedium.copy(fontFamily = C.P.display, fontFeatureSettings = Type.TNUM),
+                        modifier = Modifier.semantics { contentDescription = "第 ${pager.currentPage + 1} 张，共 ${photos.size} 张" }
+                            .clip(RoundedCornerShape(Radius.s)).background(ViewerChrome.btnBg).padding(horizontal = 10.dp, vertical = 5.dp))
+                    Spacer(Modifier.width(Space.s))
+                    RoundIcon(KI.moreH(), bg = ViewerChrome.btnBg, tint = Color.White, size = ViewerChrome.btn, desc = "更多") { more = true }
                 }
             }
         }
-        AnimatedVisibility(chrome && p != null, modifier = Modifier.align(Alignment.BottomCenter),
-            enter = fadeIn() + slideInVertically { it / 2 }, exit = fadeOut() + slideOutVertically { it / 2 }) {
-            Box(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000))))) {
+        AnimatedVisibility(chromeOn, modifier = Modifier.align(Alignment.BottomCenter),
+            enter = fadeIn(Motion.enter()) + slideInVertically(Motion.enter()) { it / 3 }, exit = fadeOut(Motion.exit()) + slideOutVertically(Motion.exit()) { it / 3 }) {
+            Box(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0x99000000))))) {
+                // 1.6.2：底栏是一排 44dp 圆钮（Kubai 线性图标），文字只给读屏；收藏后变成双色心形 + 强调色
                 Row(
-                    Modifier.navigationBarsPadding().padding(bottom = 14.dp, top = 30.dp).fillMaxWidth(),
+                    Modifier.navigationBarsPadding().padding(bottom = Space.m, top = Space.xxl).fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (p != null) {
                         if (!p.isCloud) key(favTick, p.id) {
-                            BarAction(if (p.collected) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, if (p.collected) "已收藏" else "收藏", if (p.collected) C.Accent else Color.White) {
+                            BarAction(KI.heart(duo = p.collected), if (p.collected) "取消收藏" else "收藏", if (p.collected) C.Accent else Color.White) {
                                 val target = !p.collected
                                 p.collected = target; favTick++
                                 scope.launch { runCatching { Repo.setCollect(p.id, target) }.onFailure { p.collected = !target; favTick++ } }
                             }
                         }
-                        BarAction(Icons.Rounded.Share, "分享", Color.White) { Ops.share(ctx, listOf(p)) }
-                        BarAction(Icons.Rounded.Download, "下载", Color.White) { Ops.download(ctx, listOf(p)) }
-                        BarAction(Icons.Rounded.PhotoAlbum, "加入相册", Color.White) { albumFor = p }
-                        BarAction(Icons.Rounded.DeleteOutline, "删除", Color.White) { confirmDelete = true }
+                        BarAction(KI.share(), "分享", Color.White) { Ops.share(ctx, listOf(p)) }
+                        BarAction(KI.download(), "下载", Color.White) { Ops.download(ctx, listOf(p)) }
+                        BarAction(KI.album(), "加入相册", Color.White) { albumFor = p }
+                        BarAction(KI.trash(), "删除", Color.White) { confirmDelete = true }
                     }
                 }
             }
@@ -199,16 +263,25 @@ fun ViewerScreen(photosIn: List<Photo>, start: Int, slideshowStart: Boolean = fa
 @Composable
 private fun MoreSheet(p: Photo, onInfo: () -> Unit, onDismiss: () -> Unit, onHidden: () -> Unit) {
     val ctx = LocalContext.current
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = C.Surface, dragHandle = { BottomSheetDefaults.DragHandle(color = C.Faint) }) {
-        Column(Modifier.padding(bottom = 30.dp)) {
-            NavRow(Icons.Rounded.Info, "详情") { onInfo() }
-            // 全面审查 C1：「加入相册」只留底栏那一个
-            if (!p.isCloud) NavRow(Icons.Rounded.ImageSearch, "找相似照片") { onDismiss(); Ops.openSimilar(p) }
-            if (p.isLive) NavRow(Icons.Rounded.MotionPhotosOn, "保存实况视频部分") { onDismiss(); Ops.downloadLiveVideo(ctx, p) }
-            if (!p.isVideo) NavRow(Icons.Rounded.Tune, "编辑") { onDismiss(); Nav.push(com.hark.shiguang.Route.X(ExtScreen.Edit(p))) }
+    // 1.6.2「⋯」面板：按「看 / 做 / 藏」分三组卡片，组间留白；不放说明小字（DESIGN §1 少说明）
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = C.Bg, dragHandle = { BottomSheetDefaults.DragHandle(color = C.Faint) }) {
+        Column(Modifier.padding(bottom = Space.xl).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(Space.m)) {
+            Card {
+                NavRow(KI.info(), "详情") { onInfo() }
+                // 全面审查 C1：「加入相册」只留底栏那一个
+                if (!p.isCloud) { Div(); NavRow(KI.similar(), "找相似照片") { onDismiss(); Ops.openSimilar(p) } }
+            }
+            val edit = !p.isVideo; val live = p.isLive
+            if (edit || live) Card {
+                if (edit) NavRow(KI.sliders(), "编辑") { onDismiss(); Nav.push(com.hark.shiguang.Route.X(ExtScreen.Edit(p))) }
+                if (edit && live) Div()
+                if (live) NavRow(KI.live(), "保存实况视频部分") { onDismiss(); Ops.downloadLiveVideo(ctx, p) }
+            }
             val hid = remember(p.key) { com.hark.shiguang.Hidden.has(p) }
-            NavRow(if (hid) Icons.Rounded.Visibility else Icons.Rounded.VisibilityOff, if (hid) "取消隐藏" else "隐藏") {
-                com.hark.shiguang.Hidden.hide(listOf(p), !hid); toast(ctx, if (hid) "已取消隐藏" else "已隐藏"); onHidden()
+            Card {
+                NavRow(KI.eye(), if (hid) "取消隐藏" else "隐藏") {
+                    com.hark.shiguang.Hidden.hide(listOf(p), !hid); toast(ctx, if (hid) "已取消隐藏" else "已隐藏"); onHidden()
+                }
             }
         }
     }
@@ -230,16 +303,23 @@ fun AddToAlbumFlow(p: Photo, onDone: () -> Unit) {
     }
 }
 
+/** 大图上的按钮规格（照片上的半透明黑圆钮）。 */
+private object ViewerChrome {
+    val btn = 44.dp
+    val btnBg = Color(0x38000000)
+}
+
 @Composable
 private fun BarAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, tint: Color, onClick: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clip(RoundedCornerShape(14.dp)).clickable(onClick = onClick).padding(horizontal = 18.dp, vertical = 6.dp)) {
-        Icon(icon, null, tint = tint, modifier = Modifier.size(24.dp))
-        Text(label, color = Color.White.copy(alpha = 0.85f), fontSize = 11.sp, modifier = Modifier.padding(top = 3.dp))
+    val c by androidx.compose.animation.animateColorAsState(tint, Motion.state(), label = "barTint")
+    // 48dp 触摸区里画 44dp 圆钮；按下缩 0.92（圆钮规格）
+    Box(Modifier.size(Space.touch), contentAlignment = Alignment.Center) {
+        RoundIcon(icon, bg = ViewerChrome.btnBg, tint = c, size = ViewerChrome.btn, desc = label, onClick = onClick)
     }
 }
 
 @Composable
-private fun ZoomImage(p: Photo, onTap: () -> Unit, onZoom: (Boolean) -> Unit, onDismissDrag: (Float, Boolean) -> Unit) {
+private fun ZoomImage(p: Photo, onTap: () -> Unit, onZoom: (Boolean) -> Unit, onDismissDrag: (delta: Offset, end: Boolean, velocityY: Float) -> Unit) {
     val ctx = LocalContext.current
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
@@ -277,24 +357,29 @@ private fun ZoomImage(p: Photo, onTap: () -> Unit, onZoom: (Boolean) -> Unit, on
             }
             .pointerInput(p.id) {
                 awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false)
+                    val down = awaitFirstDown(requireUnconsumed = false)
                     var dismissing = false
+                    // 1.6.2：下拉关闭带速度（快速一甩也能关），拖动时照片跟手走 x / y 两个方向
+                    val vt = androidx.compose.ui.input.pointer.util.VelocityTracker()
+                    vt.addPosition(down.uptimeMillis, down.position)
                     do {
                         val ev = awaitPointerEvent()
                         val zoom = ev.calculateZoom(); val pan = ev.calculatePan()
                         val multi = ev.changes.size > 1
+                        ev.changes.firstOrNull()?.let { vt.addPosition(it.uptimeMillis, it.position) }
                         if (multi || scale > 1.01f) {
+                            if (dismissing) { dismissing = false; onDismissDrag(Offset.Zero, true, 0f) }
                             scale = (scale * zoom).coerceIn(1f, 6f)
                             offset = clamp(offset + pan, scale)
                             onZoom(scale > 1.01f)
                             ev.changes.forEach { if (it.positionChanged()) it.consume() }
-                        } else if (dismissing || (abs(pan.y) > abs(pan.x) * 1.6f && abs(pan.y) > 2f)) {
+                        } else if (dismissing || (pan.y > 0f && abs(pan.y) > abs(pan.x) * 1.6f && abs(pan.y) > 2f)) {
                             dismissing = true
-                            onDismissDrag(pan.y, false)
+                            onDismissDrag(pan, false, 0f)
                             ev.changes.forEach { if (it.positionChanged()) it.consume() }
                         }
                     } while (ev.changes.any { it.pressed })
-                    if (dismissing) onDismissDrag(0f, true)
+                    if (dismissing) onDismissDrag(Offset.Zero, true, vt.calculateVelocity().y)
                     if (scale < 1.02f) { scale = 1f; offset = Offset.Zero; onZoom(false) }
                 }
             },
