@@ -1,5 +1,9 @@
 package com.hark.shiguang.ui
 
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -42,10 +46,11 @@ fun DavPresetRow(selected: String?, onPick: (DavPreset) -> Unit) {
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         DavPresets.all.forEach { p ->
             val on = p.key == selected
-            Box(Modifier.clip(RoundedCornerShape(16.dp)).background(if (on) C.Accent.copy(alpha = 0.16f) else C.Surface2)
-                .border(1.dp, if (on) C.Accent else C.Surface2, RoundedCornerShape(16.dp)).clickable { onPick(p) }
-                .padding(horizontal = 12.dp, vertical = 7.dp)) {
-                Text(p.label, fontSize = 13.sp, color = if (on) C.Accent else C.Text)
+            // 1.7.9 v2：全圆角胶囊；选中是实心强调色 + 近黑 / 白字（不只靠颜色：字重也变），未选中是一层淡底（对话框本身是玻璃，不叠玻璃）
+            Box(Modifier.heightIn(min = 40.dp).clip(CircleShape).background(if (on) C.Accent else if (Glass.on) C.Text.copy(alpha = 0.07f) else C.Surface2)
+                .selectable(on, role = androidx.compose.ui.semantics.Role.RadioButton) { onPick(p) }
+                .padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
+                Text(p.label, fontSize = 13.sp, color = if (on) C.OnAccent else C.Text, fontWeight = if (on) FontWeight.Bold else FontWeight.Medium)
             }
         }
     }

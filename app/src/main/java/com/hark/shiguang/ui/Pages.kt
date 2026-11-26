@@ -659,11 +659,11 @@ fun plainHttpPublic(input: String): Boolean {
     return true
 }
 
+/** 对话框里的输入框：1.7.9 起是 v2 玻璃输入框的「浮层内」样式（[Field] onGlass），密码框带显示 / 隐藏。 */
 @Composable
 fun Field2(label: String, v: String, secret: Boolean = false, onChange: (String) -> Unit) {
-    OutlinedTextField(v, onChange, singleLine = true, label = { Text(label) }, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-        visualTransformation = if (secret) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
-        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = C.Text, unfocusedTextColor = C.Text, focusedBorderColor = C.Accent, cursorColor = C.Accent, focusedLabelColor = C.Accent))
+    Field(label, v, onChange, null, "", type = if (secret) androidx.compose.ui.text.input.KeyboardType.Password else androidx.compose.ui.text.input.KeyboardType.Text,
+        password = secret, onGlass = true, modifier = Modifier.padding(bottom = 12.dp))
 }
 
 @Composable

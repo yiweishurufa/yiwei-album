@@ -27,6 +27,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -68,20 +70,16 @@ fun SettingsScreen() {
     Column(Modifier.widthIn(max = 720.dp).fillMaxHeight().appBackground().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(bottom = 110.dp)) {
         if (Nav.stack.size > 1) Row(Modifier.statusBarsPadding().padding(start = 6.dp, top = 8.dp)) { IconButton(onClick = { Nav.pop() }) { Icon(LI.back(), "返回", tint = C.Text) } }
         else TopSwitch(search = SearchScope.None, showDate = false)   // 审查 6：设置页不放照片搜索和日期筛选
-        Text("设置", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = C.Text, letterSpacing = (-0.4).sp, modifier = Modifier.padding(start = 20.dp, top = 8.dp, bottom = 4.dp))
+        // 1.7.9 v2：页面大标题 displaySmall（40sp 粗体、负字距）
+        Text("设置", style = MaterialTheme.typography.displaySmall, color = C.Text, modifier = Modifier.padding(start = 20.dp, top = 8.dp, bottom = 6.dp).semantics { heading() })
 
-        // ---- 当前来源的账号
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp).fillMaxWidth().skeuoCard()
-            .clickable { if (dav) Nav.push(Route.DavAccounts) else Nav.push(Route.ConnectionSettings) }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Avatar(if (dav) davAcc?.title ?: "W" else nas?.user ?: "我", 48.dp)
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(if (dav) davAcc?.title ?: "未添加 WebDAV" else nas?.title ?: "未登录飞牛", color = C.Text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                val sub = if (dav) "WebDAV · " + (davAcc?.user ?: "") else "飞牛 · " + (nas?.user ?: "")
-                Text(sub, style = MaterialTheme.typography.bodySmall, maxLines = 1, modifier = Modifier.padding(top = 2.dp))
-            }
-            Text("切换与管理", color = C.Accent, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-        }
+        // ---- 当前来源的账号（1.7.9 v2：玻璃账号卡——带强调色光晕的大头像、20sp 粗体名字、来源胶囊、右侧「管理」玻璃胶囊）
+        AccountCard(
+            name = if (dav) davAcc?.title ?: "未添加 WebDAV" else nas?.title ?: "未登录飞牛",
+            avatar = if (dav) davAcc?.title ?: "W" else nas?.user ?: "我",
+            kind = if (dav) "WebDAV" else "飞牛",
+            user = if (dav) davAcc?.user.orEmpty() else nas?.user.orEmpty(),
+        ) { if (dav) Nav.push(Route.DavAccounts) else Nav.push(Route.ConnectionSettings) }
 
         // ---- 外观
         Section("外观")
@@ -95,17 +93,10 @@ fun SettingsScreen() {
             }
             FillSegmented(listOf("玻璃", "简洁"), if (ThemeState.skeuo) 0 else 1) { ThemeState.pickStyle(it == 0) }
             Div()
-            Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("强调色", color = C.Text, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                Accents.forEachIndexed { i, a ->
-                    val on = ThemeState.accent == i
-                    // 色块显示当前主题下真正会用到的那一档；48dp 触摸区，读屏读「蓝色，已选中」
-                    Box(Modifier.size(38.dp).clip(CircleShape).selectable(on, role = androidx.compose.ui.semantics.Role.RadioButton) { ThemeState.pickAccent(i) }
-                        .semantics { contentDescription = a.name + "色" }, contentAlignment = Alignment.Center) {
-                        Box(Modifier.size(26.dp).clip(CircleShape).border(if (on) 2.dp else 0.dp, if (on) C.Text else Color.Transparent, CircleShape)
-                            .padding(if (on) 4.dp else 0.dp).clip(CircleShape).background(if (C.P.dark) a.color else a.soft))
-                    }
-                }
+            // 1.7.9 v2：强调色 = 一排玻璃色球（球面高光 + 选中时外圈光环、放大、中间一个勾），标题单独一行
+            Text("强调色", color = C.Text, fontSize = 15.sp, modifier = Modifier.padding(start = 18.dp, top = 14.dp))
+            Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                Accents.forEachIndexed { i, a -> AccentOrb(a, ThemeState.accent == i) { ThemeState.pickAccent(i) } }
             }
             Div()
             Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 10.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -419,6 +410,73 @@ fun InputRow(label: String, value: String, hint: String, onChange: (String) -> U
 @Composable
 fun Card(content: @Composable ColumnScope.() -> Unit) {
     Column(Modifier.padding(horizontal = 16.dp).fillMaxWidth().skeuoCard(RoundedCornerShape(Radius.l)), content = content)
+}
+
+/** 1.7.9 设置首页的账号卡（玻璃卡片）。整张卡是一个按钮，读屏读「飞牛 · 名字 · 用户，切换与管理」。 */
+@Composable
+private fun AccountCard(name: String, avatar: String, kind: String, user: String, onClick: () -> Unit) {
+    val ix = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val accent = C.Accent
+    Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp).fillMaxWidth().glassPress(ix, 0.3f)
+        .glass(RoundedCornerShape(Radius.l), null, tint = C.Surface, shadow = 10.dp).clip(RoundedCornerShape(Radius.l))
+        .clickable(ix, androidx.compose.foundation.LocalIndication.current, role = androidx.compose.ui.semantics.Role.Button, onClickLabel = "切换与管理", onClick = onClick)
+        .semantics(mergeDescendants = true) {}
+        .padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.drawBehind {
+            if (Glass.on) drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(listOf(accent.copy(alpha = 0.45f), Color.Transparent), radius = size.minDimension),
+                radius = size.minDimension)
+        }) { Avatar(avatar, 56.dp) }
+        Column(Modifier.weight(1f).padding(start = 16.dp)) {
+            Text(name, style = MaterialTheme.typography.titleLarge, color = C.Text, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(kind, style = MaterialTheme.typography.labelSmall, color = C.Accent,
+                    modifier = Modifier.clip(CircleShape).background(C.Accent.copy(alpha = 0.16f)).padding(horizontal = 8.dp, vertical = 2.dp))
+                if (user.isNotEmpty()) Text(user, style = MaterialTheme.typography.bodySmall, color = C.Sub, maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(start = 8.dp))
+            }
+        }
+        Row(Modifier.padding(start = 8.dp).clip(CircleShape).background(C.Text.copy(alpha = 0.07f)).padding(start = 12.dp, end = 6.dp, top = 7.dp, bottom = 7.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Text("管理", style = MaterialTheme.typography.labelLarge, color = C.Text)
+            Icon(KI.chevron(), null, tint = C.Sub, modifier = Modifier.size(16.dp))
+        }
+    }
+}
+
+/**
+ * 1.7.9 强调色「玻璃色球」：48dp 触摸区里一颗 30dp 的球——左上一点白色高光、右下压暗，像一粒彩色玻璃；
+ * 选中时球从 28 长到 32dp（液体弹簧）、外圈 2dp 同色光环 + 柔光、中间一个勾（不只靠颜色）。读屏「蓝色，单选，已选中」。
+ * 简洁风格：纯色圆片 + 正文色外圈（无高光、无光晕）。色球显示当前主题下真正会用到的那一档。
+ */
+@Composable
+private fun AccentOrb(a: Accent, on: Boolean, onPick: () -> Unit) {
+    val c = if (C.P.dark) a.color else a.soft
+    val glass = Glass.on
+    val k by androidx.compose.animation.core.animateFloatAsState(if (on) 1f else 0f, if (on) Motion.liquid() else Motion.state(), label = "orb")
+    val view = androidx.compose.ui.platform.LocalView.current
+    Box(Modifier.size(48.dp).clip(CircleShape).selectable(on, role = androidx.compose.ui.semantics.Role.RadioButton) { if (!on) Haptics.tick(view); onPick() }
+        .semantics { contentDescription = a.name + "色" }, contentAlignment = Alignment.Center) {
+        Box(Modifier.size(42.dp).drawBehind {
+                // 外圈光环 + 柔光（选中时）
+                if (k > 0f) {
+                    if (glass) drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(listOf(c.copy(alpha = 0.40f * k), Color.Transparent), radius = size.minDimension * 0.62f))
+                    drawCircle(c.copy(alpha = k), radius = size.minDimension / 2f - 1.dp.toPx(), style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()))
+                }
+            }, contentAlignment = Alignment.Center) {
+            val orb = 28.dp + 4.dp * k
+            Box(Modifier.size(orb).clip(CircleShape).background(c)
+                .then(if (glass) Modifier.drawBehind {
+                    // 球面：左上白色高光 → 透明，右下压暗
+                    drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(listOf(Color.White.copy(alpha = 0.55f), Color.Transparent),
+                        center = androidx.compose.ui.geometry.Offset(size.width * 0.32f, size.height * 0.28f), radius = size.minDimension * 0.55f))
+                    drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.22f)),
+                        center = androidx.compose.ui.geometry.Offset(size.width * 0.4f, size.height * 0.36f), radius = size.minDimension * 0.75f))
+                } else Modifier)
+                .then(if (!glass && on) Modifier.border(2.dp, C.Text, CircleShape) else Modifier), contentAlignment = Alignment.Center) {
+                if (on) Icon(KI.check(), null, tint = if (C.P.dark) Color(0xFF070A12) else Color.White, modifier = Modifier.size(16.dp).graphicsLayer { alpha = if (Motion.reduced) 1f else k.coerceIn(0f, 1f) })
+            }
+        }
+    }
 }
 
 @Composable

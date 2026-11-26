@@ -29,6 +29,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
@@ -258,7 +260,11 @@ fun LoginScreen() {
                 if (Nav.stack.size > 1) IconButton(onClick = { Nav.pop() }, modifier = Modifier.offset(x = (-12).dp)) { Icon(LI.back(), "返回", tint = C.Text, modifier = Modifier.size(24.dp)) }
             }
             Spacer(Modifier.height(24.dp))
-            Box(Modifier.size(60.dp).clip(RoundedCornerShape(18.dp)).background(C.Surface2), contentAlignment = Alignment.Center) {
+            // 1.7.9 v2：标志放在一块带强调色光晕的玻璃方块里
+            Box(Modifier.size(64.dp).drawBehind {
+                drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(listOf(C.Accent.copy(alpha = if (Glass.on) 0.35f else 0f), Color.Transparent),
+                    radius = size.minDimension * 1.1f), radius = size.minDimension * 1.1f)
+            }.glass(RoundedCornerShape(22.dp), null, tint = C.Surface, shadow = 10.dp), contentAlignment = Alignment.Center) {
                 Box(Modifier.width(32.dp).height(2.dp).background(C.Text))
                 Box(Modifier.offset(x = 5.dp).size(9.dp).clip(CircleShape).background(C.Accent))
             }
@@ -267,15 +273,16 @@ fun LoginScreen() {
             Text("一维相册 · 你的照片，都在身边", style = MaterialTheme.typography.bodyMedium, color = C.Sub, modifier = Modifier.padding(top = 6.dp))
             val hist = com.hark.shiguang.NasAccounts.list
             if (hist.isNotEmpty()) {
-                Text("最近登录", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 26.dp, bottom = 8.dp))
+                Text("最近登录", style = MaterialTheme.typography.titleSmall, color = C.Sub, modifier = Modifier.padding(top = 28.dp, bottom = 10.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     hist.forEach { a ->
-                        Row(Modifier.clip(RoundedCornerShape(20.dp)).background(C.Surface2).clickable {
+                        // 1.7.9：最近登录 = 玻璃胶囊（48dp 高的触摸区）
+                        Row(Modifier.heightIn(min = 44.dp).glass(CircleShape, null, tint = C.Surface, shadow = 0.dp, highlight = 0.7f).clip(CircleShape).clickable(role = androidx.compose.ui.semantics.Role.Button) {
                             if (a.token.isNotEmpty()) { com.hark.shiguang.NasAccounts.switchTo(a.id); HomeState.clear(); Nav.reset(Route.Home) }
                             else { url = a.url.substringAfter("://").substringBeforeLast(":"); port = a.url.substringAfterLast(":", "").takeIf { it.all(Char::isDigit) }.orEmpty(); user = a.user }
-                        }.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(LI.nas(), null, tint = C.Accent, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(6.dp))
-                            Text("${a.title} · ${a.user}", fontSize = 13.sp, color = C.Text)
+                        }.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(LI.nas(), null, tint = C.Accent, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(8.dp))
+                            Text("${a.title} · ${a.user}", style = MaterialTheme.typography.labelLarge, color = C.Text)
                         }
                     }
                 }
@@ -311,12 +318,17 @@ fun LoginScreen() {
                         }.padding(horizontal = 4.dp))
                 }
                 l.forEach { f ->
-                    Row(Modifier.padding(top = 6.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(C.Surface).clickable {
+                    // 1.7.9：搜到的飞牛 = 玻璃卡片（强调色圆片 + 名字 + 地址）
+                    Row(Modifier.padding(top = 8.dp).fillMaxWidth().glass(RoundedCornerShape(Radius.l), null, tint = C.Surface, shadow = 6.dp).clip(RoundedCornerShape(Radius.l))
+                        .clickable(role = androidx.compose.ui.semantics.Role.Button) {
                         url = f.host; port = f.port
-                    }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(LI.nas(), null, tint = C.Accent, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(10.dp))
+                    }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(36.dp).clip(CircleShape).background(C.Accent.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
+                            Icon(LI.nas(), null, tint = C.Accent, modifier = Modifier.size(19.dp))
+                        }
+                        Spacer(Modifier.width(12.dp))
                         Column {
-                            Text(f.name.ifEmpty { "飞牛 NAS" }, color = C.Text, fontSize = 14.sp)
+                            Text(f.name.ifEmpty { "飞牛 NAS" }, color = C.Text, style = MaterialTheme.typography.titleSmall)
                             Text(f.url.removePrefix("http://"), color = C.Sub, fontSize = 12.sp)
                         }
                     }
@@ -339,9 +351,10 @@ fun LoginScreen() {
             }
             Spacer(Modifier.height(24.dp))
             GradientButton("登录", Modifier.fillMaxWidth(), loading = loading, onClick = ::go)
-            Text("只用 WebDAV，不连飞牛", color = C.Sub, fontSize = 13.sp, modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 16.dp).clickable {
+            // 1.7.9：次要入口改成玻璃次要按钮（和主按钮同宽同高）
+            SecondaryButton("只用 WebDAV，不连飞牛", Modifier.fillMaxWidth().padding(top = 12.dp)) {
                 Store.source = "dav"; HomeState.source = "dav"; Nav.reset(Route.Home); Nav.push(Route.DavAccounts)
-            }.padding(8.dp))
+            }
             Spacer(Modifier.height(10.dp))
             Text("账号密码只保存在本机，并经过系统加密。一维相册为第三方应用，与飞牛官方无关。", style = MaterialTheme.typography.bodySmall, color = C.Faint, lineHeight = 18.sp)
             Spacer(Modifier.height(40.dp))
@@ -349,20 +362,37 @@ fun LoginScreen() {
     }
 }
 
+/**
+ * 1.7.9 v2 玻璃输入框（DESIGN §9）：高 56、圆角 18 的磨砂玻璃（降级外观，不实时模糊）；聚焦时 1.5dp 强调色描边 + 外圈同色柔光，
+ * 图标变正文色。[onGlass] = 放在对话框 / 面板这类本身已是玻璃的浮层里：改用一层淡底，不叠玻璃。简洁风格是凹槽色纯色面 + 发丝线。
+ * 密码框右侧的眼睛是 48dp 的按钮，读屏「显示密码 / 隐藏密码」。[label] 为 null 时不显示标题（读屏用 [hint]）。
+ */
 @Composable
 fun Field(
-    label: String, value: String, onChange: (String) -> Unit, icon: ImageVector?, hint: String,
+    label: String?, value: String, onChange: (String) -> Unit, icon: ImageVector?, hint: String,
     type: KeyboardType = KeyboardType.Text, password: Boolean = false, ime: ImeAction = ImeAction.Next, onGo: (() -> Unit)? = null,
-    focusRequester: FocusRequester? = null,
+    focusRequester: FocusRequester? = null, onGlass: Boolean = false, modifier: Modifier = Modifier,
 ) {
     var show by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
-    val border by animateColorAsState(if (focused) C.Accent.copy(alpha = 0.8f) else C.Line, label = "b")
-    Column {
-        Text(label, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
+    val shape = RoundedCornerShape(18.dp)
+    val ring by animateColorAsState(if (focused) C.Accent else C.Line, Motion.state(), label = "fieldRing")
+    val glow by androidx.compose.animation.core.animateFloatAsState(if (focused && Glass.on) 1f else 0f, Motion.state(), label = "fieldGlow")
+    val accent = C.Accent
+    Column(modifier) {
+        if (label != null) Text(label, style = MaterialTheme.typography.labelLarge, color = C.Sub, modifier = Modifier.padding(start = 6.dp, bottom = 8.dp))
         Row(
-            Modifier.fillMaxWidth().height(52.dp).clip(RoundedCornerShape(14.dp)).background(C.Surface)
-                .border(1.dp, border, RoundedCornerShape(14.dp)).padding(horizontal = 14.dp),
+            Modifier.fillMaxWidth().height(56.dp)
+                .drawBehind {
+                    // 聚焦时外圈一圈强调色柔光（画在形状外面一点）
+                    if (glow > 0f) drawRoundRect(accent.copy(alpha = 0.22f * glow), topLeft = androidx.compose.ui.geometry.Offset(-3.dp.toPx(), -3.dp.toPx()),
+                        size = androidx.compose.ui.geometry.Size(size.width + 6.dp.toPx(), size.height + 6.dp.toPx()),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(21.dp.toPx()))
+                }
+                .then(if (onGlass || !Glass.on) Modifier.clip(shape).background(if (Glass.on) C.Text.copy(alpha = 0.06f) else C.Surface2)
+                      else Modifier.glass(shape, null, tint = C.Surface, shadow = 0.dp, highlight = 0.8f).clip(shape))
+                .border(if (focused) 1.5.dp else 1.dp, if (focused) ring else if (onGlass || !Glass.on) C.Line else Color.Transparent, shape)
+                .padding(start = 16.dp, end = if (password) 4.dp else 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (icon != null) { Icon(icon, null, tint = if (focused) C.Text else C.Sub, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(12.dp)) }
@@ -375,13 +405,14 @@ fun Field(
                     visualTransformation = if (password && !show) PasswordVisualTransformation() else VisualTransformation.None,
                     keyboardOptions = KeyboardOptions(keyboardType = type, imeAction = ime),
                     keyboardActions = KeyboardActions(onGo = { onGo?.invoke() }),
-                    modifier = Modifier.fillMaxWidth().let { m -> if (focusRequester != null) m.focusRequester(focusRequester) else m }.onFocusChanged { focused = it.isFocused },
+                    modifier = Modifier.fillMaxWidth().let { m -> if (focusRequester != null) m.focusRequester(focusRequester) else m }.onFocusChanged { focused = it.isFocused }
+                        .semantics { if (label != null) contentDescription = label else if (hint.isNotEmpty()) contentDescription = hint },
                 )
             }
-            if (password) Icon(
-                if (show) KI.eye(duo = true) else KI.eye(), null, tint = C.Sub,
-                modifier = Modifier.size(20.dp).clickable { show = !show }
-            )
+            if (password) Box(Modifier.size(48.dp).clip(CircleShape).clickable(role = androidx.compose.ui.semantics.Role.Button) { show = !show }
+                .semantics { contentDescription = if (show) "隐藏密码" else "显示密码" }, contentAlignment = Alignment.Center) {
+                Icon(if (show) KI.eye(duo = true) else KI.eye(), null, tint = if (show) C.Accent else C.Sub, modifier = Modifier.size(20.dp))
+            }
         }
     }
 }

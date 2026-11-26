@@ -396,8 +396,8 @@ fun InputDialog(title: String, initial: String, hint: String, okText: String = "
         onDismissRequest = onDismiss, containerColor = C.Surface,
         title = { Text(title, color = C.Text) },
         text = {
-            OutlinedTextField(v, { v = it }, singleLine = true, placeholder = { Text(hint) },
-                colors = OutlinedTextFieldDefaults.colors(focusedTextColor = C.Text, unfocusedTextColor = C.Text, focusedBorderColor = C.Accent, cursorColor = C.Accent))
+            // 1.7.9：v2 玻璃输入框（浮层内样式），按键盘「完成」直接确定
+            Field(null, v, { v = it }, null, hint, ime = androidx.compose.ui.text.input.ImeAction.Go, onGo = { if (v.isNotBlank()) onOk(v.trim()) }, onGlass = true)
         },
         confirmButton = { TextButton(onClick = { if (v.isNotBlank()) onOk(v.trim()) }) { Text(okText, color = C.Accent) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消", color = C.Sub) } },

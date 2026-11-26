@@ -372,10 +372,10 @@ private fun FixMatchDialog(lib: MovieLib, m: MovieItem, onDismiss: () -> Unit) {
             if (!Tmdb.configured) { Text("先在 设置 → 影视 填 TMDB 密钥。", color = C.Sub, fontSize = 14.sp); return@Column }
             Segmented(listOf("电影", "剧集"), if (kind == "movie") 0 else 1) { kind = if (it == 0) "movie" else "tv"; hits = null }
             Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(q, { q = it }, singleLine = true, label = { Text("名称") }, modifier = Modifier.weight(1f),
-                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = C.Text, unfocusedTextColor = C.Text, focusedBorderColor = C.Accent, cursorColor = C.Accent))
-                OutlinedTextField(year, { year = it.filter(Char::isDigit).take(4) }, singleLine = true, label = { Text("年份") }, modifier = Modifier.padding(start = 8.dp).width(84.dp),
-                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = C.Text, unfocusedTextColor = C.Text, focusedBorderColor = C.Accent, cursorColor = C.Accent))
+                // 1.7.9：v2 玻璃输入框（浮层内样式）
+                Field("名称", q, { q = it }, null, "", ime = androidx.compose.ui.text.input.ImeAction.Search, onGlass = true, modifier = Modifier.weight(1f))
+                Field("年份", year, { year = it.filter(Char::isDigit).take(4) }, null, "", type = androidx.compose.ui.text.input.KeyboardType.Number,
+                    onGlass = true, modifier = Modifier.padding(start = 8.dp).width(84.dp))
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = { search() }, enabled = !busy && q.isNotBlank()) { Text(if (busy) "搜索中…" else "搜索", color = C.Accent) }
