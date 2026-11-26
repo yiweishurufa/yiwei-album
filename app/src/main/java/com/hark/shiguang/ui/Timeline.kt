@@ -34,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
@@ -128,7 +129,12 @@ fun SelectableThumb(p: Photo, corner: Dp, onOpen: () -> Unit, small: Boolean = f
                     .background(ringBg)
                     .border(1.5.dp, Color.White, CircleShape),
                 contentAlignment = Alignment.Center
-            ) { if (sel) Icon(Icons.Rounded.Check, null, tint = C.OnAccent, modifier = Modifier.size(15.dp)) }
+            ) {
+                // 1.6.4：勾用 Kubai 线性勾，选中时带一点回弹地弹出（Motion.pressOut），取消时淡出
+                AnimatedVisibility(sel, enter = scaleIn(Motion.pressOut(), initialScale = 0.5f) + fadeIn(Motion.state()), exit = fadeOut(Motion.exit())) {
+                    Icon(KI.check(), null, tint = C.OnAccent, modifier = Modifier.size(15.dp))
+                }
+            }
         }
     }
 }
@@ -157,6 +163,16 @@ fun PhotoGrid(
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     val headerOffset = if (header != null) 1 else 0
+    // 1.6.4 捏合切换层级：新网格从略小（放大一级）或略大（缩小一级）缩放淡入到位，说明「层级变了、往哪变」；移除动画时直接切换
+    val levelAnim = remember { androidx.compose.animation.core.Animatable(1f) }
+    var lastCols by remember { mutableIntStateOf(columns) }
+    LaunchedEffect(columns) {
+        if (columns != lastCols && !Motion.reduced) {
+            levelAnim.snapTo(if (columns < lastCols) 0.94f else 1.05f)
+            lastCols = columns
+            levelAnim.animateTo(1f, Motion.zoom())
+        } else lastCols = columns
+    }
     // back from the viewer: make sure the last photo looked at is on screen
     LaunchedEffect(ViewerReturn.tick) {
         val k = ViewerReturn.lastKey ?: return@LaunchedEffect
@@ -186,6 +202,11 @@ fun PhotoGrid(
             contentPadding = PaddingValues(top = top, bottom = bottom, start = if (columns >= 6) 0.dp else 2.dp, end = if (columns >= 6) 0.dp else 2.dp),
             horizontalArrangement = Arrangement.spacedBy(gap), verticalArrangement = Arrangement.spacedBy(gap),
             modifier = Modifier.fillMaxSize()
+                .graphicsLayer {
+                    val v = levelAnim.value
+                    scaleX = v; scaleY = v
+                    alpha = (1f - kotlin.math.abs(1f - v) * 8f).coerceIn(0.5f, 1f)
+                }
                 .pointerInput(onPinch) {
                     if (onPinch == null) return@pointerInput
                     awaitEachGesture {
