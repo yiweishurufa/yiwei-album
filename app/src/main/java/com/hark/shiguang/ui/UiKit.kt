@@ -33,10 +33,6 @@ fun Modifier.pressScale(pressed: Float = Motion.PRESS_SCALE): Modifier = compose
     }.graphicsLayer { scaleX = s; scaleY = s }
 }
 
-fun Modifier.clickableNoRipple(onClick: () -> Unit): Modifier = composed {
-    clickable(remember { MutableInteractionSource() }, null, onClick = onClick)
-}
-
 /** Window width ≥ 600 dp: tablets, unfolded foldables, phones in landscape. */
 @Composable
 fun isWide(): Boolean = LocalConfiguration.current.screenWidthDp >= 600

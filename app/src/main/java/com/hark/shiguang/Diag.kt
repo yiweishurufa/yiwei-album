@@ -73,7 +73,6 @@ object Diag {
         }
     }
 
-    fun export(c: Context) = share(c, writeExport())
 
     /** 优化 10：写出导出文件（IO 线程调用）。只保留最近 3 份。 */
     fun writeExport(): File {

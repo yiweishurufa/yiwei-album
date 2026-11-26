@@ -148,9 +148,6 @@ object NasX {
     /** Full-resolution stream of one photo (web formatter originalUrl: <prefix>p/t/{id}/o/{uuid}). */
     fun originalDownloadUrl(p: Photo): String = p.original
 
-    /** [originalDownloadUrl] with headers. For videos this is the original-size still; use [videoDownload] for the movie. */
-    fun originalDownload(p: Photo): DownloadSpec = DownloadSpec(p.original, streamHeaders(p.original))
-
     /** Video stream (web formatter videoUrl: <prefix>v/{id}). */
     fun videoDownload(p: Photo): DownloadSpec? = p.video?.let { DownloadSpec(it, streamHeaders(it)) }
 
@@ -165,12 +162,6 @@ object NasX {
         val uuid = j.dataObj()?.str("uuid").orEmpty()
         if (uuid.isEmpty()) throw ApiException(-1, "下载失败")
         val url = "${FnClient.baseUrl}/p/api/v1/preview/download?uuid=${enc(uuid)}"
-        return DownloadSpec(url, streamHeaders(url))
-    }
-
-    /** Whole album download link: GET /api/v1/album/download/all?album_id=&down_type= (web opens it as a link). */
-    fun albumDownload(albumId: Int, downType: String = "original"): DownloadSpec {
-        val url = "${FnClient.baseUrl}/p/api/v1/album/download/all?album_id=$albumId&down_type=${enc(downType)}"
         return DownloadSpec(url, streamHeaders(url))
     }
 

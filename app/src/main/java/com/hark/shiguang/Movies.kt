@@ -110,7 +110,6 @@ class MovieLib(val sourceKey: String) {
     }
     private val progressLock = Any()
     private fun saveProgressLocked() { synchronized(progressLock) { saveProgress() } }
-    fun clearProgress(path: String) { progress.remove(path); saveProgressSoon(); version++ }
 
     /** 全面审查 A1：标为已看（一次写盘）。没播过的文件不知道时长，用 1/1 记成「看完」。 */
     fun markWatched(paths: List<String>) {

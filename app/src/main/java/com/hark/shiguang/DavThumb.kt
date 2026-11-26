@@ -86,7 +86,6 @@ object DavThumb {
     /** S4: resolved redirect targets are cached 5 min — Analyzer, Viewer and the thumbnail loader all
      * resolve the same url, and each resolution is a network round trip. */
     private val finalUrlCache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Long>>()
-    fun invalidateFinalUrl(url: String) { finalUrlCache.remove(url) }
     /** H13: dropped by 「清理缓存」 (signed CDN urls expire anyway). */
     fun clearUrlCache() { finalUrlCache.clear() }
 

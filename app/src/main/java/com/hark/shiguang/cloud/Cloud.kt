@@ -190,7 +190,6 @@ internal object CloudHttp {
     }
 
     val JSON: MediaType = "application/json; charset=utf-8".toMediaType()
-    val FORM: MediaType = "application/x-www-form-urlencoded".toMediaType()
     val XML: MediaType = "application/xml; charset=utf-8".toMediaType()
 
     class Resp(val code: Int, val body: String)
@@ -221,11 +220,6 @@ internal object CloudHttp {
     } catch (e: Exception) {
         throw Exception("服务器返回格式错误")
     }
-
-    fun jsonBody(o: JSONObject): RequestBody = o.toString().toRequestBody(JSON)
-
-    fun formBody(fields: Map<String, String>): RequestBody =
-        fields.entries.joinToString("&") { enc(it.key) + "=" + enc(it.value) }.toRequestBody(FORM)
 
     /** URL-encode a single component (space -> %20). */
     fun enc(s: String): String = URLEncoder.encode(s, "UTF-8").replace("+", "%20")

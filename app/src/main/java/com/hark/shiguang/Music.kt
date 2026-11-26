@@ -155,7 +155,6 @@ class MusicLib(val sourceKey: String) {
     private fun writeIds(name: String, ids: () -> List<String>) {
         scope.launch { synchronized(this@MusicLib) { runCatching { File(dir, name).writeText(JSONArray(ids()).toString()) }.onFailure { Diag.e("MUSIC", it) } } }
     }
-    fun isFav(id: String): Boolean = id in favs
     /** Main thread. Returns true when the track is now a favourite. */
     fun toggleFav(id: String): Boolean {
         val n = MusicMarks.toggle(favs.toList(), id)

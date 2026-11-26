@@ -108,11 +108,6 @@ object NetEnv {
     /** Some photo/NAS host is slow and cannot be bypassed: scanners raise parallelism (latency-bound work). */
     val anySlow: Boolean get() = probes.values.any { !it.bypass && it.viaVpnMs >= SLOW_MS }
 
-    /** Last measured RTT for the route actually used, or -1. */
-    fun rtt(url: String): Long = hostOf(url)?.let { h -> probes[h]?.let { if (it.bypass) it.directMs else it.viaVpnMs } } ?: -1
-
-    fun bypassing(url: String): Boolean = hostOf(url)?.let { probes[it]?.bypass } ?: false
-
     /** Hint for the connection test / settings, or "" when nothing to say. */
     fun hint(url: String): String {
         val h = hostOf(url) ?: return ""

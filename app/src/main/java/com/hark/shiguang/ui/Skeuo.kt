@@ -67,10 +67,6 @@ object Skeuo {
     /** 下沿 / 内凹的暗边。 */
     val edge: Color get() = if (dark) Color(0x66000000) else Color(0x14000000)
 
-    /** 卡片表面：同一中性色内极小的明度变化（上沿略亮）。 */
-    fun surfaceBrush(base: Color = C.Surface): Brush =
-        Brush.verticalGradient(listOf(lerp(base, Color.White, if (dark) 0.025f else 0.3f), base))
-
     /** 内凹表面（开关轨道、输入框、搜索框、分段控件底）：上沿略暗。 */
     fun insetBrush(base: Color = C.Surface2): Brush =
         Brush.verticalGradient(listOf(lerp(base, Color.Black, if (dark) 0.16f else 0.04f), base))

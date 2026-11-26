@@ -450,9 +450,6 @@ class DavLib(val accountId: String) {
     /** S16: the single data-layer exit for "photos the 照片/视频 tabs may show" — 影视/音乐 folders excluded. */
     fun visiblePhotos(): List<Photo> = MediaIsolation.davVisible(accountId, photos)
 
-    /** B12: snapshot (photo, aiCat) pairs — no meta[..]!!. */
-    fun aiCategories(): List<Pair<String, List<Photo>>> = DiscoverCalc.categories(Hidden.visible(photos)) { meta[it] }
-
     /**
      * [concepts]: every concept must be matched (AND), any synonym inside a concept counts (OR).
      * Returns (photos ranked by score, exact). When nothing matches every concept, returns the best partial matches with exact=false.

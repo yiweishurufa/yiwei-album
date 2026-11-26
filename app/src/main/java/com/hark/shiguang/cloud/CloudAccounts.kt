@@ -89,13 +89,6 @@ object CloudAccounts {
         }
     }
 
-    /** Used by sources after a token refresh: only updates an account that is already saved. */
-    internal fun updateIfSaved(a: CloudAccount) {
-        synchronized(lock) {
-            if (prefs == null || cache.none { it.id == a.id }) return
-        }
-        save(a)
-    }
 
     private fun load(): List<CloudAccount> {
         val stored = prefs?.getString(KEY, null) ?: return emptyList()
