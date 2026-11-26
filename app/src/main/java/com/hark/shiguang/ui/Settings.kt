@@ -55,7 +55,7 @@ fun SettingsScreen() {
     // 清理进行中：防止连点触发并发清理，并在右侧显示「清理中…」
     var clearing by remember { mutableStateOf(false) }
     var lockOn by remember { mutableStateOf(Store.lockOn) }
-    LaunchedEffect(Unit) { cacheSize = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { clearableCacheSize(ctx.cacheDir) } }
+    LaunchedEffect(StorageUsage.version) { cacheSize = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { StorageUsage.clearableCacheSize(ctx.cacheDir) } }
     val nas = NasAccounts.current
     val dav = HomeState.source == "dav"
     val davAcc = Dav.current
@@ -142,21 +142,17 @@ fun SettingsScreen() {
                 if (lockOk) { lockOn = it; Store.lockOn = it }
             }
             Div()
+            // 1.7.13：分类占用与一键清理的完整页面（StorageScreen）
+            NavRow(KI.drive(), "存储空间", value = "按类查看占用") { Nav.push(Route.X(ExtScreen.Storage)) }
+            Div()
             NavRow(KI.trash(), "清理缓存", value = if (clearing) "清理中…" else if (cacheSize == 0L) "无缓存" else if (cacheSize >= 0) sizeLabel(cacheSize) else null) {
                 if (clearing) return@NavRow
                 if (cacheSize == 0L) { toast(ctx, "没有可清理的缓存"); return@NavRow }
                 clearing = true
                 scope.launch {
                   try {
-                    // B38: never delete the diagnostic log, downloaded update packages, or crash reports —
-                    // they are the evidence when something goes wrong, and the update would need re-downloading.
-                    val left = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        ctx.cacheDir.listFiles()?.filter { it.name != "diag" && it.name != "update" && !it.name.startsWith("crash") }?.forEach { it.deleteRecursively() }
-                        // H13: the in-memory url tables go too (redirect targets + entries of photos no longer in any library)
-                        DavThumb.clearUrlCache(); PlayHttp.resolved.clear()
-                        runCatching { CloudPhotos.trimTo(Dav.loadedLibs().flatMap { it.photos.toList() }) }.onFailure { Diag.e("CACHE", it) }
-                        clearableCacheSize(ctx.cacheDir)
-                    }
+                    // 清理范围见 StorageUsage.clearCache（不删诊断日志、更新包、崩溃记录）
+                    val left = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { StorageUsage.clearCache(ctx) }
                     val freed = (cacheSize - left).coerceAtLeast(0L)
                     cacheSize = left
                     toast(ctx, if (freed > 0) "缓存已清理，释放 ${sizeLabel(freed)}" else "缓存已清理")
@@ -641,19 +637,6 @@ private fun ocrStatus(lib: DavLib?): String? {
     if (!cur || OcrRunner.total == 0) return null
     return "已识别 ${OcrRunner.done.coerceAtMost(OcrRunner.total)} / ${OcrRunner.total}" + if (OcrRunner.running) " · 识别中" else ""
 }
-
-/** 缓存大小显示：不足 1 MB 用 KB，不再显示「0 MB」；1 GB 以上用 GB。 */
-private fun sizeLabel(bytes: Long): String = when {
-    bytes < 1024L -> "${bytes.coerceAtLeast(0L)} B"
-    bytes < 1024L * 1024 -> "${bytes / 1024} KB"
-    bytes < 1024L * 1024 * 1024 -> "${"%.1f".format(bytes / 1048576.0)} MB"
-    else -> "${"%.2f".format(bytes / 1073741824.0)} GB"
-}
-
-/** 可清理缓存大小：与「清理缓存」保留的诊断日志、更新包、崩溃记录保持一致，避免清完仍显示有缓存。 */
-private fun clearableCacheSize(dir: java.io.File): Long =
-    dir.listFiles()?.filter { it.name != "diag" && it.name != "update" && !it.name.startsWith("crash") }
-        ?.sumOf { c -> if (c.isFile) c.length() else c.walkTopDown().filter { it.isFile }.sumOf { it.length() } } ?: 0L
 
 /** 设置 → 通用 → 开源许可。完整许可原文随包附在 assets/licenses/。 */
 internal const val OPEN_SOURCE_NOTICE = """界面图标：Kubai Icons（icons-line）
