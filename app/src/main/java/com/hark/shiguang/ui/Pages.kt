@@ -114,7 +114,7 @@ private fun PickGrid(photos: List<Photo>, selected: Set<Int>, onTap: (Photo, Int
                 NetImage(p.thumbS, Modifier.fillMaxSize())
                 if (selected.isNotEmpty()) Box(Modifier.align(Alignment.TopEnd).padding(5.dp).size(20.dp).clip(CircleShape)
                     .background(if (on) C.Accent else Color(0x55000000)).border(1.5.dp, Color.White, CircleShape), contentAlignment = Alignment.Center) {
-                    if (on) Icon(Icons.Rounded.Check, null, tint = C.OnAccent, modifier = Modifier.size(14.dp))
+                    if (on) Icon(KI.check(), null, tint = C.OnAccent, modifier = Modifier.size(14.dp))
                 }
             }
         }
@@ -132,7 +132,7 @@ private fun SelCell(p: Photo, onOpen: () -> Unit) {
         if (p.isVideo) Icon(Icons.Rounded.PlayArrow, null, tint = Color.White, modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp).size(16.dp))
         if (Selection.active) Box(Modifier.align(Alignment.TopEnd).padding(5.dp).size(20.dp).clip(CircleShape)
             .background(if (on) C.Accent else Color(0x55000000)).border(1.5.dp, Color.White, CircleShape), contentAlignment = Alignment.Center) {
-            if (on) Icon(Icons.Rounded.Check, null, tint = C.OnAccent, modifier = Modifier.size(14.dp))
+            if (on) Icon(KI.check(), null, tint = C.OnAccent, modifier = Modifier.size(14.dp))
         }
     }
 }

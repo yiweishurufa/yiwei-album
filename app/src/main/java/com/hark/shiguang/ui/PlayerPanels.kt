@@ -122,7 +122,7 @@ internal fun SidePanel(title: String, onDismiss: () -> Unit, content: @Composabl
 internal fun PanelRow(title: String, detail: String?, selected: Boolean, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.width(32.dp)) { if (selected) Icon(Icons.Rounded.Check, null, tint = C.Accent, modifier = Modifier.size(20.dp)) }
+        Box(Modifier.width(32.dp)) { if (selected) Icon(KI.check(), null, tint = C.Accent, modifier = Modifier.size(20.dp)) }
         Column(Modifier.weight(1f)) {
             Text(title, color = if (selected) C.Accent else Color.White, fontSize = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)

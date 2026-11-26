@@ -211,7 +211,7 @@ private fun DavGroupsBody(r: Route.DavGroups, overrides: MutableMap<String, Bool
                                         if (p === best) Text("推荐保留", color = Color.White, fontSize = 11.sp, modifier = Modifier.align(Alignment.BottomStart).background(C.Green.copy(alpha = 0.9f), RoundedCornerShape(topEnd = 8.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
                                         Box(Modifier.align(Alignment.TopEnd).padding(6.dp).size(24.dp).clip(CircleShape).background(if (sel) C.Danger else Color(0x66000000)).border(1.5.dp, Color.White, CircleShape)
                                             .clickable { setDel(p.key, !sel) }, contentAlignment = Alignment.Center) {
-                                            if (sel) Icon(Icons.Rounded.Check, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                            if (sel) Icon(KI.check(), null, tint = Color.White, modifier = Modifier.size(16.dp))
                                         }
                                     }
                                     val res = if (p.width > 0) "${p.width}×${p.height} · " else ""
