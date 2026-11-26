@@ -82,7 +82,10 @@ fun MovieSearchScreen() {
         val shown = remember(all, q) { MovieFilter.apply(all, q) }
         val filtered = category != MovieFilter.ALL || genre != MovieFilter.ALL || year != MovieFilter.ALL
 
-        LazyVerticalGrid(GridCells.Adaptive(104.dp), Modifier.fillMaxSize(),
+        // 1.7.8：环境光晕跟着结果里领头的海报
+        val grid = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+        AmbientFromGrid(grid, remember(shown) { shown.associate { (it.id as Any) to it.poster } })
+        LazyVerticalGrid(GridCells.Adaptive(104.dp), Modifier.fillMaxSize(), state = grid,
             contentPadding = PaddingValues(start = Space.page, end = Space.page, bottom = 40.dp),
             horizontalArrangement = Arrangement.spacedBy(PosterSize.gap), verticalArrangement = Arrangement.spacedBy(Space.l + Space.xs)) {
             if (text.isEmpty() && history.isNotEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
@@ -167,7 +170,9 @@ fun MovieActorScreen(sourceKey: String, name: String) {
     val works by remember(lib, name) { derivedStateOf { lib.version; lib.items.filter { m -> m.cast.any { it.name == name } }.sortedByDescending { it.year ?: 0 } } }
     Page(name, if (lib.ready) "库里有 ${works.size} 部作品" else "") {
         if (!lib.ready) { LibLoading(); return@Page }
-        LazyVerticalGrid(GridCells.Adaptive(104.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(start = Space.page, end = Space.page, top = Space.s, bottom = 40.dp),
+        val grid = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+        AmbientFromGrid(grid, remember(works) { works.associate { (it.id as Any) to it.poster } })
+        LazyVerticalGrid(GridCells.Adaptive(104.dp), Modifier.fillMaxSize(), state = grid, contentPadding = PaddingValues(start = Space.page, end = Space.page, top = Space.s, bottom = 40.dp),
             horizontalArrangement = Arrangement.spacedBy(PosterSize.gap), verticalArrangement = Arrangement.spacedBy(Space.l + Space.xs)) {
             itemsIndexed(works, key = { _, m -> m.id }) { i, m -> PosterCard(m, lib, index = i) { Nav.push(Route.MovieDetail(sourceKey, m.id)) } }
         }

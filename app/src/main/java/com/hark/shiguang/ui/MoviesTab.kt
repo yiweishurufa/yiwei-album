@@ -86,6 +86,9 @@ fun MoviesTab() {
     val wish = remember(v, lib.items.size) { lib.wishItems() }
     val counts = remember(v, lib.items.size) { lib.items.count { it.kind == "movie" } to lib.items.count { it.kind == "tv" } }
 
+    // 1.7.8：环境光晕跟着屏幕上领头的海报变色；顶部横条（继续观看 / 收藏）还在屏上时取它的第一张
+    val posterOf = remember(shown) { shown.associate { g -> (g.first().id as Any) to g.first().poster } }
+    AmbientFromGrid(grid, posterOf, (cont.firstOrNull()?.first ?: wish.firstOrNull())?.poster)
     // 第 4 批：平板/折叠屏——Adaptive 替代 Fixed(3)：手机上仍约 3 列（110dp 下限），平板自动变多列；通栏行用 maxLineSpan。
     // B7：下拉刷新 = 后台增量扫描（和右上角刷新一样只扫新文件），有缓存时只显示一行「正在更新」
     PullRefreshBox(enabled = lib.ready && lib.dirs.isNotEmpty() && !lib.scanning, onRefresh = { lib.scan(quiet = true); ScanService.ensure(App.ctx) }) {
@@ -297,6 +300,28 @@ fun LibraryDirRow(name: String, path: String, onRemove: () -> Unit) {
 }
 
 /** Poster file path or url → something Coil loads. */
+/**
+ * 1.7.8 环境光晕跟随海报（DESIGN §2.4）：取屏幕上最靠上那张有海报的格子；它还在屏幕下半部（上面是横条、标题）而有 [lead] 时取 [lead]。
+ * [posterOf]：格子的 key → 海报（posterModel 之前的原值）。derivedStateOf 让滚动时只有「领头海报换了」才触发一次取色
+ * （Coil 32px 小图，有缓存）；简洁风格不取色（AmbientFrom 内判断）。
+ */
+@Composable
+fun AmbientFromGrid(grid: androidx.compose.foundation.lazy.grid.LazyGridState, posterOf: Map<Any, String?>, lead: String? = null) {
+    val url by remember(grid, posterOf, lead) {
+        derivedStateOf {
+            val info = grid.layoutInfo
+            val first = info.visibleItemsInfo.firstOrNull { posterOf[it.key] != null }
+            val p = when {
+                first == null -> lead
+                lead != null && first.offset.y > info.viewportSize.height * 0.45f -> lead
+                else -> posterOf[first.key]
+            }
+            posterModel(p)
+        }
+    }
+    AmbientFrom(url)
+}
+
 fun posterModel(p: String?): String? = p?.let { if (it.startsWith("/")) "file://$it" else TmdbNet.imgUrl(it) }
 
 /** 1.6.6 阶段 4：海报尺寸（圆角 [Radius.s]、横条里的固定宽度、海报之间的间距）。 */
