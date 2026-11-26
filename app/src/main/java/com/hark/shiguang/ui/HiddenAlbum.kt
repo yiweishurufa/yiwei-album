@@ -65,21 +65,21 @@ fun HiddenAlbumScreen() {
     Box(Modifier.fillMaxSize().appBackground()) {
         val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 64.dp
         if (!unlocked) Box(Modifier.fillMaxSize().padding(top = top)) {
-            StateMessage(LI.lock(), "隐藏相册已锁定", if (failed) "验证没有通过" else "验证后查看", "解锁") { auth() }
+            StateMessage(KI.lock(), "隐藏相册已锁定", if (failed) "验证没有通过，再试一次" else "验证指纹或锁屏密码后查看", "解锁") { auth() }
         } else {
             val photos = remember(Hidden.version) { Hidden.photos() }
             DisposableEffect(Unit) {
-                SelExtra.actions = listOf(SelExtraAction(Icons.Rounded.Visibility, "取消隐藏") { l -> Hidden.hide(l, false); Selection.clear() })
+                SelExtra.actions = listOf(SelExtraAction(KI.eye(), "取消隐藏") { l -> Hidden.hide(l, false); Selection.clear() })
                 onDispose { SelExtra.actions = emptyList() }
             }
             if (photos.isEmpty()) Box(Modifier.fillMaxSize().padding(top = top)) {
-                StateMessage(LI.lock(), "没有隐藏的照片", "在大图「⋯」或多选后点「隐藏」，照片就只出现在这里。")
+                StateMessage(KI.eye(), "没有隐藏的照片", "在大图「⋯」或多选里选「隐藏」。")
             } else {
                 val entries = remember(photos) { buildEntries(photos, true) }
                 PhotoGrid(entries, adaptiveCols(4), false, onEnd = {}, onOpen = { Nav.push(Route.Viewer(photos, it)) }, top = top, bottom = 40.dp)
             }
         }
-        ExtTop("隐藏相册", if (unlocked) "${Hidden.count()} 项 · 只保存在本机" else "")
+        ExtTop("隐藏相册", if (unlocked) "${Hidden.count()} 项" else "") { if (unlocked) InfoDot("隐藏的照片不出现在时间线、合集和搜索里；隐藏记录只保存在本机，不会改动 NAS 或网盘上的文件。", "隐藏相册") }
         if (unlocked) SelectionBar(Modifier.align(Alignment.BottomCenter))
     }
 }

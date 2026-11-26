@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -184,9 +185,18 @@ fun PhotoMapScreen(dav: Boolean) {
                 err ?: if (dav) "本地分析读到 GPS 后，照片会出现在地图上。" else "拍照时开启定位，飞牛识别后会出现在这里。")
             else -> OsmMap(list) { cl -> openCluster(dav, cl) }
         }
-        ExtTop("照片地图", list?.let { "${it.sumOf { p -> p.count }} 张带位置的照片" } ?: "")
-        if (!list.isNullOrEmpty()) Text("点照片堆查看这一处的照片 · 双指缩放展开", color = C.Sub, fontSize = 12.sp,
-            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 18.dp).clip(RoundedCornerShape(12.dp)).background(C.Surface.copy(alpha = 0.92f)).padding(horizontal = 14.dp, vertical = 8.dp))
+        ExtTop("照片地图", list?.let { "${it.sumOf { p -> p.count }} 张" } ?: "") {
+            InfoDot("点地图上的照片堆，查看这一处的照片；双指缩放可以把照片堆展开。WebDAV 照片的位置来自本地分析读到的 GPS。", "照片地图")
+        }
+        // 1.6.6 阶段 3：操作提示不再常驻——进来时浮起 4 秒后淡出（同样的说明在顶栏 ⓘ 里）
+        var tip by remember { mutableStateOf(false) }
+        LaunchedEffect(list.isNullOrEmpty()) { if (!list.isNullOrEmpty()) { tip = true; kotlinx.coroutines.delay(4000); tip = false } }
+        androidx.compose.animation.AnimatedVisibility(tip, Modifier.align(Alignment.BottomCenter),
+            enter = androidx.compose.animation.fadeIn(Motion.enter()) + androidx.compose.animation.slideInVertically(Motion.move()) { if (Motion.reduced) 0 else it / 2 },
+            exit = androidx.compose.animation.fadeOut(Motion.exit())) {
+            Text("点照片堆查看这一处的照片", color = C.Text, style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.navigationBarsPadding().padding(bottom = Space.l + 2.dp).skeuoCard(RoundedCornerShape(Radius.l), elevation = Elevation.raised).padding(horizontal = Space.l, vertical = Space.s + 2.dp))
+        }
     }
 }
 

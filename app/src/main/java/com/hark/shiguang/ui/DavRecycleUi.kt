@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.semantics.semantics
 import com.hark.shiguang.*
 import kotlinx.coroutines.launch
 
@@ -40,20 +41,31 @@ fun DavRecycleScreen(r: Route.DavRecycle) {
         if (src == null) { toast(ctx, "网盘账户不可用"); return }
         scope.launch { busy = true; runCatching { f() }.onSuccess { toast(ctx, ok); HomeState.dirty = true }.onFailure { failToast(ctx, it, "失败") }; busy = false; refresh() }
     }
-    Page("最近删除", if (list.isNotEmpty()) "${list.size} 项 · 删除 30 天后自动清除" else "", actions = {
-        if (list.isNotEmpty()) TextButton(onClick = { clearAll = true }, enabled = !busy) { Text("清空", color = C.Danger) }
+    // 1.6.6 阶段 3：副标题只放数量，30 天规则收进 ⓘ；列表是一张卡片里的分隔行（不再一行一张卡）；剩余天数等宽数字，≤ 3 天用错误色
+    Page("最近删除", if (list.isNotEmpty()) "${list.size} 项" else "", actions = {
+        InfoDot("在本 App 里删除的网盘照片和视频会先放到这里，保留 30 天，到期自动清除；期间可以恢复。", "最近删除")
+        if (list.isNotEmpty()) HeaderTextButton("清空", if (busy) C.Faint else C.Danger) { if (!busy) clearAll = true }
     }) {
-        if (list.isEmpty()) StateMessage(Icons.Rounded.DeleteOutline, "最近删除是空的", "在本 App 里删除的网盘照片和视频会在这里保留 30 天，可以恢复。")
-        else LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(list, key = { it.orig + it.deletedAt }) { e ->
-                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(C.Surface).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(if (e.video) Icons.Rounded.Movie else Icons.Rounded.Image, null, tint = C.Sub, modifier = Modifier.size(22.dp))
-                    Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                        Text(e.name, color = C.Text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(e.orig.substringBeforeLast('/').ifEmpty { "/" } + " · 还剩 ${e.daysLeft()} 天", color = C.Sub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (list.isEmpty()) StateMessage(KI.trash(), "最近删除是空的", "删除的网盘照片和视频会在这里保留 30 天。")
+        else LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = Space.s, bottom = 40.dp)) {
+            item {
+                Card {
+                    list.forEachIndexed { i, e ->
+                        if (i > 0) Div()
+                        val left = e.daysLeft()
+                        Row(Modifier.fillMaxWidth().heightIn(min = Space.row + Space.s).padding(start = Space.l, end = Space.xs, top = Space.xs, bottom = Space.xs), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(if (e.video) KI.videos() else KI.photos(), null, tint = C.Sub, modifier = Modifier.size(22.dp))
+                            Column(Modifier.weight(1f).padding(horizontal = Space.m).semantics(mergeDescendants = true) {}) {
+                                Text(e.name, color = C.Text, style = MaterialTheme.typography.bodyLarge, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Row {
+                                    Text("还剩 $left 天", color = if (left <= 3) C.Danger else C.Sub, style = MaterialTheme.typography.bodySmall.merge(Type.num).copy(color = if (left <= 3) C.Danger else C.Sub))
+                                    Text(" · " + e.orig.substringBeforeLast('/').ifEmpty { "/" }, color = C.Sub, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                            HeaderTextButton("恢复", if (busy) C.Faint else C.Accent) { if (!busy) act({ DavRecycle.restore(r.accountId, src!!, e) }, "已恢复") }
+                            HeaderTextButton("删除", if (busy) C.Faint else C.Danger) { if (!busy) confirm = e }
+                        }
                     }
-                    TextButton(onClick = { act({ DavRecycle.restore(r.accountId, src!!, e) }, "已恢复") }, enabled = !busy, modifier = Modifier.heightIn(min = 48.dp)) { Text("恢复", color = C.Accent) }
-                    TextButton(onClick = { confirm = e }, enabled = !busy, modifier = Modifier.heightIn(min = 48.dp)) { Text("删除", color = C.Danger) }
                 }
             }
         }

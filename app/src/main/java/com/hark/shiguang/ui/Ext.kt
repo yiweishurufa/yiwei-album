@@ -13,6 +13,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -57,12 +59,13 @@ object SelExtra { var actions by mutableStateOf<List<SelExtraAction>>(emptyList(
 
 @Composable
 fun ExtTop(title: String, sub: String = "", actions: @Composable RowScope.() -> Unit = {}) {
+    // 1.6.6：与 PageTop 同款（44dp Kubai 返回圆钮、标题读屏「标题」、副标题等宽数字），压在内容上用渐隐底
     Row(Modifier.fillMaxWidth().background(C.TopScrim).statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        RoundIcon(Icons.Rounded.ArrowBackIosNew, size = 40.dp, desc = "返回") { Nav.pop() }
+        RoundIcon(KI.back(), size = 44.dp, desc = "返回") { Nav.pop() }
         Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
+        Column(Modifier.weight(1f).semantics(mergeDescendants = true) { heading() }) {
             Text(title, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+            if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall.merge(Type.num), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         actions()
     }

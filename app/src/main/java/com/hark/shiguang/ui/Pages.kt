@@ -39,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.sp
 import com.hark.shiguang.*
 import com.hark.shiguang.cloud.*
@@ -109,8 +110,11 @@ private fun PickGrid(photos: List<Photo>, selected: Set<Int>, onTap: (Photo, Int
             val p = photos[i]
             if (i >= photos.size - 8) LaunchedEffect(photos.size) { onEnd() }
             val on = p.id in selected
-            Box(Modifier.aspectRatio(1f).clip(RoundedCornerShape(4.dp)).background(C.Surface)
-                .combinedClickable(onClick = { onTap(p, i) }, onLongClick = { onLong(p) })) {
+            // 1.6.6：与照片网格一致——圆角 3、选中缩到 0.92、勾选圆颜色渐变
+            val scale by androidx.compose.animation.core.animateFloatAsState(if (on) 0.92f else 1f, Motion.move(), label = "pickSel")
+            Box(Modifier.aspectRatio(1f).graphicsLayer { scaleX = scale; scaleY = scale }.clip(RoundedCornerShape(Radius.photo)).background(C.Surface)
+                .combinedClickable(onClick = { onTap(p, i) }, onLongClick = { onLong(p) }, onLongClickLabel = "多选")
+                .semantics { contentDescription = (if (p.isVideo) "视频" else "照片") + (if (selected.isNotEmpty()) if (on) "，已选中" else "，未选中" else "") }) {
                 NetImage(p.thumbS, Modifier.fillMaxSize())
                 if (selected.isNotEmpty()) Box(Modifier.align(Alignment.TopEnd).padding(5.dp).size(20.dp).clip(CircleShape)
                     .background(if (on) C.Accent else Color(0x55000000)).border(1.5.dp, Color.White, CircleShape), contentAlignment = Alignment.Center) {
@@ -157,29 +161,35 @@ fun RecycleScreen() {
         loading = false
     }
     LaunchedEffect(Unit) { load(true) }
-    Page("回收站", if (photos.isNotEmpty()) "${photos.size}${if (more) "+" else ""} 项 · 删除 30 天后自动清除" else "", actions = {
-        if (photos.isNotEmpty() && sel.isEmpty()) TextButton(onClick = { confirm = "clear" }) { Text("清空", color = C.Danger) }
-        if (sel.isNotEmpty()) TextButton(onClick = { sel = emptySet() }) { Text("取消", color = C.Sub) }
+    // 1.6.6 阶段 3：副标题只放数量（选中时是已选数量），30 天规则收进 ⓘ；底部操作栏换主 / 次要按钮并从底部滑入
+    Page("回收站", if (sel.isNotEmpty()) "已选 ${sel.size} 项" else if (photos.isNotEmpty()) "${photos.size}${if (more) "+" else ""} 项" else "", actions = {
+        if (sel.isEmpty()) InfoDot("删除的照片会在回收站保留 30 天，到期由飞牛自动清除；期间可以恢复。", "回收站")
+        if (photos.isNotEmpty() && sel.isEmpty()) HeaderTextButton("清空", C.Danger) { confirm = "clear" }
+        if (sel.isNotEmpty()) HeaderTextButton("取消", C.Sub) { sel = emptySet() }
     }) {
         when {
             photos.isEmpty() && loading -> Loading()
             photos.isEmpty() && err != null -> ErrorState(err, onRetry = { scope.launch { load(true) } })
-            photos.isEmpty() -> StateMessage(Icons.Rounded.DeleteOutline, "回收站是空的", "删除的照片会在这里保留 30 天。")
+            photos.isEmpty() -> StateMessage(KI.trash(), "回收站是空的", "删除的照片会在这里保留 30 天。")
             else -> PickGrid(photos, sel, onTap = { p, i ->
                 if (sel.isNotEmpty()) sel = if (p.id in sel) sel - p.id else sel + p.id
                 else Nav.push(Route.Viewer(photos.toList(), i))
             }, onLong = { p -> sel = sel + p.id }, onEnd = { scope.launch { load(false) } })
         }
-        if (sel.isNotEmpty()) Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(C.Surface).navigationBarsPadding().padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = {
-                val ids = sel.toList()
-                scope.launch {
-                    runCatching { NasX.recycleRestore(ids) }.onSuccess { toast(ctx, "已恢复 ${ids.size} 项"); photos.removeAll { it.id in ids }; sel = emptySet(); HomeState.dirty = true }
-                        .onFailure { failToast(ctx, it, "恢复失败") }
+        androidx.compose.animation.AnimatedVisibility(sel.isNotEmpty(), Modifier.align(Alignment.BottomCenter),
+            enter = androidx.compose.animation.slideInVertically(Motion.sheet()) { it } + androidx.compose.animation.fadeIn(Motion.enter()),
+            exit = androidx.compose.animation.slideOutVertically(Motion.exit()) { it } + androidx.compose.animation.fadeOut(Motion.exit())) {
+            Row(Modifier.fillMaxWidth().skeuoBar().navigationBarsPadding().padding(horizontal = Space.page, vertical = Space.m),
+                horizontalArrangement = Arrangement.spacedBy(Space.m)) {
+                GradientButton("恢复 ${sel.size} 项", Modifier.weight(1f)) {
+                    val ids = sel.toList()
+                    scope.launch {
+                        runCatching { NasX.recycleRestore(ids) }.onSuccess { toast(ctx, "已恢复 ${ids.size} 项"); photos.removeAll { it.id in ids }; sel = emptySet(); HomeState.dirty = true }
+                            .onFailure { failToast(ctx, it, "恢复失败") }
+                    }
                 }
-            }, colors = ButtonDefaults.buttonColors(containerColor = C.Accent, contentColor = C.OnAccent), modifier = Modifier.weight(1f)) { Text("恢复 ${sel.size} 项") }
-            OutlinedButton(onClick = { confirm = "forever" }, modifier = Modifier.weight(1f)) { Text("彻底删除", color = C.Danger) }
+                SecondaryButton("彻底删除", Modifier.weight(1f)) { confirm = "forever" }
+            }
         }
     }
     when (confirm) {
