@@ -74,3 +74,22 @@ object Haptics {
         view.performHapticFeedback(if (android.os.Build.VERSION.SDK_INT >= 30) android.view.HapticFeedbackConstants.REJECT else android.view.HapticFeedbackConstants.LONG_PRESS)
     }
 }
+
+/**
+ * 列表进入（DESIGN §7「列表进入」）：只给首屏前 [Motion.STAGGER_MAX] 项，上浮 [Motion.RISE] + 淡入，间隔 [Motion.STAGGER]。
+ * 只在这一项第一次组合时播一次（rememberSaveable 记住已播过，滚出再滚回、返回页面都不重播）；
+ * 「移除动画」时直接显示。只动 graphicsLayer，不影响布局与读屏。
+ */
+fun Modifier.enterRise(index: Int): Modifier = composed {
+    if (Motion.reduced || index >= Motion.STAGGER_MAX) return@composed this
+    var played by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    if (played) return@composed this
+    val t = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay((index * Motion.STAGGER).toLong())
+        t.animateTo(1f, Motion.enter())
+        played = true
+    }
+    val rise = with(androidx.compose.ui.platform.LocalDensity.current) { Motion.RISE.toPx() }
+    graphicsLayer { alpha = t.value; translationY = (1f - t.value) * rise }
+}

@@ -2,6 +2,12 @@ package com.hark.shiguang.ui
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.scaleIn
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -246,51 +252,85 @@ fun PhotoGrid(
 @Composable
 private fun DateHeader(e: Entry.Header, entries: List<Entry>, i: Int, onClick: ((Entry.Header) -> Unit)?) {
     val inGroup = remember(entries, i) {
-        var n = 0; var k = i + 1
-        while (k < entries.size && entries[k] is Entry.Cell) { n++; k++ }
+        var k = i + 1
+        while (k < entries.size && entries[k] is Entry.Cell) k++
         entries.subList(i + 1, k).map { (it as Entry.Cell).photo }
     }
     val allSel = Selection.active && inGroup.isNotEmpty() && inGroup.all { Selection.has(it) }
     Row(
-        Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 24.dp, bottom = 8.dp)
-            .pointerInput(onClick) { detectTapGestures { if (onClick != null) onClick(e) } },
-        verticalAlignment = Alignment.Bottom
+        Modifier.fillMaxWidth().padding(start = Space.m, end = Space.xs, top = Space.xl, bottom = Space.xs).heightIn(min = 40.dp)
+            .pointerInput(onClick) { detectTapGestures { if (onClick != null) onClick(e) } }
+            .semantics(mergeDescendants = true) { heading() },
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        // 1.6.0：日期标题 17sp SemiBold，数字 Allo 等宽；副标题（星期 · 地点）次要色
-        Text(e.title, style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp, fontFamily = C.P.display, fontWeight = FontWeight.SemiBold, fontFeatureSettings = Type.TNUM))
-        Spacer(Modifier.width(8.dp))
-        Text(e.sub, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(bottom = 1.dp))
-        if (Selection.active) {
-            Text(if (allSel) "取消" else "全选", color = C.Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.pointerInput(inGroup, allSel) { detectTapGestures { inGroup.forEach { p -> Selection.set(p, !allSel) } } })
+        // 1.6.2：标题与副标题同一基线；日期数字 Allo 等宽（DESIGN §3 titleMedium 加大到 17sp 的日期角色）
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.Bottom) {
+            Text(e.title, style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp, fontFamily = C.P.display, fontWeight = FontWeight.SemiBold, fontFeatureSettings = Type.TNUM), color = C.Text)
+            if (e.sub.isNotEmpty()) {
+                Spacer(Modifier.width(Space.s))
+                Text(e.sub, style = MaterialTheme.typography.bodySmall, color = C.Sub, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(bottom = 1.dp))
+            }
+        }
+        // 多选时出现「全选 / 取消」：淡入，不挤动标题；整块 ≥ 40dp 高便于点按，读屏是按钮
+        AnimatedVisibility(Selection.active, enter = fadeIn(Motion.enter()), exit = fadeOut(Motion.exit())) {
+            val label = if (allSel) "取消" else "全选"
+            Text(label, color = C.Accent, style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.clip(RoundedCornerShape(Radius.s))
+                    .clickable(role = androidx.compose.ui.semantics.Role.Button, onClickLabel = if (allSel) "取消选择这一天" else "选择这一天的全部照片") { inGroup.forEach { p -> Selection.set(p, !allSel) } }
+                    .padding(horizontal = Space.m, vertical = 10.dp))
         }
     }
 }
 
+/**
+ * 1.6.2 快速滚动条（DESIGN §7）：滚动时右侧出现一枚细长把手；按住拖动时把手变宽、左侧弹出年月气泡（Allo 等宽数字），
+ * 每跨过一个月轻震一下。松手 / 停止滚动 1.4 s 后淡出。把手的触摸区 48dp 宽，画出来的只有 4–6dp。
+ */
 @Composable
 private fun Scrubber(entries: List<Entry>, state: LazyGridState, headerOffset: Int, top: Dp, bottom: Dp, modifier: Modifier) {
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
+    val view = androidx.compose.ui.platform.LocalView.current
     var dragging by remember { mutableStateOf(false) }
     var trackH by remember { mutableFloatStateOf(1f) }
     var frac by remember { mutableFloatStateOf(0f) }
-    val visible by remember { derivedStateOf { state.isScrollInProgress } }
+    val scrolling by remember { derivedStateOf { state.isScrollInProgress } }
     var show by remember { mutableStateOf(false) }
-    LaunchedEffect(visible, dragging) {
-        if (visible || dragging) show = true else { kotlinx.coroutines.delay(1400); show = false }
+    LaunchedEffect(scrolling, dragging) {
+        if (scrolling || dragging) show = true else { kotlinx.coroutines.delay(1400); show = false }
     }
+    // 把手位置 = 第一个可见项 / (总数 - 一屏的项数)，这样滚到底时把手也到底
     val curFrac by remember(entries) {
-        derivedStateOf { if (entries.isEmpty()) 0f else (state.firstVisibleItemIndex.toFloat() / entries.size).coerceIn(0f, 1f) }
+        derivedStateOf {
+            val total = state.layoutInfo.totalItemsCount
+            val perScreen = state.layoutInfo.visibleItemsInfo.size
+            val range = (total - perScreen).coerceAtLeast(1)
+            (state.firstVisibleItemIndex.toFloat() / range).coerceIn(0f, 1f)
+        }
     }
     val f = if (dragging) frac else curFrac
-    val label = remember(entries, f) {
-        val idx = (f * (entries.size - 1)).roundToInt().coerceIn(0, (entries.size - 1).coerceAtLeast(0))
-        val p = (entries.getOrNull(idx) as? Entry.Cell)?.photo ?: (entries.drop(idx).firstOrNull { it is Entry.Cell } as? Entry.Cell)?.photo
-        p?.let { val s = it.day.split(':', '-'); if (s.size >= 2) "${s[0]}年${s[1].toIntOrNull() ?: s[1]}月" else "" } ?: ""
+    fun labelAt(x: Float): String {
+        if (entries.isEmpty()) return ""
+        val idx = (x * (entries.size - 1)).roundToInt().coerceIn(0, entries.size - 1)
+        var k = idx
+        while (k < entries.size && entries[k] !is Entry.Cell) k++
+        val p = (entries.getOrNull(k) as? Entry.Cell)?.photo ?: return ""
+        val s = p.day.split(':', '-'); return if (s.size >= 2) "${s[0]}年${s[1].toIntOrNull() ?: s[1]}月" else ""
     }
-    AnimatedVisibility(show, modifier = modifier.fillMaxHeight().padding(top = top + 8.dp, bottom = bottom + 8.dp), enter = fadeIn(), exit = fadeOut()) {
+    val label = remember(entries, f) { labelAt(f) }
+    // 拖动跨过一个月：轻震（只在拖动时）
+    var lastLabel by remember { mutableStateOf("") }
+    LaunchedEffect(label, dragging) {
+        if (dragging && label.isNotEmpty() && lastLabel.isNotEmpty() && label != lastLabel) Haptics.tick(view)
+        lastLabel = label
+    }
+    val handleW by animateDpAsState(if (dragging) 6.dp else 4.dp, Motion.move(), label = "handleW")
+    val handleH = 40.dp
+    AnimatedVisibility(show, modifier = modifier.fillMaxHeight().padding(top = top + Space.s, bottom = bottom + Space.s),
+        enter = fadeIn(Motion.enter()), exit = fadeOut(Motion.exit())) {
         Box(
-            Modifier.fillMaxHeight().width(80.dp).onGloballyPositioned { trackH = it.size.height.toFloat().coerceAtLeast(1f) }
+            Modifier.fillMaxHeight().width(48.dp).onGloballyPositioned { trackH = it.size.height.toFloat().coerceAtLeast(1f) }
+                .semantics { contentDescription = "快速滚动" + if (label.isNotEmpty()) "，$label" else "" }
                 .pointerInput(entries) {
                     detectVerticalDragGestures(
                         onDragStart = { o -> dragging = true; frac = (o.y / trackH).coerceIn(0f, 1f) },
@@ -303,19 +343,23 @@ private fun Scrubber(entries: List<Entry>, state: LazyGridState, headerOffset: I
                     }
                 }
         ) {
-            val y = with(density) { (f * (trackH - 44.dp.toPx())).toDp() }
-            Row(Modifier.align(Alignment.TopEnd).offset(y = y), verticalAlignment = Alignment.CenterVertically) {
-                if (dragging && label.isNotEmpty()) {
-                    Box(Modifier.clip(RoundedCornerShape(10.dp)).background(C.Surface2).padding(horizontal = 10.dp, vertical = 6.dp)) {
-                        Text(label, color = C.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                    Spacer(Modifier.width(6.dp))
-                }
-                Box(
-                    Modifier.padding(end = 4.dp).size(width = 22.dp, height = 44.dp).clip(RoundedCornerShape(11.dp)).background(C.Surface2)
-                        .border(0.5.dp, C.Line, RoundedCornerShape(11.dp)), contentAlignment = Alignment.Center
-                ) { Icon(Icons.Rounded.UnfoldMore, null, tint = C.Text, modifier = Modifier.size(16.dp)) }
-            }
+            val y = with(density) { (f * (trackH - handleH.toPx())).toDp() }
+            Box(
+                Modifier.align(Alignment.TopEnd).offset(y = y).padding(end = 3.dp).size(width = handleW, height = handleH)
+                    .clip(CircleShape).background(if (dragging) C.Accent else C.Sub.copy(alpha = 0.55f))
+            )
+        }
+    }
+    // 年月气泡：画在轨道左边（轨道只有 48dp 宽，气泡不能放在它里面）
+    AnimatedVisibility(dragging && label.isNotEmpty(), modifier = modifier.padding(top = top + Space.s, end = 48.dp),
+        enter = fadeIn(Motion.enter()) + scaleIn(Motion.enter(), initialScale = 0.9f, transformOrigin = androidx.compose.ui.graphics.TransformOrigin(1f, 0.5f)),
+        exit = fadeOut(Motion.exit())) {
+        val y = with(density) { (f * (trackH - 40.dp.toPx())).toDp() }
+        Box(
+            Modifier.offset(y = y).heightIn(min = 40.dp).skeuoCard(RoundedCornerShape(Radius.m), color = C.Surface2).padding(horizontal = Space.l),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(label, color = C.Text, style = MaterialTheme.typography.titleMedium.copy(fontFamily = C.P.display, fontWeight = FontWeight.SemiBold, fontFeatureSettings = Type.TNUM))
         }
     }
 }

@@ -7,6 +7,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -72,21 +79,25 @@ object OnThisDay {
 @Composable
 fun MemoriesRow(groups: List<MemoryGroup>) {
     val visible = remember(groups, Hidden.version) { groups.mapNotNull { g -> Hidden.visible(g.photos).takeIf { it.isNotEmpty() }?.let { g.copy(photos = it) } } }
-    AnimatedVisibility(visible.isNotEmpty(), enter = fadeIn() + expandVertically()) {
-        Column(Modifier.padding(bottom = 6.dp)) {
-            Row(Modifier.padding(start = 18.dp, end = 18.dp, bottom = 8.dp), verticalAlignment = Alignment.Bottom) {
-                Text("那年今天", color = C.Text, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                Text(LocalDate.now().let { "${it.monthValue}月${it.dayOfMonth}日" }, color = C.Sub, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp, bottom = 1.dp))
+    AnimatedVisibility(visible.isNotEmpty(), enter = fadeIn(Motion.enter()) + expandVertically(Motion.enter())) {
+        Column(Modifier.padding(bottom = Space.s)) {
+            // 1.6.2：分区标题 titleMedium（DESIGN §3），日期是次要色副标题，同一基线
+            Row(Modifier.padding(start = Space.l, end = Space.l, bottom = Space.s).semantics(mergeDescendants = true) { heading() }, verticalAlignment = Alignment.Bottom) {
+                Text("那年今天", color = C.Text, style = MaterialTheme.typography.titleMedium)
+                Text(LocalDate.now().let { "${it.monthValue}月${it.dayOfMonth}日" }, color = C.Sub, style = MaterialTheme.typography.bodySmall.merge(Type.num), modifier = Modifier.padding(start = Space.s, bottom = 1.dp))
             }
-            LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(visible, key = { it.year }) { g ->
-                    Box(Modifier.size(132.dp, 168.dp).pressScale().skeuoPhoto()
-                        .clickableNoRipple { Nav.push(Route.Viewer(g.photos, 0)) }) {
+            LazyRow(contentPadding = PaddingValues(horizontal = Space.l), horizontalArrangement = Arrangement.spacedBy(Space.m)) {
+                itemsIndexed(visible, key = { _, g -> g.year }) { i, g ->
+                    val title = if (g.yearsAgo == 1) "一年前" else "${g.yearsAgo} 年前"
+                    // 封面卡：大卡按压 0.985（DESIGN §7）、圆角 Radius.l，首屏前几张错开上浮进入
+                    Box(Modifier.enterRise(i).size(132.dp, 168.dp).pressScale(Motion.PRESS_SCALE_LARGE).skeuoPhoto(RoundedCornerShape(Radius.l))
+                        .clickable(role = Role.Button, onClickLabel = "查看") { Nav.push(Route.Viewer(g.photos, 0)) }
+                        .semantics(mergeDescendants = true) { contentDescription = "$title，${g.year} 年，${g.photos.size} 张" }) {
                         NetImage(g.photos.first().thumbM, Modifier.fillMaxSize())
-                        Box(Modifier.matchParentSize().background(Brush.verticalGradient(0.45f to Color.Transparent, 1f to Color(0xB3000000))))
-                        Column(Modifier.align(Alignment.BottomStart).padding(12.dp)) {
-                            Text(if (g.yearsAgo == 1) "一年前" else "${g.yearsAgo} 年前", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                            Text("${g.year} · ${g.photos.size} 张", color = Color.White.copy(alpha = 0.78f), fontSize = 12.sp)
+                        Box(Modifier.matchParentSize().background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to Color(0x99000000))))
+                        Column(Modifier.align(Alignment.BottomStart).padding(Space.m)) {
+                            Text(title, color = Color.White, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
+                            Text("${g.year} · ${g.photos.size} 张", color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodySmall.merge(Type.num), modifier = Modifier.padding(top = 2.dp))
                         }
                     }
                 }
