@@ -596,7 +596,8 @@ fun SearchScreen() {
         Box(Modifier.weight(1f)) {
             when {
                 SearchState.loading -> SkeletonGrid(4, 0.dp)
-                SearchState.error != null -> StateMessage(KI.search(), "搜索失败", SearchState.error.orEmpty())
+                // 1.7.17：搜索失败（多半是网络 / AI 接口）给「重试」，按原词再搜一次
+                SearchState.error != null -> ErrorState(SearchState.error, onRetry = { run(SearchState.query) })
                 res == null -> Column(Modifier.padding(18.dp)) {
                     if (history.isNotEmpty()) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

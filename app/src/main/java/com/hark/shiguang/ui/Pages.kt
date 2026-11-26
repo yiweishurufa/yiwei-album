@@ -212,7 +212,9 @@ fun SmartScreen() {
     var info by remember { mutableStateOf<List<SmartCategory>?>(null) }
     var media by remember { mutableStateOf<List<MediaCategory>?>(null) }
     var err by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(tab) {
+    // 1.7.17：加载失败时给「重试」（以前只有一句「加载失败」，只能退出再进）
+    var retry by remember { mutableIntStateOf(0) }
+    LaunchedEffect(tab, retry) {
         err = null
         runCatching {
             when (tab) {
@@ -237,7 +239,7 @@ fun SmartScreen() {
             }
             Box(Modifier.weight(1f)) {
                 when {
-                    err != null && cards == null -> StateMessage(KI.discover(), "加载失败", err.orEmpty())
+                    err != null && cards == null -> ErrorState(err, onRetry = { err = null; retry++ })
                     cards == null -> Loading()
                     cards.isEmpty() -> StateMessage(KI.discover(), "还没有分类", "在飞牛相册开启 AI 识别，识别完会出现在这里。")
                     else -> LazyVerticalGrid(GridCells.Adaptive(110.dp), contentPadding = PaddingValues(12.dp, 6.dp, 12.dp, 40.dp),
@@ -358,7 +360,8 @@ fun FoldersScreen(r: Route.Folders) {
         runCatching { NasX.folderPhotos(r.path, photos.size, 100) }.onSuccess { (l, t) -> photos.addAll(l); total = t }.onFailure { err = it.message }
         loading = false
     }
-    LaunchedEffect(r.path) {
+    var retry by remember { mutableIntStateOf(0) }
+    LaunchedEffect(r.path, retry) {
         runCatching {
             folders = if (r.path.isEmpty()) NasX.libraryFolders().map { it.path to it.path.trimEnd('/').substringAfterLast('/').ifEmpty { it.path } }
             else NasX.subFolders(r.path).map { it.path to it.name }
@@ -369,7 +372,7 @@ fun FoldersScreen(r: Route.Folders) {
         val f = folders
         when {
             f == null -> Loading()
-            f.isEmpty() && photos.isEmpty() && err != null -> StateMessage(KI.folder(), "加载失败", err.orEmpty())
+            f.isEmpty() && photos.isEmpty() && err != null -> ErrorState(err, onRetry = { err = null; folders = null; retry++ })
             f.isEmpty() && photos.isEmpty() && !loading -> StateMessage(KI.folder(), "空文件夹", "")
             else -> LazyVerticalGrid(GridCells.Adaptive(92.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(2.dp, 0.dp, 2.dp, 60.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -717,7 +720,8 @@ fun CloudTimelineScreen(r: Route.CloudTimeline) {
     val photos = remember { mutableStateListOf<Photo>() }
     var scanning by remember { mutableStateOf(true) }
     var err by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(r) {
+    var retry by remember { mutableIntStateOf(0) }
+    LaunchedEffect(r, retry) {
         val ch = kotlinx.coroutines.channels.Channel<List<CloudEntry>>(kotlinx.coroutines.channels.Channel.UNLIMITED)
         val conv = launch { for (b in ch) photos.addAll(CloudPhotos.toPhotos(r.accountId, b)) }
         runCatching {
@@ -731,7 +735,7 @@ fun CloudTimelineScreen(r: Route.CloudTimeline) {
     Page(acc?.title ?: "网盘", if (scanning) "正在扫描… 已找到 ${photos.size} 项" else "${photos.size} 项") {
         when {
             photos.isEmpty() && scanning -> Loading()
-            photos.isEmpty() && err != null -> StateMessage(KI.alert(), "扫描失败", err.orEmpty())
+            photos.isEmpty() && err != null -> ErrorState(err, onRetry = { err = null; scanning = true; retry++ })
             photos.isEmpty() -> StateMessage(KI.photos(), "没有找到照片或视频", "")
             else -> {
                 val sorted = remember(photos.size) { photos.sortedByDescending { it.time } }

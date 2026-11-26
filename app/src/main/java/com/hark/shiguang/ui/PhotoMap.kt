@@ -162,7 +162,8 @@ fun PhotoMapScreen(dav: Boolean) {
     val ctx = LocalContext.current
     var pts by remember { mutableStateOf<List<MapPt>?>(null) }
     var err by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(dav, Hidden.version) {
+    var retry by remember { mutableIntStateOf(0) }
+    LaunchedEffect(dav, Hidden.version, retry) {
         pts = withContext(Dispatchers.Default) {
             if (dav) {
                 val lib = Dav.lib() ?: return@withContext emptyList()
@@ -181,8 +182,10 @@ fun PhotoMapScreen(dav: Boolean) {
         val list = pts
         when {
             list == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = C.Accent, modifier = Modifier.size(28.dp)) }
-            list.isEmpty() -> StateMessage(LI.map(), if (err != null) "地图加载失败" else "还没有带位置的照片",
-                err ?: if (dav) "本地分析读到 GPS 后，照片会出现在地图上。" else "拍照时开启定位，飞牛识别后会出现在这里。")
+            // 1.7.17：飞牛地图点读取失败时给「重试」
+            list.isEmpty() && err != null -> Box(Modifier.statusBarsPadding().padding(top = 56.dp)) { ErrorState(err, onRetry = { err = null; pts = null; retry++ }) }
+            list.isEmpty() -> StateMessage(LI.map(), "还没有带位置的照片",
+                if (dav) "本地分析读到 GPS 后，照片会出现在地图上。" else "拍照时开启定位，飞牛识别后会出现在这里。")
             else -> OsmMap(list) { cl -> openCluster(dav, cl) }
         }
         ExtTop("照片地图", list?.let { "${it.sumOf { p -> p.count }} 张" } ?: "") {
