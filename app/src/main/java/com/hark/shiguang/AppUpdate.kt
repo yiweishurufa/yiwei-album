@@ -33,6 +33,8 @@ object AppUpdate {
     private const val REPO = "${TRUSTED}yiwei-album"
     const val APK_URL = "$REPO/releases/download/android-nightly/yiwei-album.apk"
     const val VERSION_URL = "$REPO/releases/download/android-nightly/version.json"
+    /** 1.7.17：CI 随安装包上传的 CHANGELOG.md（与 version.json 同一条加速路径，国内可用）。 */
+    const val CHANGELOG_URL = "$REPO/releases/download/android-nightly/CHANGELOG.md"
     private const val API_URL = "https://api.github.com/repos/yiweishurufa/yiwei-album/releases/tags/android-nightly"
 
     /** One way to reach a GitHub url. [map] returns null when this source cannot serve it. */
@@ -59,6 +61,8 @@ object AppUpdate {
     /** B5: set when a downloaded APK's signer differs from the installed app — shown as a dialog, installer never launched. */
     var signatureMismatch by mutableStateOf<String?>(null)
     var progress by mutableFloatStateOf(-1f)
+    /** 1.7.17：更新窗口里显示的「这次更新了什么」（当前版本之后 ~ 新版本的各节）；null = 还没读到 / 读不到。 */
+    var offerChanges by mutableStateOf<List<Changelog.Version>?>(null)
     var checking by mutableStateOf(false)
     /** Shown in the update dialog. */
     const val FALLBACK_TEXT = "安装包来自 GitHub（国内自动走 ghfast.top / gh-proxy.com 加速），下载后校验 SHA-256、包名和签名再安装。应用内下载失败时可点「浏览器下载」。"
@@ -140,6 +144,15 @@ object AppUpdate {
         } catch (e: Exception) {
             return "检查更新失败。${e.message ?: "网络错误"}"
         } finally { checking = false }
+    }
+
+    /**
+     * 1.7.17：读 GitHub 发布里的 CHANGELOG.md，取当前版本之后到 [r] 的各节。失败只记日志、返回 null，
+     * 更新窗口照常显示 version.json 里的 notes，不影响下载和安装。
+     */
+    suspend fun loadChanges(r: Release): List<Changelog.Version>? = withContext(Dispatchers.IO) {
+        runCatching { Changelog.between(Changelog.parse(fetchText(CHANGELOG_URL)), BuildInfo.version, r.version) }
+            .onFailure { Diag.log("UPD", "changelog failed: ${it.message}") }.getOrNull()?.takeIf { it.isNotEmpty() }
     }
 
     /** Browser fallback: the fixed APK link through the first mirror (github.com itself is often unreachable in 大陆). */

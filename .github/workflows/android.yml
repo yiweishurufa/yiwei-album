@@ -93,13 +93,19 @@ jobs:
           export SHA=$(sha256sum dist/yiwei-album.apk | cut -d' ' -f1)
           export SIZE=$(stat -c%s dist/yiwei-album.apk)
           export MSG="$(git log -1 --pretty=%B)"
+          # 1.7.17：更新内容取自 CHANGELOG.md 里这个版本的一节（App 更新窗口显示 notes；找不到这一节时退回提交说明）
+          python3 tools/changelog_section.py CHANGELOG.md "$APP_VERSION" > dist/notes.md || true
+          python3 tools/changelog_section.py --plain CHANGELOG.md "$APP_VERSION" > dist/notes.txt || true
+          cp CHANGELOG.md dist/CHANGELOG.md
           python3 - <<'PY'
           import json, os
+          plain = open("dist/notes.txt", encoding="utf-8").read().strip()
+          notes = ("%s 更新内容\n%s" % (os.environ["APP_VERSION"], plain))[:1800] if plain else "CI #%s：%s" % (os.environ["VERSION_RUN"], os.environ["MSG"].strip()[:1500])
           json.dump({
               "versionCode": int(os.environ["VC"]),
               "versionName": os.environ["APP_VERSION"],
               "build": int(os.environ["VERSION_RUN"]),
-              "notes": "CI #%s：%s" % (os.environ["VERSION_RUN"], os.environ["MSG"].strip()[:1500]),
+              "notes": notes,
               "apk": "https://github.com/yiweishurufa/yiwei-album/releases/download/android-nightly/yiwei-album.apk",
               "sha256": os.environ["SHA"],
               "size": int(os.environ["SIZE"]),
@@ -115,6 +121,7 @@ jobs:
           path: |
             dist/*.apk
             dist/version.json
+            dist/CHANGELOG.md
 
       - name: 发布安卓测试版
         if: github.ref == 'refs/heads/main'
@@ -123,14 +130,17 @@ jobs:
         run: |
           set -e
           NOTES="一维相册 Android 测试版 ${APP_VERSION}（CI #${VERSION_RUN}，提交 ${GITHUB_SHA::7}，${SIGN}）。固定下载地址：https://github.com/${GITHUB_REPOSITORY}/releases/download/android-nightly/yiwei-album.apk 。测试签名与正式版签名不同，首次安装需先卸载旧版。"
+          # 1.7.17：发布说明 = 上面这行 + CHANGELOG.md 里这个版本的更新内容（App 的 GitHub API 兜底只解析第一行的「测试版 x.y.z」「CI #n」）
+          { echo "$NOTES"; if [ -s dist/notes.md ]; then printf '\n## %s 更新内容\n\n' "$APP_VERSION"; cat dist/notes.md; fi; } > dist/release-notes.md
+          cat dist/release-notes.md
           if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/android-nightly" >/dev/null 2>&1; then
             gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/android-nightly" -f sha="$GITHUB_SHA" -F force=true >/dev/null || echo "tag move refused, keeping old tag"
           else
             gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref=refs/tags/android-nightly -f sha="$GITHUB_SHA" >/dev/null || echo "tag create refused"
           fi
           if gh release view android-nightly >/dev/null 2>&1; then
-            gh release upload android-nightly dist/yiwei-album.apk dist/version.json --clobber
-            gh release edit android-nightly --prerelease --title "一维相册 安卓测试版" --notes "$NOTES"
+            gh release upload android-nightly dist/yiwei-album.apk dist/version.json dist/CHANGELOG.md --clobber
+            gh release edit android-nightly --prerelease --title "一维相册 安卓测试版" --notes-file dist/release-notes.md
           else
-            gh release create android-nightly dist/yiwei-album.apk dist/version.json --target "$GITHUB_SHA" --prerelease --title "一维相册 安卓测试版" --notes "$NOTES"
+            gh release create android-nightly dist/yiwei-album.apk dist/version.json dist/CHANGELOG.md --target "$GITHUB_SHA" --prerelease --title "一维相册 安卓测试版" --notes-file dist/release-notes.md
           fi

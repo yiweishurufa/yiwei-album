@@ -7,6 +7,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hark.shiguang.*
@@ -29,12 +31,23 @@ fun AppOverlays() {
     }
     if (crash == null) AppUpdate.offer?.let { r ->
         val p = AppUpdate.progress
+        // 1.7.17：打开更新窗口时去读这次的更新内容（GitHub 发布里的 CHANGELOG.md，走同一条加速路径）；读不到就显示 version.json 的说明
+        LaunchedEffect(r.skipKey) { AppUpdate.offerChanges = null; AppUpdate.offerChanges = AppUpdate.loadChanges(r) }
         AppAlertDialog(onDismissRequest = { if (p < 0f) AppUpdate.offer = null }, containerColor = C.Surface,
             title = { Text("发现新版本 ${r.version}", color = C.Text) },
             text = {
                 Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
                     Text("当前 ${BuildInfo.label}" + (if (r.build > 0) " · 新版 CI #${r.build}" else "") + if (r.size > 0) " · 安装包 ${"%.1f".format(r.size / 1048576.0)} MB" else "", color = C.Sub, fontSize = 13.sp)
-                    if (r.notes.isNotBlank()) Text(r.notes.trim(), color = C.Text, fontSize = 14.sp, modifier = Modifier.padding(top = 10.dp))
+                    val changes = AppUpdate.offerChanges
+                    if (changes != null) {
+                        Text("更新内容", color = C.Text, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp).semantics { heading() })
+                        changes.forEach { v ->
+                            // 跳过了几个版本时，每个版本一个小标题
+                            if (changes.size > 1) Text(v.version + if (v.date.isNotEmpty()) "（${v.date}）" else "", color = C.Sub, style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier.padding(top = 10.dp))
+                            ChangelogGroups(v, compact = true)
+                        }
+                    } else if (!Changelog.isLegacyNotes(r.notes)) Text(r.notes.trim(), color = C.Text, fontSize = 14.sp, modifier = Modifier.padding(top = 10.dp))
                     Text(AppUpdate.FALLBACK_TEXT, color = C.Sub, fontSize = 12.sp, modifier = Modifier.padding(top = 10.dp))
                     if (p >= 0f) {
                         LinearProgressIndicator(progress = { p.coerceIn(0f, 1f) }, color = C.Accent, trackColor = C.Surface2, modifier = Modifier.fillMaxWidth().padding(top = 14.dp))

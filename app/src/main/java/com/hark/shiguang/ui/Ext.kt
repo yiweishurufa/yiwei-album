@@ -37,6 +37,8 @@ sealed class ExtScreen(val dark: Boolean = false) {
     data object BgGuide : ExtScreen()
     /** 1.7.13 设置 → 存储空间（ui/Storage.kt）。 */
     data object Storage : ExtScreen()
+    /** 1.7.17 设置 → 关于 → 更新内容（ui/ChangelogUi.kt）。 */
+    data object Changelog : ExtScreen()
 }
 
 @Composable
@@ -51,6 +53,7 @@ fun ExtHost(s: ExtScreen) {
         is ExtScreen.Onboarding -> OnboardingScreen(s.step)
         ExtScreen.BgGuide -> BgGuideScreen()
         ExtScreen.Storage -> StorageScreen()
+        ExtScreen.Changelog -> ChangelogScreen()
     }
 }
 

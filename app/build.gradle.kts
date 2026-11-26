@@ -59,6 +59,19 @@ android {
         }
     }
 }
+// 1.7.17：构建时把仓库根目录的 CHANGELOG.md 打进 assets（设置 → 关于 → 更新内容），仓库里只维护一份
+abstract class ChangelogAsset : DefaultTask() {
+    @get:InputFile abstract val source: RegularFileProperty
+    @get:OutputDirectory abstract val outDir: DirectoryProperty
+    @TaskAction fun copy() {
+        val d = outDir.get().asFile; d.mkdirs()
+        source.get().asFile.copyTo(d.resolve("CHANGELOG.md"), overwrite = true)
+    }
+}
+val changelogAsset = tasks.register<ChangelogAsset>("changelogAsset") {
+    source.set(rootProject.layout.projectDirectory.file("CHANGELOG.md"))
+}
+androidComponents { onVariants { v -> v.sources.assets?.addGeneratedSourceDirectory(changelogAsset, ChangelogAsset::outDir) } }
 // Room 表结构导出到 app/schemas（进 git，便于以后写迁移）
 ksp { arg("room.schemaLocation", "$projectDir/schemas"); arg("room.incremental", "true") }
 dependencies {
