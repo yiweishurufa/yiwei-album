@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 1.7.11 Android 8–11 启动窗口：页面底色 + 居中的圆角方块玻璃图标（ic_splash_legacy 的可见部分是 72/108，144dp → 约 96dp） -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/splash_bg" />
+    <item android:width="144dp" android:height="144dp" android:gravity="center" android:drawable="@drawable/ic_splash_legacy" />
+</layer-list>

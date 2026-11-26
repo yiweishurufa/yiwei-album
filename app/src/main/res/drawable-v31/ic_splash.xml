@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 由 tools/gen_app_icon.py 生成。启动页进场：玻璃方块弹到位，太阳和角随后出现（共 600ms，系统「移除动画」时不播）。 -->
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt">
+    <aapt:attr name="android:drawable">
+        <vector xmlns:android="http://schemas.android.com/apk/res/android"
+            xmlns:aapt="http://schemas.android.com/aapt"
+            android:width="108dp" android:height="108dp"
+            android:viewportWidth="108" android:viewportHeight="108">
+            <group>
+                <path android:pathData="M0,0h108v108h-108z">
+                    <aapt:attr name="android:fillColor">
+                        <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="108" android:endY="108">
+                            <item android:offset="0" android:color="#FF5C9DFF"/>
+                            <item android:offset="0.48" android:color="#FF3375DE"/>
+                            <item android:offset="1" android:color="#FF1C3E9E"/>
+                        </gradient>
+                    </aapt:attr>
+                </path>
+                <path android:pathData="M0,0h108v108h-108z">
+                    <aapt:attr name="android:fillColor">
+                        <gradient android:type="radial" android:centerX="26" android:centerY="22" android:gradientRadius="52">
+                            <item android:offset="0" android:color="#9E9BE3FF"/>
+                            <item android:offset="0.55" android:color="#299BE3FF"/>
+                            <item android:offset="1" android:color="#009BE3FF"/>
+                        </gradient>
+                    </aapt:attr>
+                </path>
+                <path android:pathData="M0,0h108v108h-108z">
+                    <aapt:attr name="android:fillColor">
+                        <gradient android:type="radial" android:centerX="90" android:centerY="94" android:gradientRadius="56">
+                            <item android:offset="0" android:color="#8C8B5CF6"/>
+                            <item android:offset="0.6" android:color="#248B5CF6"/>
+                            <item android:offset="1" android:color="#008B5CF6"/>
+                        </gradient>
+                    </aapt:attr>
+                </path>
+            </group>
+            <group android:name="tile" android:pivotX="54" android:pivotY="54">
+                <path android:pathData="M35,77.2A19,4.2 0 1 1 73,77.2A19,4.2 0 1 1 35,77.2Z"
+                    android:fillColor="#0F0A1A4A"/>
+                <path android:pathData="M38.5,76.6A15.5,3.2 0 1 1 69.5,76.6A15.5,3.2 0 1 1 38.5,76.6Z"
+                    android:fillColor="#140A1A4A"/>
+                <path android:pathData="M42,76A12,2.3 0 1 1 66,76A12,2.3 0 1 1 42,76Z"
+                    android:fillColor="#1A0A1A4A"/>
+                <path android:pathData="M46,42H62A9,9 0 0 1 71,51V65A9,9 0 0 1 62,74H46A9,9 0 0 1 37,65V51A9,9 0 0 1 46,42Z">
+                    <aapt:attr name="android:fillColor">
+                        <gradient android:type="linear" android:startX="54" android:startY="42" android:endX="54" android:endY="74">
+                            <item android:offset="0" android:color="#8FFFFFFF"/>
+                            <item android:offset="0.55" android:color="#47FFFFFF"/>
+                            <item android:offset="1" android:color="#2EFFFFFF"/>
+                        </gradient>
+                    </aapt:attr>
+                </path>
+                <path android:pathData="M46,43.2H62A7.8,7.8 0 0 1 69.8,51V56C61,53 48,58 38.2,61V51A7.8,7.8 0 0 1 46,43.2Z">
+                    <aapt:attr name="android:fillColor">
+                        <gradient android:type="linear" android:startX="54" android:startY="42" android:endX="54" android:endY="61">
+                            <item android:offset="0" android:color="#6BFFFFFF"/>
+                            <item android:offset="1" android:color="#00FFFFFF"/>
+                        </gradient>
+                    </aapt:attr>
+                </path>
+                <path android:pathData="M46,42H62A9,9 0 0 1 71,51V65A9,9 0 0 1 62,74H46A9,9 0 0 1 37,65V51A9,9 0 0 1 46,42Z"
+                    android:strokeWidth="1.2">
+                    <aapt:attr name="android:strokeColor">
+                        <gradient android:type="linear" android:startX="54" android:startY="42" android:endX="54" android:endY="74">
+                            <item android:offset="0" android:color="#F2FFFFFF"/>
+                            <item android:offset="0.5" android:color="#38FFFFFF"/>
+                            <item android:offset="1" android:color="#73FFFFFF"/>
+                        </gradient>
+                    </aapt:attr>
+                </path>
+                <path android:pathData="M42.3,60.2H65.7A2.3,2.3 0 0 1 68,62.5V62.5A2.3,2.3 0 0 1 65.7,64.8H42.3A2.3,2.3 0 0 1 40,62.5V62.5A2.3,2.3 0 0 1 42.3,60.2Z"
+                    android:fillColor="#47FFFFFF"/>
+                <path android:pathData="M37,61H71A0,0 0 0 1 71,61V64A0,0 0 0 1 71,64H37A0,0 0 0 1 37,64V61A0,0 0 0 1 37,61Z"
+                    android:fillColor="#F5FFFFFF"/>
+            </group>
+            <group android:name="sun" android:pivotX="62.6" android:pivotY="50.6">
+                <path android:pathData="M59.7,50.6A2.9,2.9 0 1 1 65.5,50.6A2.9,2.9 0 1 1 59.7,50.6Z"
+                    android:fillColor="#EBFFFFFF"/>
+            </group>
+            <group android:name="horns" android:pivotX="54" android:pivotY="46">
+                <path android:pathData="M36,46C25.38,46.5 24.95,38.8 30.05,34C28.77,39.4 31.32,42.04 36,41.44ZM72,46C82.62,46.5 83.05,38.8 77.95,34C79.22,39.4 76.67,42.04 72,41.44Z">
+                    <aapt:attr name="android:fillColor">
+                        <gradient android:type="linear" android:startX="54" android:startY="34" android:endX="54" android:endY="46">
+                            <item android:offset="0" android:color="#FFFFFFFF"/>
+                            <item android:offset="1" android:color="#FFDCE8FF"/>
+                        </gradient>
+                    </aapt:attr>
+                </path>
+            </group>
+        </vector>
+    </aapt:attr>
+    <target android:name="tile">
+        <aapt:attr name="android:animation">
+            <set android:ordering="together">
+                <objectAnimator android:propertyName="scaleX" android:valueFrom="0.86" android:valueTo="1"
+                    android:duration="520" android:startOffset="0" android:interpolator="@android:interpolator/overshoot"/>
+                <objectAnimator android:propertyName="scaleY" android:valueFrom="0.86" android:valueTo="1"
+                    android:duration="520" android:startOffset="0" android:interpolator="@android:interpolator/overshoot"/>
+            </set>
+        </aapt:attr>
+    </target>
+    <target android:name="horns">
+        <aapt:attr name="android:animation">
+            <set android:ordering="together">
+                <objectAnimator android:propertyName="scaleX" android:valueFrom="0.7" android:valueTo="1"
+                    android:duration="420" android:startOffset="160" android:interpolator="@android:interpolator/overshoot"/>
+                <objectAnimator android:propertyName="scaleY" android:valueFrom="0.7" android:valueTo="1"
+                    android:duration="420" android:startOffset="160" android:interpolator="@android:interpolator/overshoot"/>
+                <objectAnimator android:propertyName="translateY" android:valueFrom="5" android:valueTo="0"
+                    android:duration="420" android:startOffset="160" android:interpolator="@android:interpolator/decelerate_cubic"/>
+            </set>
+        </aapt:attr>
+    </target>
+    <target android:name="sun">
+        <aapt:attr name="android:animation">
+            <set android:ordering="together">
+                <objectAnimator android:propertyName="scaleX" android:valueFrom="0" android:valueTo="1"
+                    android:duration="360" android:startOffset="240" android:interpolator="@android:interpolator/overshoot"/>
+                <objectAnimator android:propertyName="scaleY" android:valueFrom="0" android:valueTo="1"
+                    android:duration="360" android:startOffset="240" android:interpolator="@android:interpolator/overshoot"/>
+            </set>
+        </aapt:attr>
+    </target>
+</animated-vector>

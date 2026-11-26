@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 1.7.11 Android 12+ 系统启动页：跟随系统深浅色的底 + 玻璃图标进场动画（drawable-v31/ic_splash.xml，系统「移除动画」时不播）。 -->
+    <style name="Theme.ShiGuang.Starting">
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:windowSplashScreenBackground">@color/splash_bg</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash</item>
+        <item name="android:windowSplashScreenAnimationDuration">600</item>
+    </style>
+</resources>

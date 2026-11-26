@@ -211,6 +211,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // 1.7.11：清单里是启动窗口主题（玻璃图标），窗口建出来之前换回正常主题
+        setTheme(R.style.Theme_ShiGuang)
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         if (Nav.stack.isEmpty()) {

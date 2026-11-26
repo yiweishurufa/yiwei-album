@@ -5,6 +5,13 @@
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
+    <!-- 1.7.11 启动窗口（只给 MainActivity）：Android 8–11 是跟随系统深浅色的底 + 居中的玻璃图标；
+         MainActivity.onCreate 在 super.onCreate 之前 setTheme(Theme.ShiGuang) 换回正常窗口底色。Android 12+ 见 values-v31。 -->
+    <style name="Theme.ShiGuang.Starting">
+        <item name="android:windowBackground">@drawable/splash_window</item>
+    </style>
     <color name="bg">#0B0C10</color>
     <color name="icon_bg">#0B0C10</color>
+    <!-- 与 Theme.kt 的「蓝黑 / 冷白」页面底色一致 -->
+    <color name="splash_bg">#EEF2F8</color>
 </resources>
