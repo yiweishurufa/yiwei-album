@@ -37,6 +37,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.ui.semantics.heading
@@ -110,11 +114,13 @@ private fun n(v: Int) = NumberFormat.getIntegerInstance().format(v)
  * [index] is HomeState.tab; 相册 (2) has no button of its own, it lives inside 照片 behind the 时间线 | 相册 switch.
  * 1.1.0: 5 → 4 个 tab。「视频」并入照片页（全部 / 照片 / 视频 / 实况 筛选），「AI」改名「发现」；旧索引 1 由 HomeState.openTab 兼容。
  */
-private data class Tab(val title: String, val index: Int, val icon: (Boolean) -> ImageVector)
+private data class Tab(val title: String, val index: Int, val icon: (Boolean) -> ImageVector, val filled: () -> ImageVector)
 private val tabs = listOf(
     // 用户 2026-11-02：「影音」拆成「影视」「音乐」两个 tab（音乐 = 索引 6）
     // 1.6.0：Kubai 线性图标；选中 = 线性双色（外形内一层 22% 同色填充）
-    Tab("照片", 0) { KI.photos(it) }, Tab("影视", 5) { KI.film(it) }, Tab("音乐", 6) { KI.music(it) }, Tab("发现", 3) { KI.discover(it) }, Tab("设置", 4) { KI.settings(it) },
+    // 1.7.0：选中态 = 实心感（FILL_ALPHA）+ 发光
+    Tab("照片", 0, { KI.photos(it) }, { KI.photosFilled() }), Tab("影视", 5, { KI.film(it) }, { KI.filmFilled() }), Tab("音乐", 6, { KI.music(it) }, { KI.musicFilled() }),
+    Tab("发现", 3, { KI.discover(it) }, { KI.discoverFilled() }), Tab("设置", 4, { KI.settings(it) }, { KI.settingsFilled() }),
 )
 
 /** 1.1.0: 全部 / 照片 / 视频 / 实况 chips under the 时间线 | 相册 switch (timeline mode only). */
@@ -158,9 +164,12 @@ fun HomeScreen() {
     val tabStates = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
     // 审查 8：在影音 / 发现 / 设置 tab 按返回，先回到照片，再按一次才退出（首页上面盖着别的页面时不拦截）
     androidx.activity.compose.BackHandler(enabled = Nav.stack.size == 1 && HomeState.tab != 0 && HomeState.tab != 2 && !Selection.active) { HomeState.tab = 0 }
+    // 1.7.0：首页内容录进 backdrop，浮在上面的玻璃（底栏、顶栏胶囊）模糊它（Glass.kt）
+    val backdrop = remember { GlassBackdrop() }
     Row(Modifier.fillMaxSize().appBackground()) {
     if (wide) SideRail()
     Box(Modifier.weight(1f).fillMaxHeight()) {
+        Box(Modifier.fillMaxSize().glassSource(backdrop)) {
         if (HomeState.switching && HomeState.tab != 4) Column { TopSwitch(search = if (HomeState.tab == 5 || HomeState.tab == 6) SearchScope.None else SearchScope.Photos, showDate = HomeState.tab != 5 && HomeState.tab != 6); SkeletonGrid(4, 20.dp) }
         // 用户 2026-10-24 要求继续优化：切底部 tab 时各 tab 的 rememberSaveable 状态（设置页滚动、发现页展开的卡片）
         // 也按 tab 保存，切回来还在。照片网格 / 发现页列表的滚动另有 ScrollMem 按账号保存。
@@ -176,6 +185,8 @@ fun HomeScreen() {
                 else -> SettingsScreen()
             }
         }
+        }
+        HomeTopCapsule(backdrop)
         // 1.0.3 #4: music mini bar sits above the bottom navigation (at the bottom on wide screens)
         Column(Modifier.align(Alignment.BottomCenter)) {
             // 1.6.6：迷你播放条从底栏上方滑入 / 滑出（多选时让位给多选栏）
@@ -184,7 +195,7 @@ fun HomeScreen() {
                 exit = androidx.compose.animation.slideOutVertically(Motion.exit()) { it } + androidx.compose.animation.fadeOut(Motion.exit())) {
                 MiniPlayer(Modifier.padding(bottom = if (wide) 0.dp else Space.xs + 2.dp).then(if (wide) Modifier.navigationBarsPadding().padding(bottom = 10.dp) else Modifier))
             }
-            if (!wide) BottomBar(Modifier)
+            if (!wide) BottomBar(Modifier, backdrop)
         }
     }
     }
@@ -233,34 +244,82 @@ private fun SideRail() {
 }
 
 /**
- * 1.6.0 底栏（docs/DESIGN.md §9）：不透明底 + 顶部发丝线；每项整格可点（≥ 48dp），选中时图标换成双色、
- * 背后的浅色胶囊从中间横向展开（临界阻尼弹簧），文字变正文色；切换时轻震一下。按压整项缩到 0.94。
+ * 1.7.0 底栏 v2（docs/DESIGN.md §9）：悬浮的玻璃胶囊（离底 10dp + 导航条、左右 14dp），内容从下面透出来（API 31+ 真模糊）。
+ * 选中项背后是一颗彩色玻璃气泡，切换时弹簧滑过去、移动中横向拉长（像液体）；选中图标换成实心感 + 背后一团光，
+ * 图标上移、标签淡入。整格可点（≥ 48dp），读屏是「标签页」。
  */
 @Composable
-private fun BottomBar(modifier: Modifier) {
+private fun BottomBar(modifier: Modifier, backdrop: GlassBackdrop) {
     if (Selection.active) return
     val view = androidx.compose.ui.platform.LocalView.current
-    Row(
-        modifier.fillMaxWidth().skeuoBar().navigationBarsPadding().padding(top = 6.dp, bottom = 4.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly
-    ) {
-        tabs.forEach { t ->
-            val i = t.index
-            val sel = HomeState.tab == i || (i == 0 && HomeState.tab == 2)
-            val grow by animateFloatAsState(if (sel) 1f else 0f, Motion.move(), label = "tabPill")
-            val fg by androidx.compose.animation.animateColorAsState(if (sel) C.Text else C.Sub, Motion.state(), label = "tabFg")
-            val icon by androidx.compose.animation.animateColorAsState(if (sel) C.Accent else C.Sub, Motion.state(), label = "tabIcon")
-            Column(Modifier.weight(1f).heightIn(min = 52.dp).pressScale(0.94f)
-                .clickable(remember { MutableInteractionSource() }, null, role = androidx.compose.ui.semantics.Role.Tab) { if (!sel) Haptics.tick(view); onTabTap(i, sel) }
-                .semantics { selected = sel }, horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(Modifier.width(56.dp).height(30.dp), contentAlignment = Alignment.Center) {
-                    Box(Modifier.matchParentSize().graphicsLayer { scaleX = 0.5f + 0.5f * grow; alpha = grow }.clip(RoundedCornerShape(15.dp)).background(C.AccentSoft))
-                    Icon(t.icon(sel), null, tint = icon, modifier = Modifier.size(24.dp))
+    val selIdx = tabs.indexOfFirst { HomeState.tab == it.index || (it.index == 0 && HomeState.tab == 2) }.coerceAtLeast(0)
+    Box(modifier.fillMaxWidth().navigationBarsPadding().padding(start = 14.dp, end = 14.dp, bottom = 10.dp)) {
+        GlassSurface(Modifier.fillMaxWidth().height(66.dp), shape = CircleShape, backdrop = backdrop, shadow = 18.dp) {
+            BoxWithConstraints(Modifier.fillMaxSize().padding(5.dp)) {
+                val w = maxWidth / tabs.size
+                val x by animateDpAsState(w * selIdx, Motion.liquid(), label = "bubbleX")
+                val stretch = 1f + (kotlin.math.abs((w * selIdx - x).value) / w.value).coerceAtMost(1f) * 0.34f
+                val bubble = if (Glass.on) C.Accent.copy(alpha = if (C.P.dark) 0.24f else 0.16f) else C.AccentSoft
+                val rim = Glass.rimBrush(0.9f)
+                Box(Modifier.offset(x = x).width(w).fillMaxHeight()
+                    .graphicsLayer { scaleX = stretch; scaleY = 1f - (stretch - 1f) * 0.3f }
+                    .clip(CircleShape).background(bubble)
+                    .then(if (Glass.on) Modifier.border(1.dp, rim, CircleShape) else Modifier))
+                Row(Modifier.fillMaxSize()) {
+                    tabs.forEachIndexed { k, t ->
+                        val sel = k == selIdx
+                        val lift by animateFloatAsState(if (sel) 1f else 0f, Motion.liquid(), label = "tabLift")
+                        val icon by androidx.compose.animation.animateColorAsState(if (sel) C.Accent else C.OnGlassSub, Motion.state(), label = "tabIcon")
+                        Box(Modifier.weight(1f).fillMaxHeight().clip(CircleShape)
+                            .clickable(remember { MutableInteractionSource() }, null, role = androidx.compose.ui.semantics.Role.Tab) { if (!sel) Haptics.tick(view); onTabTap(t.index, sel) }
+                            .semantics { selected = sel }, contentAlignment = Alignment.Center) {
+                            val up = with(androidx.compose.ui.platform.LocalDensity.current) { 7.dp.toPx() }
+                            if (Glass.on) Box(Modifier.size(44.dp).graphicsLayer { translationY = -up * lift; alpha = lift.coerceIn(0f, 1f) }
+                                .background(Brush.radialGradient(listOf(C.Accent.copy(alpha = if (C.P.dark) 0.55f else 0.35f), C.Accent.copy(alpha = 0f)))))
+                            Icon(if (sel) t.filled() else t.icon(false), null, tint = icon,
+                                modifier = Modifier.size(25.dp).graphicsLayer { translationY = -up * lift; val sc = 1f + 0.08f * lift; scaleX = sc; scaleY = sc })
+                            Text(t.title, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = C.OnGlass, maxLines = 1,
+                                modifier = Modifier.graphicsLayer { alpha = lift.coerceIn(0f, 1f); translationY = up * 2.3f + (1f - lift) * up })
+                        }
+                    }
                 }
-                Text(t.title, style = MaterialTheme.typography.labelMedium, color = fg, fontWeight = if (sel) FontWeight.Medium else FontWeight.Normal, modifier = Modifier.padding(top = 2.dp))
             }
         }
     }
+}
+
+/** 1.7.0：滚过首页大图后，标题收进顶部的玻璃胶囊（照片页的「11月 · 2026年」、按年视图）。各 tab 写 [title]，离开时清掉。 */
+object HomeChrome {
+    var title by mutableStateOf<String?>(null)
+}
+
+@Composable
+private fun HomeTopCapsule(backdrop: GlassBackdrop) {
+    val t = HomeChrome.title
+    var last by remember { mutableStateOf("") }
+    if (t != null) last = t
+    val p by animateFloatAsState(if (t != null) 1f else 0f, Motion.materialize(), label = "capsule")
+    if (t == null && p < 0.01f) return
+    Box(Modifier.fillMaxWidth().statusBarsPadding().padding(top = 6.dp), contentAlignment = Alignment.TopCenter) {
+        val drop = with(androidx.compose.ui.platform.LocalDensity.current) { 14.dp.toPx() }
+        GlassSurface(Modifier.graphicsLayer {
+            alpha = p.coerceIn(0f, 1f); val sc = 0.78f + 0.22f * p; scaleX = sc; scaleY = sc; translationY = (1f - p) * drop
+            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0f)
+        }.heightIn(min = 50.dp), shape = CircleShape, backdrop = backdrop) {
+            Row(Modifier.padding(start = 22.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(last, style = MaterialTheme.typography.titleLarge.copy(fontFamily = Type.numFamily, fontFeatureSettings = Type.TNUM), color = C.OnGlass,
+                    maxLines = 1, modifier = Modifier.semantics { heading() })
+                IconButton(onClick = { Nav.push(Route.Search) }) { Icon(KI.search(), "搜索", tint = C.OnGlass, modifier = Modifier.size(22.dp)) }
+            }
+        }
+    }
+}
+
+/** 写入顶栏胶囊标题；页面离开时清掉。 */
+@Composable
+internal fun ChromeTitle(title: String?) {
+    SideEffect { HomeChrome.title = title }
+    DisposableEffect(Unit) { onDispose { HomeChrome.title = null } }
 }
 
 /** One source = one 飞牛 account or one WebDAV account. */
@@ -300,24 +359,28 @@ enum class SearchScope { Photos, Media, None }
  * [showDate]「按日期筛选照片」只在照片 / 相册 / 发现保留；影音、音乐、设置不显示。
  */
 @Composable
-fun TopSwitch(search: SearchScope = SearchScope.Photos, showDate: Boolean = true, extra: @Composable RowScope.() -> Unit = {}) {
+fun TopSwitch(search: SearchScope = SearchScope.Photos, showDate: Boolean = true, overPhoto: Boolean = false, extra: @Composable RowScope.() -> Unit = {}) {
     val ctx = LocalContext.current
     var open by remember { mutableStateOf(false) }
     val cur = currentSource()
-    Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 16.dp, end = 12.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+    val fg = if (overPhoto) Color.White else C.OnGlass
+    val fgSub = if (overPhoto) Color.White.copy(alpha = 0.8f) else C.OnGlassSub
+    Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 14.dp, end = 10.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Box {
-            // 1.6.0：来源胶囊——浮起的小胶囊，按下缩放；状态点 6dp（绿 = 在线，红 = 连不上）
+            // 1.7.0：来源胶囊 = 玻璃胶囊（压在照片上时深色着色 + 白字），按下液体形变；状态点 7dp（绿 = 在线，红 = 连不上）
             val srcPress = remember { MutableInteractionSource() }
-            Row(Modifier.heightIn(min = 40.dp).skeuoPressable(srcPress, RoundedCornerShape(20.dp), if (Skeuo.on) C.Surface else C.Chip, flat = !Skeuo.on)
-                .clickable(srcPress, null, role = Role.Button, onClickLabel = "切换来源") { open = true }.padding(start = 14.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
+            Row(Modifier.heightIn(min = 44.dp).glassPress(srcPress)
+                .glass(CircleShape, null, tint = if (overPhoto) Color.Black.copy(alpha = 0.6f) else Color.Unspecified, shadow = if (overPhoto) 0.dp else 8.dp, highlight = if (overPhoto) 0.7f else 1f)
+                .clip(CircleShape)
+                .clickable(srcPress, null, role = Role.Button, onClickLabel = "切换来源") { open = true }.padding(start = 16.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 if (cur?.kind == "fn") {
                     val ok = Endpoint.online && Endpoint.latency >= 0
                     Box(Modifier.size(7.dp).clip(CircleShape).background(if (ok) C.Green else C.Danger))
-                } else Icon(KI.drive(), null, tint = C.Sub, modifier = Modifier.size(16.dp))
+                } else Icon(KI.drive(), null, tint = fgSub, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(8.dp))
-                Text(cur?.title ?: "添加来源", color = C.Text, style = MaterialTheme.typography.titleMedium, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 170.dp))
-                Icon(KI.down(), null, tint = C.Sub, modifier = Modifier.padding(start = 4.dp).size(16.dp))
+                Text(cur?.title ?: "添加来源", color = fg, style = MaterialTheme.typography.titleMedium, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 170.dp))
+                Icon(KI.down(), null, tint = fgSub, modifier = Modifier.padding(start = 4.dp).size(16.dp))
             }
             AppDropdownMenu(open, onDismissRequest = { open = false }, modifier = Modifier.background(C.Surface).widthIn(min = 230.dp)) {
                 val all = allSources()
@@ -342,10 +405,10 @@ fun TopSwitch(search: SearchScope = SearchScope.Photos, showDate: Boolean = true
         }
         Spacer(Modifier.weight(1f))
         extra()
-        if (showDate) IconButton(onClick = { HomeState.showDate = true }, modifier = Modifier.pressScale(0.9f)) { Icon(KI.calendar(), "按日期查看照片", tint = C.Text, modifier = Modifier.size(24.dp)) }
+        if (showDate) GlassIconButton(KI.calendar(), "按日期查看照片", overPhoto = overPhoto) { HomeState.showDate = true }
         when (search) {
-            SearchScope.Photos -> IconButton(onClick = { Nav.push(Route.Search) }, modifier = Modifier.pressScale(0.9f)) { Icon(KI.search(), "搜索照片", tint = C.Text, modifier = Modifier.size(24.dp)) }
-            SearchScope.Media -> IconButton(onClick = { Nav.push(Route.MovieSearch) }, modifier = Modifier.pressScale(0.9f)) { Icon(KI.search(), "搜索影片", tint = C.Text, modifier = Modifier.size(24.dp)) }
+            SearchScope.Photos -> GlassIconButton(KI.search(), "搜索照片", overPhoto = overPhoto) { Nav.push(Route.Search) }
+            SearchScope.Media -> GlassIconButton(KI.search(), "搜索影片", overPhoto = overPhoto) { Nav.push(Route.MovieSearch) }
             SearchScope.None -> Unit
         }
     }
@@ -353,8 +416,8 @@ fun TopSwitch(search: SearchScope = SearchScope.Photos, showDate: Boolean = true
 
 @Composable
 internal fun BigTitle(title: String, sub: String) {
-    // 1.6.0：月份大标题用 displaySmall（数字是 Allo、等宽），副标题一行次要色；标题是读屏的「标题」
-    Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp).semantics(mergeDescendants = true) { heading() }) {
+    // 1.7.0：页面大标题 displaySmall（40sp 粗体、负字距；数字 Allo 等宽），副标题一行次要色；标题是读屏的「标题」
+    Column(Modifier.padding(start = 18.dp, end = 16.dp, top = 20.dp, bottom = 10.dp).semantics(mergeDescendants = true) { heading() }) {
         Text(title, style = MaterialTheme.typography.displaySmall)
         if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodyMedium.merge(Type.num), color = C.Sub, modifier = Modifier.padding(top = 2.dp))
     }
@@ -376,14 +439,66 @@ private fun visibleDay(entries: List<Entry>, grid: LazyGridState, offset: Int): 
     }
 }
 
+/**
+ * 1.7.0 照片页顶部的全出血大图（DESIGN §9）：那年今天的封面（没有时用最新一张），铺满宽度、约 56% 屏高，
+ * 滚动时以 0.45 倍速视差下移；上沿压暗给顶栏，下沿压暗托住超大的月份标题（Allo 60sp 粗体、负字距）。
+ * 标题随滚动缩小淡出，滚过之后由顶栏玻璃胶囊接手（[HomeChrome]）。点大图打开那组照片。
+ */
 @Composable
-private fun CompactBar(title: String) {
-    // 1.6.0：吸顶栏 = 页面底色 98% + 底部发丝线；标题 titleLarge（数字 Allo 等宽，滚动时宽度不跳）
-    Row(Modifier.fillMaxWidth().background(C.Bg.copy(alpha = 0.98f)).drawBehind { drawLine(C.Line, androidx.compose.ui.geometry.Offset(0f, size.height), androidx.compose.ui.geometry.Offset(size.width, size.height), 1f) }
-        .statusBarsPadding().padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(title, style = MaterialTheme.typography.titleLarge.copy(fontFamily = Type.numFamily, fontWeight = FontWeight.SemiBold, fontFeatureSettings = Type.TNUM), modifier = Modifier.weight(1f).semantics { heading() })
-        // B12: was a 22 dp clickable icon without a label; IconButton gives a 48 dp touch target and TalkBack reads 「搜索」.
-        IconButton(onClick = { Nav.push(Route.Search) }, modifier = Modifier.pressScale(0.9f)) { Icon(KI.search(), "搜索", tint = C.Text, modifier = Modifier.size(24.dp)) }
+internal fun PhotoHero(cover: Photo?, kicker: String?, title: String, sub: String, scroll: () -> Int, onOpen: (() -> Unit)?) {
+    val conf = androidx.compose.ui.platform.LocalConfiguration.current
+    val h = (conf.screenHeightDp * 0.56f).dp.coerceIn(340.dp, 560.dp)
+    val hPx = with(androidx.compose.ui.platform.LocalDensity.current) { h.toPx() }
+    AmbientFrom(cover?.thumbS)
+    Box(Modifier.fillMaxWidth().height(h).clipToBounds()) {
+        Box(Modifier.fillMaxSize().graphicsLayer {
+            val y = scroll().toFloat().coerceIn(0f, hPx)
+            if (!Motion.reduced) { translationY = y * 0.45f; val sc = 1.04f + 0.04f * (y / hPx); scaleX = sc; scaleY = sc }
+        }.then(if (onOpen != null) Modifier.clickable(onClickLabel = "查看", role = Role.Button) { onOpen() } else Modifier)) {
+            if (cover != null) NetImage(cover.thumbM, Modifier.fillMaxSize())
+            else Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(C.Accent.copy(alpha = 0.55f), C.Bg))))
+        }
+        Box(Modifier.matchParentSize().background(Brush.verticalGradient(0f to Color(0x80000000), 0.28f to Color.Transparent, 0.5f to Color.Transparent, 1f to Color(0xB8000000))))
+        TopSwitch(overPhoto = true)
+        val shadow = androidx.compose.ui.graphics.Shadow(Color(0x73000000), blurRadius = 28f)
+        Column(Modifier.align(Alignment.BottomStart).padding(start = 20.dp, end = 20.dp, bottom = 22.dp)
+            .graphicsLayer {
+                val f = (scroll().toFloat() / (hPx * 0.6f)).coerceIn(0f, 1f)
+                alpha = 1f - f; if (!Motion.reduced) { val sc = 1f - 0.18f * f; scaleX = sc; scaleY = sc; translationY = -f * 24f }
+                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 1f)
+            }.semantics(mergeDescendants = true) { heading() }) {
+            if (kicker != null) Text(kicker, color = Color.White.copy(alpha = 0.9f), style = MaterialTheme.typography.labelLarge.copy(shadow = shadow), modifier = Modifier.padding(bottom = 2.dp))
+            Text(title, color = Color.White, style = MaterialTheme.typography.displayLarge.copy(shadow = shadow))
+            if (sub.isNotEmpty()) Text(sub, color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodyLarge.merge(Type.num).copy(shadow = shadow), modifier = Modifier.padding(top = 2.dp))
+        }
+    }
+}
+
+/** 第一项（大图所在的页头）滚动了多少 px；页头已经滚出去时返回一个很大的值。 */
+private fun heroScroll(index: Int, offset: Int): Int = if (index == 0) offset else Int.MAX_VALUE / 4
+
+/** 大图高度（与 [PhotoHero] 一致），px。 */
+@Composable
+private fun heroPx(): Float {
+    val conf = androidx.compose.ui.platform.LocalConfiguration.current
+    return with(androidx.compose.ui.platform.LocalDensity.current) { (conf.screenHeightDp * 0.56f).dp.coerceIn(340.dp, 560.dp).toPx() }
+}
+
+/** 照片页页头：全出血大图 + 图库 / 合集 + 筛选 + 那年今天横条。 */
+@Composable
+private fun PhotoHeader(memories: List<MemoryGroup>, shown: List<Photo>, mt: String, sub: String, scroll: () -> Int, extra: @Composable () -> Unit = {}) {
+    val mem = remember(memories, Hidden.version) { memories.firstNotNullOfOrNull { g -> Hidden.visible(g.photos).takeIf { it.isNotEmpty() }?.let { g to it } } }
+    val cover = mem?.second?.first() ?: shown.firstOrNull()
+    val kicker = mem?.first?.let { if (it.yearsAgo == 1) "一年前的今天" else "${it.yearsAgo} 年前的今天" }
+    val open: (() -> Unit)? = when {
+        mem != null -> { { Nav.push(Route.Viewer(mem.second, 0)) } }
+        shown.isNotEmpty() -> { { Nav.push(Route.Viewer(shown, 0)) } }
+        else -> null
+    }
+    Column {
+        PhotoHero(cover, kicker, mt, sub, scroll, open)
+        Spacer(Modifier.height(4.dp))
+        PhotoModeSwitch(); PhotoFilterChips(); MemoriesRow(memories); extra()
     }
 }
 
@@ -415,7 +530,11 @@ private fun PhotosTab() {
     LaunchedEffect(tl.days) { memories = OnThisDay.loadFn(tl, NasAccounts.currentId) }
     LaunchedEffect(memories, stills.isNotEmpty()) { if (stills.isNotEmpty()) OnThisDay.feedWidget("fn:" + NasAccounts.currentId, memories) { stills } }
     val entries by remember(level, filter) { derivedStateOf { buildEntriesBy(shown, level, true) } }
-    val scrolled by remember { derivedStateOf { grid.firstVisibleItemIndex > 0 } }
+    val hp = heroPx()
+    val feed = rememberMemList("fn-feed-" + NasAccounts.currentId)
+    val scrolled by remember { derivedStateOf {
+        if (HomeState.immersive) heroScroll(feed.firstVisibleItemIndex, feed.firstVisibleItemScrollOffset) > hp * 0.55f
+        else heroScroll(grid.firstVisibleItemIndex, grid.firstVisibleItemScrollOffset) > hp * 0.55f } }
     val day = visibleDay(entries, grid, 1)
     val (mt, yt) = monthTitle(day)
     val (pc, vc) = tl.stats
@@ -439,16 +558,19 @@ private fun PhotosTab() {
                         if (idx >= 0) grid.scrollToItem(idx + 1)
                     }
                 }, onPinch = ::pinch)
-                CompactBar("按年")
+                ChromeTitle("按年")
             }
-            HomeState.immersive -> ImmersiveFeed(entries, tl.loading, onEnd = { scope.launch { tl.next() } }, onOpen = { Nav.push(Route.Viewer(shown, it)) },
-                state = rememberMemList("fn-feed-" + NasAccounts.currentId), bottom = 100.dp + miniPlayerPad,
-                header = { Column { TopSwitch(); PhotoModeSwitch(); PhotoFilterChips(); BigTitle(mt, sub); MemoriesRow(memories) } })
+            HomeState.immersive -> {
+                ImmersiveFeed(entries, tl.loading, onEnd = { scope.launch { tl.next() } }, onOpen = { Nav.push(Route.Viewer(shown, it)) },
+                    state = feed, bottom = 100.dp + miniPlayerPad,
+                    header = { PhotoHeader(memories, shown, mt, sub, { heroScroll(feed.firstVisibleItemIndex, feed.firstVisibleItemScrollOffset) }) })
+                ChromeTitle(if (scrolled) "$mt · $yt".trim(' ', '·') else null)
+            }
             else -> {
                 PhotoGrid(
                     entries, cols, tl.loading, onEnd = { scope.launch { tl.next() } },
                     onOpen = { Nav.push(Route.Viewer(shown, it)) }, state = grid, top = 0.dp, bottom = 100.dp + miniPlayerPad,
-                    header = { Column { TopSwitch(); PhotoModeSwitch(); PhotoFilterChips(); BigTitle(mt, sub); MemoriesRow(memories)
+                    header = { PhotoHeader(memories, shown, mt, sub, { heroScroll(grid.firstVisibleItemIndex, grid.firstVisibleItemScrollOffset) }) {
                         if (shown.isEmpty()) Text(if (tl.loading || !tl.done) "正在查找…" else if (filter == 2) "没有视频" else "没有实况照片",
                             style = MaterialTheme.typography.bodySmall, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(vertical = 60.dp))
                     } },
@@ -463,7 +585,7 @@ private fun PhotosTab() {
                         }
                     } },
                 )
-                AnimatedVisibility(scrolled, enter = fadeIn(), exit = fadeOut()) { CompactBar("$mt · $yt".trim(' ', '·')) }
+                ChromeTitle(if (scrolled) "$mt · $yt".trim(' ', '·') else null)
             }
         }
         SelectionBar(Modifier.align(Alignment.BottomCenter), onChanged = { scope.launch { tl.refresh() } })
@@ -501,7 +623,11 @@ private fun DavPhotosTab() {
     val memories by remember(lib) { derivedStateOf { lib.metaVersion; OnThisDay.from(stills) } }
     LaunchedEffect(memories, stills.isNotEmpty()) { if (stills.isNotEmpty()) OnThisDay.feedWidget("dav:" + lib.accountId, memories) { stills } }
     val entries by remember(lib, level, filter) { derivedStateOf { lib.metaVersion; buildEntriesBy(shown, level, true) } }
-    val scrolled by remember { derivedStateOf { grid.firstVisibleItemIndex > 0 } }
+    val hp = heroPx()
+    val feed = rememberMemList("dav-feed-" + lib.accountId)
+    val scrolled by remember { derivedStateOf {
+        if (HomeState.immersive) heroScroll(feed.firstVisibleItemIndex, feed.firstVisibleItemScrollOffset) > hp * 0.55f
+        else heroScroll(grid.firstVisibleItemIndex, grid.firstVisibleItemScrollOffset) > hp * 0.55f } }
     val day = visibleDay(entries, grid, 1)
     val (mt, yt) = monthTitle(day)
     val sub = listOf(yt, (if (filter == 1) "${n(stills.size)} 张照片" else "${n(shown.size)} 项"), ScanStatus.listing(lib)?.let { "正在扫描 ${it.done}/${it.total} 个文件夹" } ?: "").filter { it.isNotEmpty() }.joinToString(" · ")
@@ -513,13 +639,16 @@ private fun DavPhotosTab() {
                 if (filter == 2) StateMessage(LI.videos(), "没有视频", "")
                 else if (filter == 3 && stills.isNotEmpty()) StateMessage(KI.live(), "没有实况照片", "实况和动态照片分析完后会出现在这里。")
                 else StateMessage(LI.photos(), "没有找到照片", "把照片放进这个 WebDAV 后下拉刷新。", "重新扫描") { scope.launch { lib.scan(full = true) } } } }
-            HomeState.immersive -> ImmersiveFeed(entries, lib.scanning, onEnd = {}, onOpen = { Nav.push(Route.Viewer(shown, it)) },
-                state = rememberMemList("dav-feed-" + lib.accountId), bottom = 100.dp + miniPlayerPad,
-                header = { Column { TopSwitch(); PhotoModeSwitch(); PhotoFilterChips(); BigTitle(mt, sub); MemoriesRow(memories) } })
+            HomeState.immersive -> {
+                ImmersiveFeed(entries, lib.scanning, onEnd = {}, onOpen = { Nav.push(Route.Viewer(shown, it)) },
+                    state = feed, bottom = 100.dp + miniPlayerPad,
+                    header = { PhotoHeader(memories, shown, mt, sub, { heroScroll(feed.firstVisibleItemIndex, feed.firstVisibleItemScrollOffset) }) })
+                ChromeTitle(if (scrolled) "$mt · $yt".trim(' ', '·') else null)
+            }
             else -> {
                 PhotoGrid(entries, adaptiveCols(level.cols.coerceAtMost(7)), lib.scanning, onEnd = {}, onOpen = { Nav.push(Route.Viewer(shown, it)) }, state = grid, top = 0.dp, bottom = 100.dp + miniPlayerPad,
-                    header = { Column { TopSwitch(); PhotoModeSwitch(); PhotoFilterChips(); BigTitle(mt, sub); MemoriesRow(memories) } }, onPinch = ::pinch)
-                AnimatedVisibility(scrolled, enter = fadeIn(), exit = fadeOut()) { CompactBar("$mt · $yt".trim(' ', '·')) }
+                    header = { PhotoHeader(memories, shown, mt, sub, { heroScroll(grid.firstVisibleItemIndex, grid.firstVisibleItemScrollOffset) }) }, onPinch = ::pinch)
+                ChromeTitle(if (scrolled) "$mt · $yt".trim(' ', '·') else null)
             }
         }
         PullToRefreshContainer(state = ptr, modifier = Modifier.align(Alignment.TopCenter))

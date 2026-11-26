@@ -91,11 +91,12 @@ fun SettingsScreen() {
         Card {
             FillSegmented(ThemeMode.values().map { it.title }, ThemeMode.values().indexOf(ThemeState.mode)) { ThemeState.pickMode(ThemeMode.values()[it]) }
             Div()
-            // 用户 2026-10-23：界面风格 拟物（锤子风格，默认）/ 简洁
+            // 1.7.0：界面风格 玻璃（默认，半透明 + 模糊）/ 简洁（不模糊、纯色，低端机 / 省电）。存储键不变
             Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 12.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("界面风格", color = C.Text, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                Text(if (ThemeState.skeuo) "半透明与模糊" else "不模糊，更省电", color = C.Sub, style = MaterialTheme.typography.bodySmall)
             }
-            FillSegmented(listOf("质感", "简洁"), if (ThemeState.skeuo) 0 else 1) { ThemeState.pickStyle(it == 0) }
+            FillSegmented(listOf("玻璃", "简洁"), if (ThemeState.skeuo) 0 else 1) { ThemeState.pickStyle(it == 0) }
             Div()
             Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("强调色", color = C.Text, fontSize = 15.sp, modifier = Modifier.weight(1f))

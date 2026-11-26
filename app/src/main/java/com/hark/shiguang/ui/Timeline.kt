@@ -199,7 +199,8 @@ fun PhotoGrid(
     Box(Modifier.fillMaxSize()) {
         LazyVerticalGrid(
             columns = GridCells.Fixed(columns), state = state,
-            contentPadding = PaddingValues(top = top, bottom = bottom, start = if (columns >= 6) 0.dp else 2.dp, end = if (columns >= 6) 0.dp else 2.dp),
+            // 1.7.0 照片铺满：去掉左右页边距，缩略图直角、间隙 1.5dp（≥ 6 列 1dp）
+            contentPadding = PaddingValues(top = top, bottom = bottom),
             horizontalArrangement = Arrangement.spacedBy(gap), verticalArrangement = Arrangement.spacedBy(gap),
             modifier = Modifier.fillMaxSize()
                 .graphicsLayer {
@@ -283,17 +284,17 @@ private fun DateHeader(e: Entry.Header, entries: List<Entry>, i: Int, onClick: (
     }
     val allSel = Selection.active && inGroup.isNotEmpty() && inGroup.all { Selection.has(it) }
     Row(
-        Modifier.fillMaxWidth().padding(start = Space.m, end = Space.xs, top = Space.xl, bottom = Space.xs).heightIn(min = 40.dp)
+        Modifier.fillMaxWidth().padding(start = 18.dp, end = Space.xs, top = 30.dp, bottom = 10.dp).heightIn(min = 40.dp)
             .pointerInput(onClick) { detectTapGestures { if (onClick != null) onClick(e) } }
             .semantics(mergeDescendants = true) { heading() },
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 1.6.2：标题与副标题同一基线；日期数字 Allo 等宽（DESIGN §3 titleMedium 加大到 17sp 的日期角色）
+        // 1.7.0：日期 / 月份标题大号粗体左对齐（headlineSmall 22sp、负字距；数字 Allo 等宽），副标题同一基线
         Row(Modifier.weight(1f), verticalAlignment = Alignment.Bottom) {
-            Text(e.title, style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp, fontFamily = C.P.display, fontWeight = FontWeight.SemiBold, fontFeatureSettings = Type.TNUM), color = C.Text)
+            Text(e.title, style = MaterialTheme.typography.headlineSmall.copy(fontFamily = C.P.display, fontFeatureSettings = Type.TNUM), color = C.Text)
             if (e.sub.isNotEmpty()) {
                 Spacer(Modifier.width(Space.s))
-                Text(e.sub, style = MaterialTheme.typography.bodySmall, color = C.Sub, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(bottom = 1.dp))
+                Text(e.sub, style = MaterialTheme.typography.bodyMedium, color = C.Sub, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(bottom = 3.dp))
             }
         }
         // 多选时出现「全选 / 取消」：淡入，不挤动标题；整块 ≥ 40dp 高便于点按，读屏是按钮
