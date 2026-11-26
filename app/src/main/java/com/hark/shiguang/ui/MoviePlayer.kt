@@ -24,13 +24,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Cast
-import androidx.compose.material.icons.rounded.Lock
-import androidx.compose.material.icons.rounded.*
-import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
-import androidx.compose.material.icons.rounded.Pause
-import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -926,7 +919,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                                     .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp)))
                             }
                             Text(PlayerHints.longClock((f * dur).toLong()), color = Color.White, style = Type.badge.copy(fontSize = 15.sp, lineHeight = 20.sp),
-                                modifier = Modifier.padding(top = Space.xs).background(Color(0x99000000), androidx.compose.foundation.shape.RoundedCornerShape(Radius.xs)).padding(horizontal = Space.s, vertical = 2.dp))
+                                modifier = Modifier.padding(top = Space.xs).playerGlass(androidx.compose.foundation.shape.RoundedCornerShape(50), text = true).padding(horizontal = Space.m, vertical = 3.dp))
                         }
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -942,14 +935,15 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                             SpeedButton(player, showId) { poke++ }
-                            TopTextButton(qualityLabel) { tap { panel = PlayerPanel.QUALITY } }
+                            TopTextButton(qualityLabel, "清晰度 $qualityLabel") { tap { panel = PlayerPanel.QUALITY } }
                         }
                         val hasPrev = player.currentMediaItemIndex > 0
                         val hasNext = player.currentMediaItemIndex < queue.size - 1
                         if (queue.size > 1) OverlayIcon(KI.skipBackSolid(), "上一集", enabled = hasPrev) { tap { save(); player.seekToPreviousMediaItem(); player.play() } }
                         OverlayIcon(KI.rewind(), "后退 10 秒") { tap { seekGate.step(-10_000, "button-") } }
                         val playIx = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-                        Box(Modifier.padding(horizontal = Space.s).size(60.dp).skeuoPressable(playIx, CircleShape, Color(0x33FFFFFF), scale = 0.92f, flat = true)
+                        // 1.7.6：播放键是一颗更大的玻璃圆钮（高光边更亮），按下液体形变
+                        Box(Modifier.padding(horizontal = Space.s).size(60.dp).glassPress(playIx, 1.4f).playerGlass(CircleShape, highlight = 1f)
                             .clickable(playIx, null, role = androidx.compose.ui.semantics.Role.Button) { tap {
                             if (player.isPlaying) player.pause() else {
                                 if (player.playbackState == Player.STATE_ENDED) player.seekTo(0L)
@@ -975,10 +969,10 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
             (fadeIn(Motion.enter()) + slideInVertically(Motion.move()) { if (Motion.reduced) 0 else -it / 2 }) togetherWith fadeOut(Motion.exit())
         }, label = "hint") { h ->
             if (h != null) Text(h, color = Color.White, style = MaterialTheme.typography.labelLarge.copy(color = Color.White), modifier = Modifier.padding(top = 64.dp, start = Space.xl, end = Space.xl)
-                .background(Color(0xB3000000), androidx.compose.foundation.shape.RoundedCornerShape(Radius.m)).padding(horizontal = Space.l - 2.dp, vertical = Space.s + 2.dp).semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite })
+                .playerGlass(androidx.compose.foundation.shape.RoundedCornerShape(50), text = true).padding(horizontal = Space.l + 2.dp, vertical = Space.s + 2.dp).semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite })
         }
         if (showStats && !inPip) Text(statsText, color = Color.White, fontSize = 11.sp, modifier = Modifier.align(Alignment.TopStart).padding(top = 64.dp, start = 12.dp)
-            .background(Color(0x99000000), androidx.compose.foundation.shape.RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 4.dp))
+            .playerGlass(androidx.compose.foundation.shape.RoundedCornerShape(Radius.s), text = true).padding(horizontal = 10.dp, vertical = 6.dp))
         if (sleepDialog) AppAlertDialog(
             onDismissRequest = { sleepDialog = false },
             title = { Text("定时关闭") },
@@ -993,16 +987,16 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         )
         if (gestureTip && !inPip && error == null) {
             Column(Modifier.align(Alignment.Center).clickable(indication = null, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) { gestureTip = false }
-                .background(Color(0xB3000000), androidx.compose.foundation.shape.RoundedCornerShape(14.dp)).padding(horizontal = 20.dp, vertical = 14.dp),
+                .playerGlass(androidx.compose.foundation.shape.RoundedCornerShape(Radius.l), text = true, highlight = 1f).padding(horizontal = 22.dp, vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("手势小提示", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                Text("手势小提示", color = Color.White, style = MaterialTheme.typography.titleMedium.copy(color = Color.White, fontWeight = FontWeight.Bold))
                 PlayerHints.gestureLines.forEach { Text(it, color = Color(0xE6FFFFFF), fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp)) }
-                Text("点一下关闭，只显示这一次", color = Color(0x99FFFFFF), fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
+                Text("点一下关闭，只显示这一次", color = Color(0xC7FFFFFF), fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
             }
         }
         nextIn?.takeIf { !inPip }?.let { n ->
             Row(Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 96.dp)
-                .background(Color(0xCC000000), androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).padding(start = 16.dp, end = 4.dp),
+                .playerGlass(androidx.compose.foundation.shape.RoundedCornerShape(50), text = true, highlight = 1f).padding(start = 18.dp, end = 6.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 Text("下一集 $n 秒后播放", color = Color.White, fontSize = 14.sp)
                 TextButton(onClick = { cancelNext() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("取消", color = Color(0xCCFFFFFF)) }
@@ -1012,7 +1006,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         if (locked && !inPip) {
             Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { lockBtn = true } }) {
                 if (lockBtn) Row(Modifier.align(Alignment.CenterEnd).systemBarsPadding().padding(end = 16.dp).clickable { locked = false; lockBtn = false; hint = "已解锁"; controls = true }
-                    .background(Color(0xB3000000), androidx.compose.foundation.shape.RoundedCornerShape(24.dp)).padding(horizontal = 16.dp, vertical = 12.dp),
+                    .playerGlass(androidx.compose.foundation.shape.RoundedCornerShape(50), text = true, highlight = 1f).padding(horizontal = 18.dp, vertical = 13.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     Icon(KI.lock(), null, tint = Color.White, modifier = Modifier.size(22.dp))
                     Text("点此解锁", color = Color.White, style = MaterialTheme.typography.labelLarge.copy(color = Color.White), modifier = Modifier.padding(start = Space.s))
@@ -1022,7 +1016,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         if (!inPip) GestureHud(seekPreview, seekFrac, levelHud, fast, flash, seekThumb.takeIf { seekPreview != null })
         videoIssue?.takeIf { !inPip && error == null }?.let { msg ->
             Column(Modifier.align(Alignment.TopCenter).padding(top = 72.dp, start = 32.dp, end = 32.dp)
-                .background(Color(0xCC000000), androidx.compose.foundation.shape.RoundedCornerShape(14.dp)).padding(horizontal = 16.dp, vertical = 12.dp)) {
+                .playerGlass(androidx.compose.foundation.shape.RoundedCornerShape(Radius.l), text = true, highlight = 1f).padding(horizontal = 18.dp, vertical = 14.dp)) {
                 Text(msg, color = Color.White, fontSize = 14.sp, lineHeight = 20.sp)
                 Row(Modifier.padding(top = 6.dp)) {
                     TextButton(onClick = { openExternal(player.currentMediaItemIndex) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("用其他播放器打开", color = C.Accent) }
@@ -1032,7 +1026,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
             }
         }
         error?.takeIf { !inPip }?.let { e ->
-            Column(Modifier.align(Alignment.Center).background(Color(0xCC000000), androidx.compose.foundation.shape.RoundedCornerShape(14.dp)).padding(20.dp),
+            Column(Modifier.align(Alignment.Center).playerGlass(androidx.compose.foundation.shape.RoundedCornerShape(Radius.l), text = true, highlight = 1f).padding(22.dp),
                 horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(e, color = Color.White, fontSize = 15.sp)
                 Row(Modifier.padding(top = 10.dp)) {
@@ -1199,9 +1193,7 @@ private fun SpeedButton(player: ExoPlayer, showId: String, onOpen: () -> Unit = 
     }
     Box {
         // 用户口述 2：底栏左边直接显示当前倍速「1.0x」
-        TextButton(onClick = { open = true; onOpen() }, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "倍速 ${PlayerHints.speedLabel(speed)}" }) {
-            Text(PlayerHints.speedLabel(speed), color = Color.White, style = Type.badge.copy(fontSize = 15.sp, lineHeight = 20.sp))
-        }
+        TopTextButton(PlayerHints.speedLabel(speed), "倍速 ${PlayerHints.speedLabel(speed)}") { open = true; onOpen() }
         AppDropdownMenu(open, onDismissRequest = { open = false }) {
             listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f, 3f).forEach { s ->
                 DropdownMenuItem(text = { Text("${fmtSpeed(s)}×", color = if (s == speed) C.Accent else C.Text, fontWeight = if (s == speed) FontWeight.Medium else FontWeight.Normal) },
@@ -1246,19 +1238,27 @@ private const val LONG_PRESS_SPEED = 2f
 /** 用户口述 2：控制层上的图标按钮（48dp 触控区，白色图标，带读屏标签）。 */
 @Composable
 private fun OverlayIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, enabled: Boolean = true, onClick: () -> Unit) {
-    // 1.6.6：48dp 触控区里画一个 44dp 半透明黑圆（压在任何画面上都看得清），按下缩到 0.92
     val ix = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-    Box(Modifier.size(48.dp).clickable(ix, null, enabled = enabled, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick).semantics { contentDescription = label },
+    // 1.7.6：44dp 玻璃圆钮（降级玻璃：着色 + 噪点 + 高光边，视频画面拿不到所以不模糊），按下液体形变
+    Box(Modifier.size(48.dp).glassPress(ix, 1.4f).clickable(ix, null, enabled = enabled, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick).semantics { contentDescription = label },
         contentAlignment = Alignment.Center) {
-        Box(Modifier.size(44.dp).skeuoPressable(ix, CircleShape, Color(0x29000000), scale = 0.92f, flat = true), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(44.dp).playerGlass(CircleShape), contentAlignment = Alignment.Center) {
             Icon(icon, null, tint = if (enabled) Color.White else Color(0x59FFFFFF), modifier = Modifier.size(24.dp))
         }
     }
 }
 
+/** 1.7.6：底栏左侧的文字按钮（倍速、清晰度）改成玻璃胶囊：48dp 触控区里一个 36dp 高的胶囊。 */
 @Composable
-private fun TopTextButton(text: String, onClick: () -> Unit) {
-    TextButton(onClick = onClick, modifier = Modifier.heightIn(min = 48.dp)) { Text(text, color = Color.White, style = MaterialTheme.typography.labelLarge.copy(color = Color.White), fontSize = 15.sp) }
+private fun TopTextButton(text: String, desc: String? = null, onClick: () -> Unit) {
+    val ix = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    Box(Modifier.heightIn(min = 48.dp).padding(end = Space.xs).glassPress(ix, 0.8f)
+        .clickable(ix, null, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
+        .then(if (desc != null) Modifier.semantics { contentDescription = desc } else Modifier), contentAlignment = Alignment.Center) {
+        Box(Modifier.height(36.dp).playerGlass(androidx.compose.foundation.shape.RoundedCornerShape(50), text = true).padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
+            Text(text, color = Color.White, style = Type.badge.copy(fontSize = 14.sp, lineHeight = 18.sp), maxLines = 1)
+        }
+    }
 }
 
 /**
@@ -1276,7 +1276,7 @@ private fun BoxScope.GestureHud(seek: String?, seekFrac: Float, level: Pair<Stri
     var lastLevel by remember { mutableStateOf("" to 0f) }; if (level != null) lastLevel = level
     var lastFlash by remember { mutableStateOf(true) }; if (flash != null) lastFlash = flash
     AnimatedVisibility(seek != null, Modifier.align(Alignment.Center), enter = pop, exit = bye) {
-        Column(Modifier.background(Color(0xB3000000), shape).padding(horizontal = Space.l + Space.xs, vertical = Space.l - 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.playerGlass(shape, text = true, highlight = 1f).padding(horizontal = Space.l + Space.xs, vertical = Space.l - 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             thumb?.let { img ->
                 androidx.compose.foundation.Image(img, null, modifier = Modifier.padding(bottom = Space.s).width(180.dp).aspectRatio(img.width.toFloat() / img.height.coerceAtLeast(1))
                     .clip(androidx.compose.foundation.shape.RoundedCornerShape(Radius.s)))
@@ -1286,7 +1286,7 @@ private fun BoxScope.GestureHud(seek: String?, seekFrac: Float, level: Pair<Stri
         }
     }
     AnimatedVisibility(level != null && seek == null, Modifier.align(Alignment.Center), enter = pop, exit = bye) {
-        Column(Modifier.background(Color(0xB3000000), shape).padding(horizontal = Space.l + Space.xs, vertical = Space.l - 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.playerGlass(shape, text = true, highlight = 1f).padding(horizontal = Space.l + Space.xs, vertical = Space.l - 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(if (lastLevel.first == "亮度") KI.sun() else KI.volume(), null, tint = Color.White, modifier = Modifier.size(20.dp))
                 Text("${lastLevel.first} ${(lastLevel.second * 100).toInt()}%", color = Color.White, style = Type.badge.copy(fontSize = 17.sp, lineHeight = 22.sp), modifier = Modifier.padding(start = Space.s))
@@ -1295,12 +1295,12 @@ private fun BoxScope.GestureHud(seek: String?, seekFrac: Float, level: Pair<Stri
         }
     }
     AnimatedVisibility(flash != null && seek == null && level == null, Modifier.align(Alignment.Center), enter = pop, exit = bye) {
-        Box(Modifier.size(72.dp).background(Color(0x99000000), CircleShape), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(72.dp).playerGlass(CircleShape, text = true, highlight = 1f), contentAlignment = Alignment.Center) {
             Icon(if (lastFlash) KI.playSolid() else KI.pauseSolid(), if (lastFlash) "播放" else "暂停", tint = Color.White, modifier = Modifier.size(30.dp).offset(x = if (lastFlash) 1.dp else 0.dp))
         }
     }
     AnimatedVisibility(fast, Modifier.align(Alignment.TopCenter), enter = fadeIn(Motion.enter()) + slideInVertically(Motion.move()) { if (Motion.reduced) 0 else -it }, exit = bye) {
-        Row(Modifier.padding(top = Space.xl).background(Color(0xB3000000), shape).padding(horizontal = Space.l - 2.dp, vertical = Space.s), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(top = Space.xl).playerGlass(androidx.compose.foundation.shape.RoundedCornerShape(50), text = true).padding(horizontal = Space.l - 2.dp, vertical = Space.s), verticalAlignment = Alignment.CenterVertically) {
             Icon(KI.fastFwd(), null, tint = Color.White, modifier = Modifier.size(18.dp))
             Text("${fmtSpeed(LONG_PRESS_SPEED)}× 快进中", color = Color.White, style = MaterialTheme.typography.labelLarge.copy(color = Color.White), modifier = Modifier.padding(start = Space.s - 2.dp))
         }
