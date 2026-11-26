@@ -417,7 +417,7 @@ fun CollectionScreen(r: Route.Collection) {
         when {
             src.photos.isEmpty() && src.loading -> SkeletonGrid(cols, topPad)
             src.photos.isEmpty() && src.error != null -> ErrorState(src.error, onRetry = { scope.launch { src.refresh() } })
-            src.photos.isEmpty() -> StateMessage(Icons.Rounded.PhotoLibrary, "这里还是空的", "")
+            src.photos.isEmpty() -> StateMessage(KI.photos(), "这里还是空的", "")
             else -> PhotoGrid(entries, cols, src.loading, onEnd = { scope.launch { src.next() } }, onOpen = { Nav.push(Route.Viewer(shown, it)) }, state = grid, top = topPad, bottom = 40.dp)
         }
         Box(Modifier.fillMaxWidth().background(C.TopScrim)) {
@@ -560,7 +560,7 @@ fun SearchScreen() {
         Box(Modifier.weight(1f)) {
             when {
                 SearchState.loading -> SkeletonGrid(4, 0.dp)
-                SearchState.error != null -> StateMessage(Icons.Rounded.SearchOff, "搜索失败", SearchState.error.orEmpty())
+                SearchState.error != null -> StateMessage(KI.search(), "搜索失败", SearchState.error.orEmpty())
                 res == null -> Column(Modifier.padding(18.dp)) {
                     if (history.isNotEmpty()) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -586,7 +586,7 @@ fun SearchScreen() {
                     Spacer(Modifier.height(10.dp))
                     Text(if (HomeState.source == "dav") "WebDAV 照片按 AI 整理出的标签和描述来搜，整理越多越准。" + (if (com.hark.shiguang.OcrRunner.enabled) "也能直接搜照片里的文字，比如店名、票据上的字。" else "") else "需要在飞牛相册中开启 AI 智能识别，才能用自然语言搜索。", style = MaterialTheme.typography.bodySmall)
                 }
-                res.isEmpty() -> StateMessage(Icons.Rounded.ImageSearch, "没有找到相关照片", SearchState.note.ifEmpty { "换个说法试试，比如「蓝天」「孩子在笑」。" })
+                res.isEmpty() -> StateMessage(KI.search(), "没有找到相关照片", SearchState.note.ifEmpty { "换个说法试试，比如「蓝天」「孩子在笑」。" })
                 else -> PhotoGrid(remember(res, SearchState.ocrPaths) { searchEntries(res, SearchState.ocrPaths) }, adaptiveCols(4), false, onEnd = {}, onOpen = { Nav.push(Route.Viewer(res, it)) }, top = 4.dp, bottom = 40.dp,
                     header = { Column(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp)) {
                         Text("找到 ${num(res.size)} 项", style = MaterialTheme.typography.bodySmall)

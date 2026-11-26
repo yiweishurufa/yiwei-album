@@ -81,7 +81,7 @@ fun GlobalSearchScreen() {
         }
         val r = res
         when {
-            q.isBlank() -> StateMessage(Icons.Rounded.Search, "一个框搜全部", "输入片名、歌名、歌手或照片的文件名 / 地点。想用一句话描述照片，点下面的「用一句话找照片」。",
+            q.isBlank() -> StateMessage(KI.search(), "一个框搜全部", "片名、歌名、歌手，或照片的文件名和地点。",
                 "用一句话找照片") { Nav.push(Route.Search) }
             r == null -> Box(Modifier.fillMaxWidth().padding(top = 40.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = C.Accent, modifier = Modifier.size(24.dp)) }
             else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {

@@ -511,7 +511,7 @@ private fun DavPhotosTab() {
             lib.photos.isEmpty() && lib.error != null -> Column { TopSwitch(); Box(Modifier.weight(1f)) { ErrorState(lib.error, onRetry = { scope.launch { lib.scan() } }) } }
             shown.isEmpty() -> Column { TopSwitch(); PhotoModeSwitch(); PhotoFilterChips(); Box(Modifier.weight(1f)) {
                 if (filter == 2) StateMessage(LI.videos(), "没有视频", "")
-                else if (filter == 3 && stills.isNotEmpty()) StateMessage(LI.photos(), "没有实况照片", "iPhone 实况（照片 + 同名 MOV）和安卓动态照片分析完后会出现在这里。")
+                else if (filter == 3 && stills.isNotEmpty()) StateMessage(KI.live(), "没有实况照片", "实况和动态照片分析完后会出现在这里。")
                 else StateMessage(LI.photos(), "没有找到照片", "把照片放进这个 WebDAV 后下拉刷新。", "重新扫描") { scope.launch { lib.scan(full = true) } } } }
             HomeState.immersive -> ImmersiveFeed(entries, lib.scanning, onEnd = {}, onOpen = { Nav.push(Route.Viewer(shown, it)) },
                 state = rememberMemList("dav-feed-" + lib.accountId), bottom = 100.dp + miniPlayerPad,

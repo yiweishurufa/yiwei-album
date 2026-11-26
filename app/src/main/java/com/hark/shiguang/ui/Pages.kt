@@ -239,9 +239,9 @@ fun SmartScreen() {
             }
             Box(Modifier.weight(1f)) {
                 when {
-                    err != null && cards == null -> StateMessage(Icons.Rounded.AutoAwesome, "加载失败", err.orEmpty())
+                    err != null && cards == null -> StateMessage(KI.discover(), "加载失败", err.orEmpty())
                     cards == null -> Loading()
-                    cards.isEmpty() -> StateMessage(Icons.Rounded.AutoAwesome, "还没有分类", "需要在飞牛相册里开启 AI 识别，识别完成后会出现在这里。")
+                    cards.isEmpty() -> StateMessage(KI.discover(), "还没有分类", "在飞牛相册开启 AI 识别，识别完会出现在这里。")
                     else -> LazyVerticalGrid(GridCells.Adaptive(110.dp), contentPadding = PaddingValues(12.dp, 6.dp, 12.dp, 40.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         items(cards) { c ->
@@ -306,7 +306,7 @@ fun DuplicatesScreen() {
         when {
             groups.isEmpty() && loading -> Loading()
             groups.isEmpty() && err != null -> ErrorState(err, onRetry = { scope.launch { load(true) } })
-            groups.isEmpty() -> StateMessage(Icons.Rounded.FilterNone, "暂时没有重复照片", "重复和相似检测随「发现」页的整理在 NAS 上进行，有结果会显示在这里。", "去发现页") { HomeState.openAiTab() }
+            groups.isEmpty() -> StateMessage(KI.copy(), "暂时没有重复照片", "检测在 NAS 上进行，有结果会显示在这里。", "去发现页") { HomeState.openAiTab() }
             else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
                 items(groups.size, key = { groups[it].id }) { gi ->
                     val g = groups[gi]
@@ -371,8 +371,8 @@ fun FoldersScreen(r: Route.Folders) {
         val f = folders
         when {
             f == null -> Loading()
-            f.isEmpty() && photos.isEmpty() && err != null -> StateMessage(Icons.Rounded.FolderOff, "加载失败", err.orEmpty())
-            f.isEmpty() && photos.isEmpty() && !loading -> StateMessage(Icons.Rounded.Folder, "空文件夹", "")
+            f.isEmpty() && photos.isEmpty() && err != null -> StateMessage(KI.folder(), "加载失败", err.orEmpty())
+            f.isEmpty() && photos.isEmpty() && !loading -> StateMessage(KI.folder(), "空文件夹", "")
             else -> LazyVerticalGrid(GridCells.Adaptive(92.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(2.dp, 0.dp, 2.dp, 60.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 items(f, span = { GridItemSpan(maxLineSpan) }, key = { "d" + it.first }) { (path, name) ->
@@ -397,7 +397,7 @@ fun TransfersScreen() {
     Page("传输队列", if (Transfers.active > 0) "${Transfers.active} 个进行中" else "", actions = {
         if (Transfers.tasks.any { it.state == TState.DONE }) TextButton(onClick = { Transfers.clearFinished() }) { Text("清除已完成", color = C.Sub) }
     }) {
-        if (Transfers.tasks.isEmpty()) StateMessage(Icons.Rounded.SwapVert, "没有传输任务", "下载的照片保存在手机的 Pictures/一维相册。")
+        if (Transfers.tasks.isEmpty()) StateMessage(KI.swap(), "没有传输任务", "下载的照片保存在手机的 Pictures/一维相册。")
         else LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
             items(Transfers.tasks, key = { it.id }) { t ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -693,7 +693,7 @@ fun CloudBrowseScreen(r: Route.CloudBrowse) {
         when {
             d == null -> Loading()
             err != null && d.isEmpty() && photos.isEmpty() -> ErrorState(err, onRetry = { scope.launch { load() } })
-            d.isEmpty() && photos.isEmpty() && others.isEmpty() -> StateMessage(Icons.Rounded.FolderOpen, "空文件夹", "")
+            d.isEmpty() && photos.isEmpty() && others.isEmpty() -> StateMessage(KI.folder(), "空文件夹", "")
             else -> LazyVerticalGrid(GridCells.Adaptive(92.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(2.dp, 0.dp, 2.dp, 120.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 items(d, span = { GridItemSpan(maxLineSpan) }, key = { "d" + it.path }) { e ->
@@ -733,8 +733,8 @@ fun CloudTimelineScreen(r: Route.CloudTimeline) {
     Page(acc?.title ?: "网盘", if (scanning) "正在扫描… 已找到 ${photos.size} 项" else "${photos.size} 项") {
         when {
             photos.isEmpty() && scanning -> Loading()
-            photos.isEmpty() && err != null -> StateMessage(Icons.Rounded.CloudOff, "扫描失败", err.orEmpty())
-            photos.isEmpty() -> StateMessage(Icons.Rounded.PhotoLibrary, "没有找到照片或视频", "")
+            photos.isEmpty() && err != null -> StateMessage(KI.alert(), "扫描失败", err.orEmpty())
+            photos.isEmpty() -> StateMessage(KI.photos(), "没有找到照片或视频", "")
             else -> {
                 val sorted = remember(photos.size) { photos.sortedByDescending { it.time } }
                 PhotoGrid(entries, 4, scanning, onEnd = {}, onOpen = { Nav.push(Route.Viewer(sorted, it)) }, top = 0.dp, bottom = 120.dp)
