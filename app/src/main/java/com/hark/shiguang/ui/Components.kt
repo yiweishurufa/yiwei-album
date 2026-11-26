@@ -209,7 +209,7 @@ fun NoSourceState(icon: ImageVector, sub: String) =
 
 /**
  * 1.1.0 统一错误状态：按 [ErrorKind] 给出说人话的标题、原因和处理按钮（连不上 → 重试，密码错 → 修改账号，
- * 证书不受信任 → 证书设置，空间不足 → 清理缓存）。[detail] 是原始错误文字，小字附在下面方便反馈。
+ * 证书不受信任 → 证书设置，空间不足 → 存储空间页）。[detail] 是原始错误文字，小字附在下面方便反馈。
  * [onRetry] 用于「重试」类；其余按钮默认跳到对应页面，调用方可用 [onFix] 覆盖。
  */
 @Composable
@@ -239,7 +239,9 @@ fun ErrorState(message: String?, onRetry: () -> Unit, onFix: ((com.hark.shiguang
                 k == com.hark.shiguang.ErrorKind.AUTH -> com.hark.shiguang.Nav.push(if (HomeState.source == "dav") com.hark.shiguang.Route.DavAccounts else com.hark.shiguang.Route.ConnectionSettings)
                 // 用户 2026-10-23：证书设置移进了「高级」，直接打开高级页，不再让人在设置首页里找
                 k == com.hark.shiguang.ErrorKind.CERT -> com.hark.shiguang.Nav.push(com.hark.shiguang.Route.AdvancedSettings)
-                else -> { HomeState.tab = 4; com.hark.shiguang.Nav.reset(com.hark.shiguang.Route.Home) }   // 空间 / 位置：设置页里有对应入口
+                // 1.7.17：空间不足直接打开「存储空间」页（清理缓存在那里），不再只跳到设置首页让人自己找
+                k == com.hark.shiguang.ErrorKind.SPACE -> com.hark.shiguang.Nav.push(com.hark.shiguang.Route.X(ExtScreen.Storage))
+                else -> { HomeState.tab = 4; com.hark.shiguang.Nav.reset(com.hark.shiguang.Route.Home) }   // 位置：设置页里有对应入口
             }
         }
         if (k != com.hark.shiguang.ErrorKind.NETWORK && k != com.hark.shiguang.ErrorKind.OTHER)

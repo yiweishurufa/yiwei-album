@@ -67,8 +67,7 @@ internal fun DiscoverTab() {
         ActionListDialog(p.name.ifEmpty { "未命名人物" }, "${p.count} 张照片", onDismiss = { menuPerson = null }, actions = listOf(
             "命名" to { menuPerson = null; HomeState.renamePerson = p },
             "隐藏（路人）" to { menuPerson = null; FnPersonHide.set(p.id, true); toast(ctx, "已在本机隐藏") },
-            // 第 4 批：飞牛暂未提供人物合并/移出接口（FnPersonHide），不硬编假调用；点开只说明原因，维持现状。
-            "合并 / 移出" to { menuPerson = null; toast(ctx, "飞牛暂未提供人物合并/移出接口，仅支持本机隐藏") },
+            // 1.7.17 功能审计：删掉「合并 / 移出」——飞牛没有这个接口，点了只弹一句「暂不支持」，是个假选项
             "创建相册" to { menuPerson = null; makeNasAlbum(ctx, p.name.ifEmpty { "人物" }) { o, l -> Repo.personPhotos(p.id, o, l) } },
         ))
     }

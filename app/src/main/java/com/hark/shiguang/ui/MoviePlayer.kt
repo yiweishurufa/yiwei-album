@@ -294,7 +294,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("播放器启动失败", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-                Text("已记录到诊断日志（设置 → 导出诊断日志）", color = Color(0xB3FFFFFF), fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
+                Text("已记录到诊断日志（设置 → 关于 → 反馈与帮助 → 导出诊断日志）", color = Color(0xB3FFFFFF), fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
                 TextButton(onClick = { Nav.pop() }, modifier = Modifier.padding(top = 12.dp)) { Text("返回", color = C.Accent) }
             }
         }

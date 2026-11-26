@@ -52,8 +52,6 @@ fun SettingsScreen() {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var cacheSize by remember { mutableLongStateOf(-1L) }
-    // 清理进行中：防止连点触发并发清理，并在右侧显示「清理中…」
-    var clearing by remember { mutableStateOf(false) }
     var lockOn by remember { mutableStateOf(Store.lockOn) }
     LaunchedEffect(StorageUsage.version) { cacheSize = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { StorageUsage.clearableCacheSize(ctx.cacheDir) } }
     val nas = NasAccounts.current
@@ -61,8 +59,6 @@ fun SettingsScreen() {
     val davAcc = Dav.current
     var bgOpen by remember { mutableStateOf(false) }
     var helpOpen by remember { mutableStateOf(false) }
-    var limitOpen by remember { mutableStateOf(false) }
-    var limitMb by remember { mutableIntStateOf(Store.thumbCacheMb) }
     var davFolderSel by remember { mutableStateOf(Dav.lib()?.getSelectedDirs() ?: emptyList()) }
     var showDavFolders by remember { mutableStateOf(false) }
     // 第 4 批：平板/折叠屏——内容区最大宽度 720dp 居中，宽屏不再通栏拉伸。
@@ -107,8 +103,8 @@ fun SettingsScreen() {
             }
         }
 
-        // ---- 照片与整理（用户 2026-10-23：一件事只有一个家；副标题只放状态值）
-        Section("照片与整理")
+        // ---- 照片与影音（1.7.17 功能审计：「照片与整理」「影音」两组合并成一组，少一个分组标题；一件事只有一个家，副标题只放状态值）
+        Section("照片与影音")
         Card {
             if (dav) NavRow(LI.folder(), "照片文件夹", value = if (davFolderSel.isEmpty()) "全部" else "已选 ${davFolderSel.size} 个") { showDavFolders = true }
             else NavRow(LI.backup(), "手机备份", value = if (Store.backupOn) "已开启" else "未开启") { Nav.push(Route.Backup) }
@@ -117,24 +113,21 @@ fun SettingsScreen() {
             NavRow(LI.sparkle(), "智能整理", value = if (AiConfig.configured) "AI 已配置" else "AI 未配置") { Nav.push(if (dav) Route.SmartSettings else Route.AiSettings) }
             Div()
             NavRow(LI.clock(), "后台整理", value = ScanPolicy.label()) { bgOpen = true }
-        }
-
-        // ---- 影音（1.1.0：TMDB、音乐刮削、影视/音乐文件夹合并为一个入口）
-        Section("影音")
-        Card {
+            Div()
+            // 1.1.0：TMDB、音乐刮削、影视 / 音乐文件夹合并为一个入口
             val ml = Movies.lib(); val mu = Music.lib()
             val folders = (ml?.dirs?.size ?: 0) + (mu?.dirs?.size ?: 0)
             NavRow(LI.film(), "影音设置", value = if (!Tmdb.configured) "TMDB 未配置" else if (folders > 0) "$folders 个文件夹" else null) { Nav.push(Route.MediaSettings) }
         }
 
-        // ---- 安全与存储
-        Section("安全与存储")
+        // ---- 隐私与存储
+        Section("隐私与存储")
         Card {
             // H18: tell the user when passwords could not be stored encrypted on this phone（只留一行危险提示，细节放 ⓘ）
             if (Store.insecure || com.hark.shiguang.cloud.CloudAccounts.insecure) {
                 Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 8.dp, top = 6.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("本机无法加密保存密码", color = C.Danger, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                    InfoDot("这台手机的加密存储不可用，飞牛 / WebDAV 的密码和登录凭据只能以普通方式保存在本机。介意的话请不要在这台手机上保存密码，或在「设置 → 反馈与帮助 → 导出诊断日志」发给开发者。")
+                    InfoDot("这台手机的加密存储不可用，飞牛 / WebDAV 的密码和登录凭据只能以普通方式保存在本机。介意的话请不要在这台手机上保存密码，或在「设置 → 关于 → 反馈与帮助」导出诊断日志发给开发者。")
                 }
             }
             val lockOk = android.os.Build.VERSION.SDK_INT >= 28
@@ -142,35 +135,26 @@ fun SettingsScreen() {
                 if (lockOk) { lockOn = it; Store.lockOn = it }
             }
             Div()
-            // 1.7.13：分类占用与一键清理的完整页面（StorageScreen）
-            NavRow(KI.drive(), "存储空间", value = "按类查看占用") { Nav.push(Route.X(ExtScreen.Storage)) }
+            // 1.7.17 功能审计：「存储空间」「清理缓存」「缩略图缓存上限」三行做的是同一件事 → 只留「存储空间」一个入口，
+            // 清理和缓存上限都在页里（存储键 thumbCacheMb 不变）。右侧直接显示可清理的大小。
+            NavRow(KI.drive(), "存储空间", value = when { cacheSize == 0L -> "无缓存"; cacheSize > 0 -> "可清理 ${sizeLabel(cacheSize)}"; else -> null }) { Nav.push(Route.X(ExtScreen.Storage)) }
             Div()
-            NavRow(KI.trash(), "清理缓存", value = if (clearing) "清理中…" else if (cacheSize == 0L) "无缓存" else if (cacheSize >= 0) sizeLabel(cacheSize) else null) {
-                if (clearing) return@NavRow
-                if (cacheSize == 0L) { toast(ctx, "没有可清理的缓存"); return@NavRow }
-                clearing = true
-                scope.launch {
-                  try {
-                    // 清理范围见 StorageUsage.clearCache（不删诊断日志、更新包、崩溃记录）
-                    val left = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { StorageUsage.clearCache(ctx) }
-                    val freed = (cacheSize - left).coerceAtLeast(0L)
-                    cacheSize = left
-                    toast(ctx, if (freed > 0) "缓存已清理，释放 ${sizeLabel(freed)}" else "缓存已清理")
-                  } finally { clearing = false }
-                }
-            }
-            Div()
-            NavRow(KI.drive(), "缩略图缓存上限", value = CacheLimit.label(limitMb)) { limitOpen = true }
+            NavRow(LI.settings(), "高级") { Nav.push(Route.AdvancedSettings) }
         }
 
-        // ---- 通用
-        Section("通用")
+        // ---- 关于（1.7.17：原「通用」组；「导出诊断日志」只留在「反馈与帮助」里，不再单独一行）
+        Section("关于")
         Card {
-            NavRow(LI.refresh(), "检查更新", value = if (AppUpdate.checking) "检查中…" else AppUpdate.offer?.let { "有新版本 ${it.version}" }) {
+            NavRow(LI.refresh(), "检查更新", value = if (AppUpdate.checking) "检查中…" else AppUpdate.offer?.let { "有新版本 ${it.version}" } ?: BuildInfo.version) {
                 if (!AppUpdate.checking) scope.launch { AppUpdate.manualCheck()?.let { toast(ctx, it) } }
             }
             Div()
+            // 1.7.17：每个版本改了什么（随包附带的 CHANGELOG.md）
+            NavRow(KI.feed(), "更新内容") { Nav.push(Route.X(ExtScreen.Changelog)) }
+            Div()
             NavRow(LI.sparkle(), "使用引导") { Onboarding.open(0) }
+            Div()
+            NavRow(KI.mail(), "反馈与帮助", value = "邮件 · QQ 群 · 诊断日志") { helpOpen = true }
             Div()
             // 1.6.0：第三方图标 / 字体的许可（Kubai Icons MIT 要求附版权声明；Allo 是 SIL OFL 1.1）
             var licOpen by remember { mutableStateOf(false) }
@@ -179,29 +163,22 @@ fun SettingsScreen() {
                 title = { Text("开源许可", style = MaterialTheme.typography.titleLarge) },
                 text = { Text(OPEN_SOURCE_NOTICE, color = C.Sub, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) },
                 confirmButton = { TextButton(onClick = { licOpen = false }) { Text("知道了", color = C.Accent) } })
-            Div()
-            NavRow(KI.mail(), "反馈与帮助") { helpOpen = true }
-            Div()
-            // 优化 10（用户 2026-11-02）：一键导出诊断日志（不含密码 / token / 链接参数），调起系统分享
-            NavRow(KI.bug(), "导出诊断日志", value = "遇到问题时发给开发者") {
-                scope.launch {
-                    val f = runCatching { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { Diag.writeExport() } }.getOrNull()
-                    if (f == null) toast(ctx, "导出失败") else Diag.share(ctx, f)
-                }
-            }
-            Div()
-            NavRow(LI.settings(), "高级") { Nav.push(Route.AdvancedSettings) }
         }
         // 1.1.0: 账号入口只保留顶部卡片（切换与管理 → 退出 / 移除都在账号页里）
     }
     }
-    if (limitOpen) ActionListDialog("缩略图缓存上限", sub = "超过上限会自动删掉最久没看的缩略图，重启 App 后生效", onDismiss = { limitOpen = false },
-        actions = CacheLimit.OPTIONS_MB.map { mb -> (CacheLimit.label(mb) + if (mb == limitMb) "  ✓" else "") to { Store.thumbCacheMb = mb; limitMb = mb; limitOpen = false } })
     if (bgOpen) BackgroundPolicyDialog { bgOpen = false }
     if (helpOpen) ActionListDialog("反馈与帮助", onDismiss = { helpOpen = false }, actions = listOf(
         "发邮件给开发者" to { helpOpen = false; Feedback.email(ctx) },
         "加入 QQ 群（${Feedback.QQ_GROUP}）" to { helpOpen = false; Feedback.joinQq(ctx) },
-        "导出诊断日志" to { helpOpen = false; Diag.export(ctx) },
+        // 「导出诊断日志」原来在设置首页另有一行，1.7.17 合并到这里（同一个导出，IO 线程写文件后调起分享）
+        "导出诊断日志（遇到问题时发给开发者）" to {
+            helpOpen = false
+            scope.launch {
+                val f = runCatching { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { Diag.writeExport() } }.getOrNull()
+                if (f == null) toast(ctx, "导出失败") else Diag.share(ctx, f)
+            }
+        },
     ))
     if (showDavFolders) {
         DavFolderSelectDialog(
@@ -615,7 +592,6 @@ fun AdvancedSettingsScreen() {
                         info = "打开时删除的网盘照片先移到网盘里的隐藏文件夹 .yiwei-recycle，30 天后自动彻底删除；服务器不支持移动时先在 App 里隐藏，30 天后再删除。入口：发现 → 工具 → 最近删除。") {
                         davRecycle = it; DavRecycle.enabled = it
                     }
-                    Dav.lib()?.let { l -> Div(); NavRow(LI.trash(), "最近删除") { Nav.push(Route.DavRecycle(l.accountId)) } }
                 }
                 Div()
                 ToggleRow(LI.clock(), "系统定时后台整理", on = wmOn,

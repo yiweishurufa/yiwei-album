@@ -36,7 +36,7 @@ import java.io.File
 
 /**
  * 1.7.13 设置 → 存储空间（ROADMAP C7）：把一维相册在本机的占用按类分开看，一键清理缓存。
- * 只读本机 App 目录（cacheDir / filesDir / databases），不改任何存储格式；「清理缓存」与设置里那一行清的是同一批（[StorageUsage.clearCache]），
+ * 只读本机 App 目录（cacheDir / filesDir / databases），不改任何存储格式；1.7.17 起设置首页的「清理缓存」「缩略图缓存上限」两行并进这一页（[StorageUsage.clearCache]），
  * 照片索引、人物、影视 / 音乐资料、诊断日志、更新包不在一键清理范围内（清了要重新扫描 / 重新下载）。
  */
 object StorageUsage {
@@ -51,7 +51,7 @@ object StorageUsage {
 
     data class Part(val kind: Kind, val bytes: Long)
 
-    /** 每次在存储空间页清理后 +1，设置页「清理缓存」一行据此重新统计（设置 tab 一直在首页下面组合着）。 */
+    /** 每次在存储空间页清理后 +1，设置页「存储空间」一行的「可清理 X」据此重新统计。 */
     var version by mutableIntStateOf(0)
 
     /** cacheDir 里不被清理的：诊断日志、更新包、崩溃记录（B38）。 */
@@ -133,6 +133,9 @@ fun StorageScreen() {
     var parts by remember { mutableStateOf<List<StorageUsage.Part>?>(null) }
     var clearing by remember { mutableStateOf(false) }
     var tick by remember { mutableIntStateOf(0) }
+    // 1.7.17：缩略图缓存上限从设置首页移到这里（存储键 thumbCacheMb 不变）
+    var limitOpen by remember { mutableStateOf(false) }
+    var limitMb by remember { mutableIntStateOf(Store.thumbCacheMb) }
     LaunchedEffect(tick) { parts = withContext(Dispatchers.IO) { runCatching { StorageUsage.measure(ctx) }.getOrNull() ?: emptyList() } }
     val total = parts?.sumOf { it.bytes } ?: 0L
     val clearable = parts?.filter { it.kind.clearable }?.sumOf { it.bytes } ?: 0L
@@ -198,6 +201,11 @@ fun StorageScreen() {
                 }
             }
 
+            Spacer(Modifier.height(12.dp))
+            Card {
+                NavRow(KI.drive(), "缩略图缓存上限", value = CacheLimit.label(limitMb)) { limitOpen = true }
+            }
+
             // ---- 分类明细
             Section("分类")
             Card {
@@ -213,6 +221,8 @@ fun StorageScreen() {
                 modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp))
         }
     }
+    if (limitOpen) ActionListDialog("缩略图缓存上限", sub = "超过上限会自动删掉最久没看的缩略图，重启 App 后生效", onDismiss = { limitOpen = false },
+        actions = CacheLimit.OPTIONS_MB.map { mb -> (CacheLimit.label(mb) + if (mb == limitMb) "  ✓" else "") to { Store.thumbCacheMb = mb; limitMb = mb; limitOpen = false } })
 }
 
 @Composable
