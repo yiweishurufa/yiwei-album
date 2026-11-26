@@ -169,15 +169,20 @@ object CacheTrim {
 }
 
 /**
- * 1.7.17 Coil 拦截器（在内存 / 磁盘缓存查找之前执行）：飞牛图片的磁盘缓存键换成与内外网地址无关的稳定键（[ImageKeys]），
- * 切换内外网后缩略图不再整库重下。
+ * 1.7.17 Coil 拦截器（在内存 / 磁盘缓存查找之前执行）：
+ * - 飞牛图片的磁盘缓存键换成与内外网地址无关的稳定键（[ImageKeys]），切换内外网后缩略图不再整库重下；
+ * - 系统「移除动画」时关掉图片淡入（App 默认 180 ms、大图原图 250 ms），图片直接出现。
  */
 class StableImageKeys : coil.intercept.Interceptor {
     override suspend fun intercept(chain: coil.intercept.Interceptor.Chain): coil.request.ImageResult {
         val req = chain.request
         val data = req.data as? String
         val key = if (data != null && req.diskCacheKey == null) ImageKeys.stable(data).takeIf { it != data } else null
-        if (key == null) return chain.proceed(req)
-        return chain.proceed(req.newBuilder().diskCacheKey(key).build())
+        val reduced = com.hark.shiguang.ui.Motion.reduced
+        if (key == null && !reduced) return chain.proceed(req)
+        val b = req.newBuilder()
+        if (key != null) b.diskCacheKey(key)
+        if (reduced) b.crossfade(false)
+        return chain.proceed(b.build())
     }
 }
