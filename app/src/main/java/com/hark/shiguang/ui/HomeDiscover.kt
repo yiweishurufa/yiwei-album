@@ -466,7 +466,7 @@ fun FaceSettingsDialog(onDismiss: () -> Unit) {
     var confirmClear by remember { mutableStateOf(false) }
     // 用户 2026-10-23：最常调的「至少几张」留在外面，另外两个阈值和恢复默认收进「高级参数」；解释改成 ⓘ
     var adv by remember { mutableStateOf(false) }
-    AlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface, title = {
+    AppAlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface, title = {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("人脸识别设置", color = C.Text)
             InfoDot("人脸只在本机识别，不会上传。长按人物可以命名、合并或建相册。", "人脸识别")

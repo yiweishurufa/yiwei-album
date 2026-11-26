@@ -314,7 +314,7 @@ fun TopSwitch(search: SearchScope = SearchScope.Photos, showDate: Boolean = true
                 Text(cur?.title ?: "添加来源", color = C.Text, style = MaterialTheme.typography.titleMedium, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 170.dp))
                 Icon(KI.down(), null, tint = C.Sub, modifier = Modifier.padding(start = 4.dp).size(16.dp))
             }
-            DropdownMenu(open, onDismissRequest = { open = false }, modifier = Modifier.background(C.Surface).widthIn(min = 230.dp)) {
+            AppDropdownMenu(open, onDismissRequest = { open = false }, modifier = Modifier.background(C.Surface).widthIn(min = 230.dp)) {
                 val all = allSources()
                 listOf("fn" to "飞牛", "dav" to "WebDAV").forEach { (k, label) ->
                     val group = all.filter { it.kind == k }

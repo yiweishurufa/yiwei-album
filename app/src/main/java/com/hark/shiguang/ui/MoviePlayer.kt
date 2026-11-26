@@ -959,7 +959,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         }
         if (showStats && !inPip) Text(statsText, color = Color.White, fontSize = 11.sp, modifier = Modifier.align(Alignment.TopStart).padding(top = 64.dp, start = 12.dp)
             .background(Color(0x99000000), androidx.compose.foundation.shape.RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 4.dp))
-        if (sleepDialog) AlertDialog(
+        if (sleepDialog) AppAlertDialog(
             onDismissRequest = { sleepDialog = false },
             title = { Text("定时关闭") },
             text = {
@@ -1124,7 +1124,7 @@ private fun PlayerMenu(player: ExoPlayer, showId: String, offset: Long, offsetEn
     var look by remember { mutableIntStateOf(PlayPrefs.subStyle) }
     val looks = listOf("跟随系统", "白字描边", "黑底白字", "黄字描边")
     fun secs(s: Int) = if (s <= 0) "未设置" else "%d:%02d".format(s / 60, s % 60)
-    AlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface, title = { Text("播放设置", color = C.Text) }, text = {
+    AppAlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface, title = { Text("播放设置", color = C.Text) }, text = {
         Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
             Text("本剧通用", color = C.Sub, fontSize = 12.sp)
             MenuLine("跳过片头 · ${secs(intro)}", "设为当前位置", if (intro > 0) "清除" else null,
@@ -1180,7 +1180,7 @@ private fun SpeedButton(player: ExoPlayer, showId: String, onOpen: () -> Unit = 
     Box {
         // 用户口述 2：底栏左边直接显示当前倍速「1.0x」
         TextButton(onClick = { open = true; onOpen() }, modifier = Modifier.heightIn(min = 48.dp)) { Text(PlayerHints.speedLabel(speed), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium) }
-        DropdownMenu(open, onDismissRequest = { open = false }) {
+        AppDropdownMenu(open, onDismissRequest = { open = false }) {
             listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f, 3f).forEach { s ->
                 DropdownMenuItem(text = { Text("${fmtSpeed(s)}×", fontWeight = if (s == speed) FontWeight.SemiBold else FontWeight.Normal) },
                     onClick = { open = false; speed = s; player.setPlaybackSpeed(s); PlayPrefs.setSpeed(showId, s) })

@@ -144,7 +144,7 @@ fun FilterChipsRow(onOpen: () -> Unit, onClear: () -> Unit) {
 fun FilterSheet(dav: Boolean, onDismiss: () -> Unit, onApply: () -> Unit) {
     var pickDate by remember { mutableStateOf(false) }
     val cams = remember(dav) { AdvFilter.cameras(dav) }
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = C.Surface, dragHandle = { BottomSheetDefaults.DragHandle(color = C.Faint) }) {
+    AppBottomSheet(onDismissRequest = onDismiss, containerColor = C.Surface) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp).verticalScroll(rememberScrollState())) {
             Text("筛选", color = C.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Label("日期")

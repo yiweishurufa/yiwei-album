@@ -155,7 +155,7 @@ internal fun AlbumsTab(dav: Boolean, onBack: (() -> Unit)? = null) {
         }
     }
     menuFor?.let { m ->
-        AlertDialog(onDismissRequest = { menuFor = null }, containerColor = C.Surface, title = { Text(m.second, color = C.Text) }, text = {
+        AppAlertDialog(onDismissRequest = { menuFor = null }, containerColor = C.Surface, title = { Text(m.second, color = C.Text) }, text = {
             Column {
                 Text("重命名", color = C.Text, fontSize = 16.sp, modifier = Modifier.fillMaxWidth().clickable { menuFor = null; renaming = m }.padding(vertical = 12.dp))
                 Text("删除相册", color = C.Danger, fontSize = 16.sp, modifier = Modifier.fillMaxWidth().clickable { menuFor = null; deleting = m }.padding(vertical = 12.dp))

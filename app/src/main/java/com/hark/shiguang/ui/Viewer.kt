@@ -264,7 +264,7 @@ fun ViewerScreen(photosIn: List<Photo>, start: Int, slideshowStart: Boolean = fa
 private fun MoreSheet(p: Photo, onInfo: () -> Unit, onDismiss: () -> Unit, onHidden: () -> Unit) {
     val ctx = LocalContext.current
     // 1.6.2「⋯」面板：按「看 / 做 / 藏」分三组卡片，组间留白；不放说明小字（DESIGN §1 少说明）
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = C.Bg, dragHandle = { BottomSheetDefaults.DragHandle(color = C.Faint) }) {
+    AppBottomSheet(onDismissRequest = onDismiss, containerColor = C.Bg) {
         Column(Modifier.padding(bottom = Space.xl).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(Space.m)) {
             Card {
                 NavRow(KI.info(), "详情") { onInfo() }
@@ -489,7 +489,7 @@ fun VideoSurface(url: String, play: Boolean, loop: Boolean, controls: Boolean, m
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun InfoSheet(p: Photo, onDismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = C.Surface, dragHandle = { BottomSheetDefaults.DragHandle(color = C.Faint) }) {
+    AppBottomSheet(onDismissRequest = onDismiss, containerColor = C.Surface) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 36.dp).verticalScroll(rememberScrollState())) {
             val (t, w) = dayTitle(p.day)
             Text("$t $w  ${p.time.drop(11).take(5)}", style = MaterialTheme.typography.headlineSmall)

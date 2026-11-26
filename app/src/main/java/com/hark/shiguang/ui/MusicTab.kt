@@ -283,7 +283,7 @@ private fun TrackRow(t: Track, sourceKey: String, showNo: Boolean = false, onCli
             if (t.durationMs > 0) Text(Music.fmt(t.durationMs), color = C.Faint, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp))
             IconButton(onClick = { menu = true }, modifier = Modifier.size(36.dp)) { Icon(Icons.Rounded.MoreVert, "更多", tint = C.Faint, modifier = Modifier.size(18.dp)) }
         }
-        DropdownMenu(menu, onDismissRequest = { menu = false }, modifier = Modifier.background(C.Surface)) {
+        AppDropdownMenu(menu, onDismissRequest = { menu = false }, modifier = Modifier.background(C.Surface)) {
             DropdownMenuItem(text = { Text(if (fav) "取消喜欢" else "加入我喜欢", color = C.Text) }, onClick = {
                 menu = false; toast(ctx, if (lib.toggleFav(t.id)) "已加入我喜欢" else "已取消喜欢")
             })
@@ -521,7 +521,7 @@ fun MusicNowPlayingScreen() {
             Text(modeText(), color = C.Faint, fontSize = 11.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp))
         }
     }
-    if (queueOpen) ModalBottomSheet(onDismissRequest = { queueOpen = false }, containerColor = C.Surface) { QueueSheet() }
+    if (queueOpen) AppBottomSheet(onDismissRequest = { queueOpen = false }, containerColor = C.Surface) { QueueSheet() }
 }
 
 private fun Modifier.graphicsScale(s: Float): Modifier = this.graphicsLayer { scaleX = s; scaleY = s }
@@ -618,7 +618,7 @@ private fun QueueSheet() {
             }
         }
     }
-    if (confirmClear) AlertDialog(onDismissRequest = { confirmClear = false }, containerColor = C.Surface,
+    if (confirmClear) AppAlertDialog(onDismissRequest = { confirmClear = false }, containerColor = C.Surface,
         title = { Text("清空播放列表？", color = C.Text) }, text = { Text("会停止播放并移除列表里的 ${q.size} 首歌。", color = C.Sub) },
         confirmButton = { TextButton(onClick = { confirmClear = false; MusicState.stop() }) { Text("清空", color = C.Danger) } },
         dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("取消", color = C.Sub) } })
@@ -685,7 +685,7 @@ private fun SleepButton() {
             if (MusicState.sleepAt > 0) Text(" $left 分", color = C.Accent, fontSize = 12.sp)
             else if (MusicState.sleepAfterTrack != null) Text(" 本首", color = C.Accent, fontSize = 12.sp)
         }
-        DropdownMenu(open, onDismissRequest = { open = false }, modifier = Modifier.background(C.Surface)) {
+        AppDropdownMenu(open, onDismissRequest = { open = false }, modifier = Modifier.background(C.Surface)) {
             PlayerHints.sleepChoices.forEach { m -> DropdownMenuItem(text = { Text("$m 分钟后暂停", color = C.Text) }, onClick = { open = false; MusicState.setSleep(m) }) }
             DropdownMenuItem(text = { Text("本首播完后停止", color = C.Text) }, onClick = { open = false; MusicState.sleepAfterThisTrack() })
             if (on) DropdownMenuItem(text = { Text("关闭定时", color = C.Danger) }, onClick = { open = false; MusicState.clearSleep() })
@@ -702,7 +702,7 @@ private fun MusicSortMenu() {
             Icon(LI.sort(), null, tint = C.Sub, modifier = Modifier.size(17.dp))
             Text(MusicUi.sorts[MusicUi.sort], color = C.Sub, fontSize = 13.sp, modifier = Modifier.padding(start = 4.dp))
         }
-        DropdownMenu(open, onDismissRequest = { open = false }, modifier = Modifier.background(C.Surface)) {
+        AppDropdownMenu(open, onDismissRequest = { open = false }, modifier = Modifier.background(C.Surface)) {
             MusicUi.sorts.forEachIndexed { i, s ->
                 DropdownMenuItem(text = { Text(s, color = C.Text, fontWeight = if (i == MusicUi.sort) FontWeight.SemiBold else FontWeight.Normal) },
                     onClick = { open = false; MusicUi.sort = i; Store.putStr("music.sort", "$i") })

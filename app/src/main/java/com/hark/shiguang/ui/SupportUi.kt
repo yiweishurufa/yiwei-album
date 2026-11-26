@@ -21,7 +21,7 @@ fun AppOverlays() {
     // 2026-10-22: a native crash / ANR is written to last.txt by a startup background thread — pick it up shortly after
     LaunchedEffect(Unit) { kotlinx.coroutines.delay(1500); if (crash == null) crash = CrashLog.pending(ctx); kotlinx.coroutines.delay(1000); AppUpdate.autoCheck() }
     crash?.let { log ->
-        AlertDialog(onDismissRequest = {}, containerColor = C.Surface,
+        AppAlertDialog(onDismissRequest = {}, containerColor = C.Surface,
             title = { Text("上次异常退出", color = C.Text) },
             text = { Text("上次异常退出，要把日志发给开发者吗？日志只含版本、机型和出错位置，不含账号、地址和照片。", color = C.Sub, fontSize = 14.sp) },
             confirmButton = { TextButton({ crash = null; CrashLog.send(ctx, log) }) { Text("发送日志", color = C.Accent) } },
@@ -29,7 +29,7 @@ fun AppOverlays() {
     }
     if (crash == null) AppUpdate.offer?.let { r ->
         val p = AppUpdate.progress
-        AlertDialog(onDismissRequest = { if (p < 0f) AppUpdate.offer = null }, containerColor = C.Surface,
+        AppAlertDialog(onDismissRequest = { if (p < 0f) AppUpdate.offer = null }, containerColor = C.Surface,
             title = { Text("发现新版本 ${r.version}", color = C.Text) },
             text = {
                 Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
@@ -50,7 +50,7 @@ fun AppOverlays() {
     }
     // B5: the downloaded APK was signed by a different key — the installer was never launched.
     AppUpdate.signatureMismatch?.let {
-        AlertDialog(onDismissRequest = { AppUpdate.signatureMismatch = null }, containerColor = C.Surface,
+        AppAlertDialog(onDismissRequest = { AppUpdate.signatureMismatch = null }, containerColor = C.Surface,
             title = { Text("签名不一致", color = C.Text) },
             text = { Text("下载的安装包签名与当前应用不一致，需先卸载旧版才能安装。本次安装已取消，安装包已删除。", color = C.Sub, fontSize = 14.sp) },
             confirmButton = { TextButton({ AppUpdate.signatureMismatch = null }) { Text("知道了", color = C.Accent) } },

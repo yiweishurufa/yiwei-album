@@ -191,7 +191,7 @@ fun MovieDetailScreen(r: Route.MovieDetail) {
         Box(Modifier.statusBarsPadding().padding(10.dp)) { RoundIcon(LI.back(true), bg = Color(0x55000000), tint = Color.White, desc = "返回") { Nav.pop() } }
     }
 
-    if (versions) AlertDialog(onDismissRequest = { versions = false }, containerColor = C.Surface, title = { Text("选择版本", color = C.Text) }, text = {
+    if (versions) AppAlertDialog(onDismissRequest = { versions = false }, containerColor = C.Surface, title = { Text("选择版本", color = C.Text) }, text = {
         Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
             allVersions.forEach { (owner, f) ->
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { versions = false; Nav.push(Route.MoviePlay(lib.sourceKey, owner.id, f.path)) }.padding(vertical = 10.dp, horizontal = 4.dp)) {
@@ -255,7 +255,7 @@ private fun EpisodeRow(lib: MovieLib, m: MovieItem, e: Episode) {
 @Composable
 fun WatchMenu(open: Boolean, onDismiss: () -> Unit, watched: Boolean, resumable: Boolean = false,
               onWatched: () -> Unit, onUnwatched: () -> Unit, onFromStart: (() -> Unit)? = null, onHideContinue: (() -> Unit)? = null) {
-    DropdownMenu(open, onDismissRequest = onDismiss, modifier = Modifier.background(C.Surface)) {
+    AppDropdownMenu(open, onDismissRequest = onDismiss, modifier = Modifier.background(C.Surface)) {
         if (resumable && onFromStart != null) DropdownMenuItem(text = { Text("从头播放", color = C.Text) }, onClick = { onDismiss(); onFromStart() })
         if (watched) DropdownMenuItem(text = { Text("标为未看", color = C.Text) }, onClick = { onDismiss(); onUnwatched() })
         else DropdownMenuItem(text = { Text("标为已看", color = C.Text) }, onClick = { onDismiss(); onWatched() })
@@ -301,7 +301,7 @@ private fun FixMatchDialog(lib: MovieLib, m: MovieItem, onDismiss: () -> Unit) {
             .onSuccess { hits = it; if (it.isEmpty()) err = "没有结果，换个名字或去掉年份" }.onFailure { err = it.message }
         busy = false
     }
-    AlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface, title = { Text("重新识别 / 手动选择", color = C.Text) }, text = {
+    AppAlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface, title = { Text("重新识别 / 手动选择", color = C.Text) }, text = {
         Column {
             if (!Tmdb.configured) { Text("先在 设置 → 影视 填 TMDB 密钥。", color = C.Sub, fontSize = 14.sp); return@Column }
             Segmented(listOf("电影", "剧集"), if (kind == "movie") 0 else 1) { kind = if (it == 0) "movie" else "tv"; hits = null }

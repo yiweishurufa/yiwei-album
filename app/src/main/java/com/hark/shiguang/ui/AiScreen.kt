@@ -129,7 +129,7 @@ fun AiSettingsScreen() {
         }
     }
     freeList?.takeIf { it.isNotEmpty() }?.let { list ->
-        AlertDialog(onDismissRequest = { freeList = null }, containerColor = C.Surface, title = { Text("今日免费模型", color = C.Text) }, text = {
+        AppAlertDialog(onDismissRequest = { freeList = null }, containerColor = C.Surface, title = { Text("今日免费模型", color = C.Text) }, text = {
             LazyColumn(Modifier.heightIn(max = 460.dp)) {
                 items(list, key = { it.id }) { m ->
                     Row(Modifier.fillMaxWidth().clickable {
@@ -147,7 +147,7 @@ fun AiSettingsScreen() {
             }
         }, confirmButton = {}, dismissButton = { TextButton(onClick = { freeList = null }) { Text("关闭", color = C.Sub) } })
     }
-    if (pickProvider) AlertDialog(onDismissRequest = { pickProvider = false }, containerColor = C.Surface, title = { Text("选择提供商", color = C.Text) }, text = {
+    if (pickProvider) AppAlertDialog(onDismissRequest = { pickProvider = false }, containerColor = C.Surface, title = { Text("选择提供商", color = C.Text) }, text = {
         LazyColumn(Modifier.heightIn(max = 480.dp)) {
             AiProviders.GROUPS.forEach { (g, title) ->
                 item(key = "h_$g") {

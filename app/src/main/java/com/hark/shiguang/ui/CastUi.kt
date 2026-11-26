@@ -44,7 +44,7 @@ fun CastDialog(media: CastMedia?, onDismiss: () -> Unit) {
     }
     fun act(f: (DlnaDevice) -> Unit) { val d = CastState.device ?: return; scope.launch { runCatching { withContext(Dispatchers.IO) { f(d) } }.onFailure { CastState.error = it.message } } }
 
-    AlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface,
+    AppAlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface,
         title = { Text(if (dev == null) "投屏到电视" else "正在投屏", color = C.Text) },
         text = {
             Column(Modifier.fillMaxWidth()) {

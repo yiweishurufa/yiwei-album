@@ -107,7 +107,7 @@ fun DateFilterDialog(onDismiss: () -> Unit) {
     val years = (now.get(java.util.Calendar.YEAR) downTo 1990).toList()
     val days = if (month == 0) 0 else java.util.GregorianCalendar(year, month - 1, 1).getActualMaximum(java.util.Calendar.DAY_OF_MONTH)
     if (day > days) day = 0
-    AlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface, title = { Text("按日期筛选", color = C.Text) }, text = {
+    AppAlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface, title = { Text("按日期筛选", color = C.Text) }, text = {
         Column {
             Text("年", color = C.Sub, fontSize = 12.sp)
             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(vertical = 6.dp)) { items(years) { y -> Chip("$y", year == y) { year = y } } }

@@ -255,7 +255,7 @@ private fun mediaTypeIcon(k: String): ImageVector = when (k) {
 
 @Composable
 private fun SortDialog(order: List<String>, onMove: (String, Int) -> Unit, onReset: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface, title = { Text("调整分区顺序", color = C.Text) }, text = {
+    AppAlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface, title = { Text("调整分区顺序", color = C.Text) }, text = {
         Column {
             order.forEachIndexed { i, id ->
                 Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {

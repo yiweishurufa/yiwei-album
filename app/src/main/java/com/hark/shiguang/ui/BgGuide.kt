@@ -132,7 +132,7 @@ object BgGuidePrompt {
         LaunchedEffect(need) { if (need && !prompted && permissionsMissing(ctx)) show = true }
         if (!show) return
         val close = { show = false; markPrompted() }
-        AlertDialog(onDismissRequest = close, containerColor = C.Surface,
+        AppAlertDialog(onDismissRequest = close, containerColor = C.Surface,
             title = { Text("让整理在后台继续", color = C.Text) },
             text = { Text("照片比较多，整理要跑一阵子。打开通知、关闭电池优化后，锁屏或切到别的应用也能继续，进度显示在通知栏。", color = C.Sub, lineHeight = 21.sp) },
             confirmButton = { TextButton(onClick = { close(); com.hark.shiguang.Nav.push(com.hark.shiguang.Route.X(ExtScreen.BgGuide)) }) { Text("去设置", color = C.Accent) } },

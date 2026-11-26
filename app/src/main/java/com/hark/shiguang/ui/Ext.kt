@@ -153,7 +153,7 @@ private fun PersonScreen(s: ExtScreen.Person) {
         ExtTop(p?.name?.ifEmpty { "未命名" } ?: "人物") {
             if (p != null) Box {
                 RoundIcon(Icons.Rounded.MoreHoriz, size = 40.dp, desc = "更多") { menu = true }
-                DropdownMenu(menu, { menu = false }, Modifier.background(C.Surface2)) {
+                AppDropdownMenu(menu, { menu = false }, Modifier.background(C.Surface2)) {
                     DropdownMenuItem({ Text("命名", color = C.Text) }, { menu = false; renaming = true })
                     DropdownMenuItem({ Text("合并到其他人物…", color = C.Text) }, { menu = false; merging = true })
                     // 第 4 批：撤销移出——移出时记下了原分组（FaceEdits.excludedFrom），这里按组恢复。以前移出是永久的，没有撤销入口。

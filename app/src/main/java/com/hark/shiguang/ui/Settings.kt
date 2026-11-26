@@ -190,7 +190,7 @@ fun SettingsScreen() {
             // 1.6.0：第三方图标 / 字体的许可（Kubai Icons MIT 要求附版权声明；Allo 是 SIL OFL 1.1）
             var licOpen by remember { mutableStateOf(false) }
             NavRow(LI.info(), "开源许可") { licOpen = true }
-            if (licOpen) AlertDialog(onDismissRequest = { licOpen = false }, containerColor = C.Surface,
+            if (licOpen) AppAlertDialog(onDismissRequest = { licOpen = false }, containerColor = C.Surface,
                 title = { Text("开源许可", style = MaterialTheme.typography.titleLarge) },
                 text = { Text(OPEN_SOURCE_NOTICE, color = C.Sub, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) },
                 confirmButton = { TextButton(onClick = { licOpen = false }) { Text("知道了", color = C.Accent) } })
@@ -245,7 +245,7 @@ fun DavFolderSelectDialog(initial: List<String>, onDismiss: () -> Unit, onSave: 
         val l = lib ?: return@LaunchedEffect
         if (l.folders == null) l.refreshFolders()
     }
-    AlertDialog(
+    AppAlertDialog(
         onDismissRequest = onDismiss,
         containerColor = C.Surface,
         title = { Text("WebDAV 照片文件夹", color = C.Text) },
@@ -333,7 +333,7 @@ fun InfoDot(text: String, title: String = "说明") {
     Box(Modifier.size(32.dp).clip(CircleShape).clickable { open = true }, contentAlignment = Alignment.Center) {
         Icon(Icons.Outlined.Info, "说明", tint = C.Faint, modifier = Modifier.size(16.dp))
     }
-    if (open) AlertDialog(onDismissRequest = { open = false }, containerColor = C.Surface,
+    if (open) AppAlertDialog(onDismissRequest = { open = false }, containerColor = C.Surface,
         title = { Text(title, color = C.Text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold) },
         text = { Text(text, color = C.Sub, fontSize = 14.sp, lineHeight = 21.sp) },
         confirmButton = { TextButton(onClick = { open = false }) { Text("知道了", color = C.Accent) } })
@@ -437,7 +437,7 @@ fun UserCaDialog(onDismiss: () -> Unit) {
     var allowed by remember { mutableStateOf(TlsTrust.allowedHosts()) }
     val changed = remember { mutableStateOf(false) }
     val close = { if (changed.value) Toast.makeText(ctx, "已保存，新建的连接生效", Toast.LENGTH_SHORT).show(); onDismiss() }
-    AlertDialog(onDismissRequest = close, containerColor = C.Surface, title = {
+    AppAlertDialog(onDismissRequest = close, containerColor = C.Surface, title = {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(CA_TITLE, color = C.Text, modifier = Modifier.weight(1f, fill = false))
             InfoDot(CA_INFO, CA_TITLE)
@@ -467,7 +467,7 @@ fun BackgroundPolicyDialog(onDismiss: () -> Unit) {
     val ctx = LocalContext.current
     var cell by remember { mutableStateOf(ScanPolicy.allowCellular) }
     var noCharge by remember { mutableStateOf(ScanPolicy.allowNoCharge) }
-    AlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface, title = {
+    AppAlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface, title = {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("后台整理", color = C.Text)
             InfoDot("本地分析、人脸识别、AI 分类和手机备份共用这套规则。扫完一遍后只处理新加入的照片；条件满足时自动继续，离开页面或切到后台也不停，进度在通知栏。", "后台整理")

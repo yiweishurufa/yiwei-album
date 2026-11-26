@@ -340,7 +340,7 @@ object AlbumOps {
 fun DavAlbumPicker(lib: com.hark.shiguang.DavLib, onDismiss: () -> Unit, onPick: (com.hark.shiguang.VAlbum) -> Unit) {
     var creating by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { if (lib.albums == null) lib.refreshAlbums() }
-    AlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface, title = { Text("加入 WebDAV 相册", color = C.Text) }, text = {
+    AppAlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface, title = { Text("加入 WebDAV 相册", color = C.Text) }, text = {
         LazyColumn(Modifier.heightIn(max = 380.dp)) {
             item { Text("＋ 新建相册", color = C.Accent, fontSize = 15.sp, modifier = Modifier.fillMaxWidth().clickable { creating = true }.padding(vertical = 12.dp)) }
             items(lib.albums.orEmpty(), key = { it.id }) { a ->
@@ -363,7 +363,7 @@ fun openPerson(p: com.hark.shiguang.data.Person) {
 fun RemoveSourceDialog(title: String, msg: String, okText: String, dir: java.io.File, onDismiss: () -> Unit, onOk: (clearDisk: Boolean) -> Unit) {
     var clear by remember { mutableStateOf(true) }
     val size by produceState(-1L, dir) { value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { dir.walkBottomUp().filter { it.isFile }.sumOf { it.length() } }.getOrDefault(0L) } }
-    AlertDialog(
+    AppAlertDialog(
         onDismissRequest = onDismiss, containerColor = C.Surface,
         title = { Text(title, color = C.Text) },
         text = { Column {
@@ -381,7 +381,7 @@ fun RemoveSourceDialog(title: String, msg: String, okText: String, dir: java.io.
 
 @Composable
 fun ConfirmDialog(title: String, msg: String, okText: String, onDismiss: () -> Unit, onOk: () -> Unit) {
-    AlertDialog(
+    AppAlertDialog(
         onDismissRequest = onDismiss, containerColor = C.Surface,
         title = { Text(title, color = C.Text) },
         text = { if (msg.isNotEmpty()) Text(msg, color = C.Sub) },
@@ -393,7 +393,7 @@ fun ConfirmDialog(title: String, msg: String, okText: String, onDismiss: () -> U
 @Composable
 fun InputDialog(title: String, initial: String, hint: String, okText: String = "确定", onDismiss: () -> Unit, onOk: (String) -> Unit) {
     var v by remember { mutableStateOf(initial) }
-    AlertDialog(
+    AppAlertDialog(
         onDismissRequest = onDismiss, containerColor = C.Surface,
         title = { Text(title, color = C.Text) },
         text = {
@@ -412,7 +412,7 @@ fun InputDialog(title: String, initial: String, hint: String, okText: String = "
  */
 @Composable
 fun ActionListDialog(title: String, sub: String = "", onDismiss: () -> Unit, actions: List<Pair<String, () -> Unit>>) {
-    AlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface, title = {
+    AppAlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface, title = {
         Column {
             Text(title, color = C.Text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
             if (sub.isNotEmpty()) Text(sub, color = C.Sub, fontSize = 13.sp)
@@ -433,7 +433,7 @@ fun ActionListDialog(title: String, sub: String = "", onDismiss: () -> Unit, act
 @Composable
 fun <T> PickDialog(title: String, items: List<T>, key: (T) -> Any, emptyText: String, dismissText: String = "取消",
                    onDismiss: () -> Unit, onPick: (T) -> Unit, row: @Composable (T) -> Unit) {
-    AlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface, title = { Text(title, color = C.Text, fontSize = 17.sp) }, text = {
+    AppAlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface, title = { Text(title, color = C.Text, fontSize = 17.sp) }, text = {
         if (items.isEmpty()) Text(emptyText, color = C.Sub)
         else LazyColumn(Modifier.heightIn(max = 440.dp)) {
             items(items, key = { key(it) }) { item ->
@@ -464,7 +464,7 @@ fun AlbumPicker(onDismiss: () -> Unit, onPick: (Album) -> Unit) {
     var albums by remember { mutableStateOf(HomeState.albums) }
     var creating by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { runCatching { Repo.albums() }.onSuccess { albums = it; HomeState.albums = it } }
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = C.Surface, dragHandle = { BottomSheetDefaults.DragHandle(color = C.Faint) }) {
+    AppBottomSheet(onDismissRequest = onDismiss, containerColor = C.Surface) {
         Text("加入相册", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp))
         LazyColumn(Modifier.fillMaxWidth().heightIn(max = 460.dp), contentPadding = PaddingValues(bottom = 30.dp)) {
             item {

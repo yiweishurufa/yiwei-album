@@ -533,7 +533,7 @@ fun BackupScreen() {
     }
     if (policyOpen) BackgroundPolicyDialog { policyOpen = false }
     BgGuidePrompt.Host(need = on)   // 用户 2026-10-23：自动备份靠后台运行，权限缺失时提示一次
-    if (confirmAll) AlertDialog(onDismissRequest = { confirmAll = false }, containerColor = C.Surface,
+    if (confirmAll) AppAlertDialog(onDismissRequest = { confirmAll = false }, containerColor = C.Surface,
         title = { Text("把已有照片也备份？", color = C.Text) },
         text = { Text("下次备份会从手机里最早的照片开始补传，照片多时要传很久。", color = C.Sub) },
         confirmButton = { TextButton(onClick = { confirmAll = false; Store.backupSince = 0L; refreshPending(); toast(ctx, "下次备份会从最早的照片开始") }) { Text("开始补传", color = C.Accent) } },
@@ -603,7 +603,7 @@ fun DavDialog(old: CloudAccount?, onDismiss: () -> Unit, onSaved: (CloudAccount)
                 .onFailure { err = it.message ?: "连接失败"; busy = false }
         }
     }
-    AlertDialog(onDismissRequest = { if (!busy) onDismiss() }, containerColor = C.Surface, title = { Text(if (old == null) "添加 WebDAV" else "编辑 WebDAV", color = C.Text) }, text = {
+    AppAlertDialog(onDismissRequest = { if (!busy) onDismiss() }, containerColor = C.Surface, title = { Text(if (old == null) "添加 WebDAV" else "编辑 WebDAV", color = C.Text) }, text = {
         Column(Modifier.verticalScroll(rememberScrollState())) {
             // 1.0.1: presets (123 云盘 / 坚果云 / Alist·OpenList / 群晖 / 威联通 / Nextcloud) fill the address and show how to get the password
             Text("常用服务", color = C.Sub, fontSize = 12.sp, modifier = Modifier.padding(bottom = 6.dp))

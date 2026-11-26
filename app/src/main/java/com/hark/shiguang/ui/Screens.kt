@@ -431,7 +431,7 @@ fun CollectionScreen(r: Route.Collection) {
                 }
                 if (r.album != null) Box {
                     RoundIcon(Icons.Rounded.MoreHoriz, size = 40.dp, desc = "更多") { menu = true }
-                    DropdownMenu(menu, { menu = false }, Modifier.background(C.Surface2)) {
+                    AppDropdownMenu(menu, { menu = false }, Modifier.background(C.Surface2)) {
                         DropdownMenuItem({ Text("重命名", color = C.Text) }, { menu = false; renaming = true })
                         DropdownMenuItem({ Text("删除相册", color = C.Danger) }, { menu = false; deleting = true })
                     }

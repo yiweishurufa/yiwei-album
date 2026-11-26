@@ -181,7 +181,7 @@ private fun SortMenu() {
             Icon(LI.sort(), null, tint = C.Sub, modifier = Modifier.size(17.dp))
             Text(MoviesState.sorts[MoviesState.sort], color = C.Sub, fontSize = 13.sp, modifier = Modifier.padding(start = 4.dp))
         }
-        DropdownMenu(open, onDismissRequest = { open = false }, modifier = Modifier.background(C.Surface)) {
+        AppDropdownMenu(open, onDismissRequest = { open = false }, modifier = Modifier.background(C.Surface)) {
             MoviesState.sorts.forEachIndexed { i, s ->
                 DropdownMenuItem(text = { Text(s, color = C.Text, fontWeight = if (i == MoviesState.sort) FontWeight.SemiBold else FontWeight.Normal) },
                     onClick = { open = false; MoviesState.sort = i; Store.putStr("movies.sort", "$i") })
