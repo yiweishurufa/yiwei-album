@@ -178,7 +178,12 @@ fun HomeScreen() {
         }
         // 1.0.3 #4: music mini bar sits above the bottom navigation (at the bottom on wide screens)
         Column(Modifier.align(Alignment.BottomCenter)) {
-            if (!Selection.active) MiniPlayer(Modifier.padding(bottom = if (wide) 0.dp else 4.dp).then(if (wide) Modifier.navigationBarsPadding().padding(bottom = 10.dp) else Modifier))
+            // 1.6.6：迷你播放条从底栏上方滑入 / 滑出（多选时让位给多选栏）
+            androidx.compose.animation.AnimatedVisibility(MusicState.active && !Selection.active,
+                enter = androidx.compose.animation.slideInVertically(Motion.sheet()) { it } + androidx.compose.animation.fadeIn(Motion.enter()),
+                exit = androidx.compose.animation.slideOutVertically(Motion.exit()) { it } + androidx.compose.animation.fadeOut(Motion.exit())) {
+                MiniPlayer(Modifier.padding(bottom = if (wide) 0.dp else Space.xs + 2.dp).then(if (wide) Modifier.navigationBarsPadding().padding(bottom = 10.dp) else Modifier))
+            }
             if (!wide) BottomBar(Modifier)
         }
     }

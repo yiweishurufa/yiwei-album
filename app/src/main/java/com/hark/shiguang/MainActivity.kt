@@ -16,6 +16,8 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.*
 import androidx.compose.foundation.layout.fillMaxSize
@@ -275,6 +277,9 @@ class MainActivity : ComponentActivity() {
                             // 大图已缩回缩略图位置时（Hero.closed）直接移除，网格就在原处
                             targetState.route is Route.Viewer && Hero.from != null -> EnterTransition.None togetherWith fadeOut(Motion.exit())
                             initialState.route is Route.Viewer && Hero.closed -> EnterTransition.None togetherWith ExitTransition.None
+                            // 1.6.6：正在播放页像从迷你播放条展开的面板——从下往上滑入（面板弹簧），收起时向下滑出并压在上层
+                            targetState.route == Route.MusicNowPlaying -> (slideInVertically(Motion.sheet()) { it / 2 } + fadeIn(Motion.enter())) togetherWith fadeOut(Motion.exit())
+                            initialState.route == Route.MusicNowPlaying -> (fadeIn(Motion.enter()) togetherWith (slideOutVertically(Motion.page()) { it / 2 } + fadeOut(Motion.exit()))).apply { targetContentZIndex = -1f }
                             media(targetState.route) -> (fadeIn(Motion.enter()) + scaleIn(Motion.zoom(), initialScale = 0.94f)) togetherWith fadeOut(Motion.exit())
                             media(initialState.route) -> fadeIn(Motion.enter()) togetherWith (fadeOut(Motion.exit()) + scaleOut(Motion.exit(), targetScale = 0.96f))
                             else -> (slideInHorizontally(Motion.page()) { if (forward) shift else -shift } + fadeIn(Motion.enter())) togetherWith

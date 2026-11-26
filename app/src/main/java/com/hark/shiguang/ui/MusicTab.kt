@@ -32,6 +32,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.semantics.*
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -62,10 +66,11 @@ private val collator = java.text.Collator.getInstance(java.util.Locale.CHINA)
 
 /** Little square cover (local file) with a note icon when there is none. */
 @Composable
-fun MusicArt(path: String?, modifier: Modifier, corner: androidx.compose.ui.unit.Dp = 8.dp) {
-    Box(modifier.clip(RoundedCornerShape(corner)).background(C.Surface2), contentAlignment = Alignment.Center) {
+fun MusicArt(path: String?, modifier: Modifier, corner: androidx.compose.ui.unit.Dp = Radius.s, lifted: Boolean = false) {
+    // 1.6.6：封面圆角 10（列表）/ 20（大封面）；[lifted] = 质感风格下加一层照片轻影
+    Box((if (lifted) modifier.skeuoPhoto(RoundedCornerShape(corner)) else modifier.clip(RoundedCornerShape(corner))).background(C.Surface2), contentAlignment = Alignment.Center) {
         if (path != null) NetImage("file://$path", Modifier.fillMaxSize())
-        else Icon(Icons.Rounded.MusicNote, null, tint = C.Faint, modifier = Modifier.fillMaxSize(0.42f))
+        else Icon(KI.music(), null, tint = C.Faint, modifier = Modifier.fillMaxSize(0.42f))
     }
 }
 
@@ -75,7 +80,7 @@ private fun fmtCount(n: Int) = "$n 首"
 fun MusicTab() {
     val key = Movies.keyOf()
     val ctx = LocalContext.current
-    if (key == null) { Column { TopSwitch(SearchScope.None, showDate = false); Box(Modifier.weight(1f)) { NoSourceState(Icons.Rounded.MusicNote, "音乐库跟着左上角的来源走") } }; return }
+    if (key == null) { Column { TopSwitch(SearchScope.None, showDate = false); Box(Modifier.weight(1f)) { NoSourceState(KI.music(), "音乐库跟着左上角的来源走") } }; return }
     val lib = remember(key) { Music.lib(key) }
     LaunchedEffect(key) {
         lib.awaitReady()   // #2 / H4: the library loads on IO; decide about the quiet rescan once it is in
@@ -108,7 +113,7 @@ fun MusicTab() {
         if (lib.dirs.isEmpty()) {
             item {
                 Box(Modifier.fillMaxWidth().height(440.dp)) {
-                    StateMessage(Icons.Rounded.MusicNote, "还没有音乐文件夹", if (lib.kind == "fn") "选好飞牛「文件管理」里放音乐的文件夹，我来读取歌名、歌手、专辑和封面。" else "选好网盘里放音乐的文件夹，我来读取歌名、歌手、专辑和封面。音乐文件夹不会出现在照片和视频里。",
+                    StateMessage(KI.music(), "还没有音乐文件夹", if (lib.kind == "fn") "选好飞牛「文件管理」里放音乐的文件夹，我来读取歌名、歌手、专辑和封面。" else "选好网盘里放音乐的文件夹，我来读取歌名、歌手、专辑和封面。",
                         "选择音乐文件夹") { Nav.push(Route.MusicSettings) }
                 }
             }
@@ -117,15 +122,15 @@ fun MusicTab() {
         // 优化 11 / 12：有缓存时，自动刷新和刷新失败只显示一行小字（先显示上次的列表）；没缓存或手动全量扫描才用进度卡片
         val hasCache = lib.tracks.isNotEmpty()
         if ((lib.scanning && lib.quiet && hasCache) || (!lib.scanning && lib.error != null && hasCache))
-            item { QuietStatusLine(lib.scanning, lib.error, Modifier.padding(horizontal = 18.dp)) { lib.scan(); ScanService.ensure(App.ctx) } }
-        else if (lib.scanning || lib.error != null) item { Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) { MusicScanBar(lib) } }
+            item { QuietStatusLine(lib.scanning, lib.error, Modifier.padding(horizontal = Space.page)) { lib.scan(); ScanService.ensure(App.ctx) } }
+        else if (lib.scanning || lib.error != null) item { Box(Modifier.padding(horizontal = Space.page, vertical = Space.xs)) { MusicScanBar(lib) } }
         item { SearchBox() }
         item {
-            Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                PillButton(Icons.Rounded.PlayArrow, "全部播放", Modifier.weight(1f), primary = true) {
+            Row(Modifier.padding(horizontal = Space.page, vertical = Space.s), horizontalArrangement = Arrangement.spacedBy(Space.m)) {
+                PillButton(KI.playSolid(), "全部播放", Modifier.weight(1f), primary = true) {
                     if (shown.isEmpty()) toast(ctx, "还没有歌曲") else MusicState.play(key, shown, 0, shuffled = false)
                 }
-                PillButton(Icons.Rounded.Shuffle, "随机播放", Modifier.weight(1f)) {
+                PillButton(KI.shuffle(), "随机播放", Modifier.weight(1f)) {
                     if (shown.isEmpty()) toast(ctx, "还没有歌曲") else MusicState.play(key, shown, -1, shuffled = true)
                 }
             }
@@ -133,7 +138,7 @@ fun MusicTab() {
         // A2：「我喜欢」「最近播放」入口（搜索时不显示）
         if (q.isEmpty()) item { MarkCards(lib) }
         item {
-            Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.padding(start = Space.page, end = Space.s, top = Space.s, bottom = Space.xs), verticalAlignment = Alignment.CenterVertically) {
                 Segmented(listOf("歌曲 ${shown.size.takeIf { it > 0 } ?: ""}".trim(), "专辑", "歌手", "文件夹"), MusicUi.sub) { MusicUi.sub = it; Store.putStr("music.sub", "$it") }
                 Spacer(Modifier.weight(1f))
                 if (MusicUi.sub == 0) MusicSortMenu()
@@ -141,17 +146,25 @@ fun MusicTab() {
         }
         if (shown.isEmpty()) {
             item {
-                Text(if (view == null && all.isNotEmpty()) "正在整理…" else if (lib.scanning) "正在扫描…" else if (q.isNotEmpty()) "没有找到「$q」" else "这些文件夹里还没找到音乐。支持 mp3、flac、ape、wav、m4a、ogg、opus、wma、dsf、aiff、wv。",
-                    style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(vertical = 60.dp, horizontal = 24.dp))
+                // 1.6.6 空状态：一个弱色线性图标 + 一句标题（+ 一句说明），不用小字堆说明
+                Column(Modifier.fillMaxWidth().padding(vertical = Space.xxxl, horizontal = Space.xl), horizontalAlignment = Alignment.CenterHorizontally) {
+                    val busy = (view == null && all.isNotEmpty()) || lib.scanning
+                    if (busy) CircularProgressIndicator(color = C.Sub, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
+                    else Icon(if (q.isNotEmpty()) KI.search() else KI.music(), null, tint = C.Faint, modifier = Modifier.size(44.dp))
+                    Text(if (view == null && all.isNotEmpty()) "正在整理…" else if (lib.scanning) "正在扫描…" else if (q.isNotEmpty()) "没有找到「$q」" else "还没找到音乐",
+                        style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center, modifier = Modifier.padding(top = Space.l))
+                    if (!busy && q.isEmpty()) Text("支持 mp3、flac、ape、wav、m4a、ogg、opus、wma、dsf、aiff、wv。", style = MaterialTheme.typography.bodyMedium, color = C.Sub,
+                        textAlign = TextAlign.Center, modifier = Modifier.padding(top = Space.s))
+                }
             }
             return@LazyColumn
         }
         when (MusicUi.sub) {
-            0 -> itemsIndexed(shown, key = { _, t -> t.id }) { i, t -> TrackRow(t, key) { MusicState.play(key, shown, i) } }
+            0 -> itemsIndexed(shown, key = { _, t -> t.id }) { i, t -> TrackRow(t, key, index = i) { MusicState.play(key, shown, i) } }
             // 全面审查 B11：专辑列数随屏宽变化（手机 2 列，平板 / 横屏更多），不再固定两列
             1 -> items(albums.chunked(albumCols), key = { it.first().key }) { row ->
-                Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    row.forEach { g -> AlbumCard(g, Modifier.weight(1f)) { Nav.push(Route.MusicList("album", g.key, g.title)) } }
+                Row(Modifier.padding(horizontal = Space.page, vertical = Space.s), horizontalArrangement = Arrangement.spacedBy(Space.m)) {
+                    row.forEach { g -> AlbumCard(g, Modifier.weight(1f), albums.indexOf(g)) { Nav.push(Route.MusicList("album", g.key, g.title)) } }
                     repeat(albumCols - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
@@ -188,50 +201,54 @@ private fun buildMusicView(all: List<Track>, q: String, sub: Int, sort: Int = 0)
     return MusicView(shown, albums, artists, folders)
 }
 
-/** A2：歌曲页上方两张小卡片，点开是「我喜欢」/「最近播放」列表。 */
+/** A2：歌曲页上方两张小卡片，点开是「我喜欢」/「最近播放」列表。1.6.6：去掉强调色方块底，线性图标 + 质感卡片 + 按压。 */
 @Composable
 private fun MarkCards(lib: MusicLib) {
-    Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        MarkCard(Icons.Rounded.Favorite, "我喜欢", lib.favs.size, Modifier.weight(1f)) { Nav.push(Route.MusicList("fav", "", "我喜欢")) }
-        MarkCard(Icons.Rounded.History, "最近播放", lib.recent.size, Modifier.weight(1f)) { Nav.push(Route.MusicList("recent", "", "最近播放")) }
+    Row(Modifier.padding(horizontal = Space.page, vertical = Space.xs), horizontalArrangement = Arrangement.spacedBy(Space.m)) {
+        MarkCard(KI.heart(), "我喜欢", lib.favs.size, Modifier.weight(1f)) { Nav.push(Route.MusicList("fav", "", "我喜欢")) }
+        MarkCard(KI.history(), "最近播放", lib.recent.size, Modifier.weight(1f)) { Nav.push(Route.MusicList("recent", "", "最近播放")) }
     }
 }
 
 @Composable
 private fun MarkCard(icon: ImageVector, title: String, count: Int, modifier: Modifier, onClick: () -> Unit) {
-    Row(modifier.height(56.dp).clip(RoundedCornerShape(14.dp)).background(C.Surface).clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick).padding(horizontal = 12.dp),
+    val countText = if (count > 0) fmtCount(count) else "还没有"
+    Row(modifier.heightIn(min = 60.dp).pressScale(Motion.PRESS_SCALE_LARGE).skeuoCard(RoundedCornerShape(Radius.l)).clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
+        .semantics(mergeDescendants = true) { contentDescription = "$title，$countText" }.padding(horizontal = Space.l),
         verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(32.dp).clip(RoundedCornerShape(10.dp)).background(C.Accent.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
-            Icon(icon, null, tint = C.Accent, modifier = Modifier.size(18.dp))
-        }
-        Column(Modifier.weight(1f).padding(start = 10.dp)) {
-            Text(title, color = C.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(if (count > 0) fmtCount(count) else "还没有", color = C.Sub, fontSize = 12.sp, maxLines = 1)
+        Icon(icon, null, tint = C.Sub, modifier = Modifier.size(22.dp))
+        Column(Modifier.weight(1f).padding(start = Space.m)) {
+            Text(title, color = C.Text, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(countText, color = C.Sub, style = MaterialTheme.typography.bodySmall.merge(Type.num), maxLines = 1)
         }
     }
 }
 
 @Composable
 private fun SearchBox() {
-    Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth().height(48.dp).clip(RoundedCornerShape(14.dp)).background(C.Surface).padding(horizontal = 12.dp),
+    // 1.6.6：内凹的搜索槽（与影视搜索同款），占位提示用次要色
+    Row(Modifier.padding(horizontal = Space.page, vertical = Space.xs).fillMaxWidth().height(48.dp).skeuoInset(RoundedCornerShape(Radius.m)).padding(start = Space.m),
         verticalAlignment = Alignment.CenterVertically) {
-        Icon(LI.search(), null, tint = C.Sub, modifier = Modifier.size(18.dp))
-        Box(Modifier.weight(1f).padding(start = 8.dp), contentAlignment = Alignment.CenterStart) {
-            if (MusicUi.query.isEmpty()) Text("搜索歌名、歌手、专辑", color = C.Faint, fontSize = 14.sp)
-            BasicTextField(MusicUi.query, { MusicUi.query = it }, singleLine = true, textStyle = MaterialTheme.typography.bodyMedium.copy(color = C.Text, fontSize = 15.sp),
-                cursorBrush = SolidColor(C.Accent), modifier = Modifier.fillMaxWidth())
+        Icon(KI.search(), null, tint = C.Sub, modifier = Modifier.size(18.dp))
+        Box(Modifier.weight(1f).padding(start = Space.s), contentAlignment = Alignment.CenterStart) {
+            if (MusicUi.query.isEmpty()) Text("搜索歌名、歌手、专辑", color = C.Sub, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+            BasicTextField(MusicUi.query, { MusicUi.query = it }, singleLine = true, textStyle = MaterialTheme.typography.bodyLarge.copy(color = C.Text),
+                cursorBrush = SolidColor(C.Accent), modifier = Modifier.fillMaxWidth().semantics { contentDescription = "搜索音乐" })
         }
         // H17: 48dp touch target (was an 18dp icon) and a spoken label
-        if (MusicUi.query.isNotEmpty()) IconButton(onClick = { MusicUi.query = "" }, modifier = Modifier.offset(x = 8.dp)) { Icon(LI.close(), "清除搜索", tint = C.Sub, modifier = Modifier.size(18.dp)) }
+        if (MusicUi.query.isNotEmpty()) IconButton(onClick = { MusicUi.query = "" }) { Icon(KI.close(), "清除搜索", tint = C.Sub, modifier = Modifier.size(18.dp)) }
     }
 }
 
 @Composable
 private fun PillButton(icon: ImageVector, text: String, modifier: Modifier = Modifier, primary: Boolean = false, onClick: () -> Unit) {
-    Row(modifier.height(42.dp).clip(RoundedCornerShape(14.dp)).background(if (primary) C.Accent else C.Surface).clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick),
+    // 1.6.6：与主 / 次要按钮同一套按压（缩放 + 质感浮起），高 46
+    val ix = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    Row(modifier.height(46.dp).skeuoPressable(ix, RoundedCornerShape(Radius.m), if (primary) C.Accent else if (Skeuo.on) C.Surface else C.Surface2)
+        .clickable(ix, null, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick),
         horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, tint = if (primary) C.OnAccent else C.Text, modifier = Modifier.size(19.dp))
-        Text(text, color = if (primary) C.OnAccent else C.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 6.dp))
+        Icon(icon, null, tint = if (primary) C.OnAccent else C.Text, modifier = Modifier.size(18.dp))
+        Text(text, color = if (primary) C.OnAccent else C.Text, style = MaterialTheme.typography.labelLarge, fontWeight = if (primary) FontWeight.SemiBold else FontWeight.Medium, modifier = Modifier.padding(start = Space.s))
     }
 }
 
@@ -259,29 +276,42 @@ private fun badge(t: Track): String? = when (t.ext) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun TrackRow(t: Track, sourceKey: String, showNo: Boolean = false, onClick: () -> Unit) {
+private fun TrackRow(t: Track, sourceKey: String, showNo: Boolean = false, index: Int = Int.MAX_VALUE, onClick: () -> Unit) {
     val ctx = LocalContext.current
     val playing = MusicState.mediaId == "$sourceKey|${t.id}"
     val lib = remember(sourceKey) { Music.lib(sourceKey) }
     val fav = t.id in lib.favs
     var menu by remember { mutableStateOf(false) }
     Box {
-        Row(Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = { menu = true }).padding(horizontal = 16.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (showNo) Text(if (t.trackNo > 0) "${t.trackNo}" else "·", color = if (playing) C.Accent else C.Sub, fontSize = 14.sp, textAlign = TextAlign.Center, modifier = Modifier.width(30.dp))
-            else MusicArt(t.artPath, Modifier.size(46.dp))
-            Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                Text(t.title.ifBlank { t.name }, color = if (playing) C.Accent else C.Text, fontSize = 15.sp, fontWeight = if (playing) FontWeight.SemiBold else FontWeight.Normal,
+        // 1.6.6：正在播放的这首 = 封面上压一层三根跳动小柱（只在真在播时动）+ 标题强调色；时长等宽数字次要色
+        val sub = listOf(t.displayArtist, t.album).filter { it.isNotBlank() }.joinToString(" · ")
+        Row(Modifier.fillMaxWidth().enterRise(index).combinedClickable(onClick = onClick, onLongClick = { menu = true }, onLongClickLabel = "更多操作")
+            .semantics(mergeDescendants = true) {
+                contentDescription = listOfNotNull(t.title.ifBlank { t.name }, sub.takeIf { it.isNotEmpty() }, if (fav) "已喜欢" else null, if (playing) "正在播放" else null,
+                    t.durationMs.takeIf { it > 0 }?.let { Music.fmt(it) }).joinToString("，")
+            }
+            .heightIn(min = Space.row + Space.xs).padding(horizontal = Space.page, vertical = Space.xs + 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (showNo) Box(Modifier.width(30.dp), contentAlignment = Alignment.Center) {
+                if (playing) NowPlayingBars(MusicState.isPlaying, C.Accent)
+                else Text(if (t.trackNo > 0) "${t.trackNo}" else "·", color = C.Sub, style = MaterialTheme.typography.bodyMedium.merge(Type.num), textAlign = TextAlign.Center)
+            }
+            else Box(Modifier.size(48.dp)) {
+                MusicArt(t.artPath, Modifier.fillMaxSize())
+                if (playing) Box(Modifier.matchParentSize().clip(RoundedCornerShape(Radius.s)).background(Color(0x73000000)), contentAlignment = Alignment.Center) { NowPlayingBars(MusicState.isPlaying, Color.White) }
+            }
+            Column(Modifier.weight(1f).padding(start = Space.m)) {
+                Text(t.title.ifBlank { t.name }, color = if (playing) C.Accent else C.Text, style = MaterialTheme.typography.bodyLarge, fontSize = 15.sp, fontWeight = if (playing) FontWeight.Medium else FontWeight.Normal,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (fav) Icon(Icons.Rounded.Favorite, "已喜欢", tint = C.Accent, modifier = Modifier.padding(end = 4.dp).size(12.dp))
+                    if (fav) Icon(KI.heartSolid(), null, tint = C.Accent, modifier = Modifier.padding(end = Space.xs).size(12.dp))
                     badge(t)?.let { b ->
-                        Text(b, color = C.Sub, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 5.dp).clip(RoundedCornerShape(3.dp)).background(C.Chip).padding(horizontal = 3.dp, vertical = 1.dp))
+                        Text(b, color = C.Sub, style = MaterialTheme.typography.labelSmall, fontSize = 9.sp, modifier = Modifier.padding(end = Space.xs + 1.dp).clip(RoundedCornerShape(3.dp)).background(C.Chip).padding(horizontal = 3.dp, vertical = 1.dp))
                     }
-                    Text(listOf(t.displayArtist, t.album).filter { it.isNotBlank() }.joinToString(" · "), color = C.Sub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(sub, color = C.Sub, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
-            if (t.durationMs > 0) Text(Music.fmt(t.durationMs), color = C.Faint, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp))
-            IconButton(onClick = { menu = true }, modifier = Modifier.size(36.dp)) { Icon(Icons.Rounded.MoreVert, "更多", tint = C.Faint, modifier = Modifier.size(18.dp)) }
+            if (t.durationMs > 0) Text(Music.fmt(t.durationMs), color = C.Sub, style = MaterialTheme.typography.labelSmall.merge(Type.num), modifier = Modifier.padding(start = Space.s))
+            IconButton(onClick = { menu = true }) { Icon(KI.more(), "更多", tint = C.Sub, modifier = Modifier.size(18.dp)) }
         }
         AppDropdownMenu(menu, onDismissRequest = { menu = false }, modifier = Modifier.background(C.Surface)) {
             DropdownMenuItem(text = { Text(if (fav) "取消喜欢" else "加入我喜欢", color = C.Text) }, onClick = {
@@ -304,30 +334,35 @@ private fun TrackRow(t: Track, sourceKey: String, showNo: Boolean = false, onCli
             if (t.album.isNotBlank()) DropdownMenuItem(text = { Text("查看专辑", color = C.Text) }, onClick = { menu = false; Nav.push(Route.MusicList("album", t.albumKey, t.displayAlbum)) })
             DropdownMenuItem(text = { Text("查看歌手", color = C.Text) }, onClick = { menu = false; Nav.push(Route.MusicList("artist", t.artists.first(), t.artists.first())) })
             DropdownMenuItem(text = { Column { Text("文件信息", color = C.Text); Text("${t.ext.uppercase()} · ${t.codec} · ${"%.1f".format(t.size / 1048576.0)} MB", color = C.Sub, fontSize = 11.sp)
-                Text(t.path.removePrefix("fm:"), color = C.Faint, fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis) } }, onClick = { menu = false })
+                Text(t.path.removePrefix("fm:"), color = C.Sub, fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis) } }, onClick = { menu = false })
         }
     }
 }
 
+/** 专辑卡：方形封面圆角 10 + 质感轻影，按压 0.985，首屏错开进入；读屏整张读成一个按钮。 */
 @Composable
-private fun AlbumCard(g: MusicGroup, modifier: Modifier, onClick: () -> Unit) {
-    Column(modifier.clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)) {
-        MusicArt(g.art, Modifier.fillMaxWidth().aspectRatio(1f), corner = 12.dp)
-        Text(g.title, color = C.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 7.dp))
-        Text(listOf(g.sub, fmtCount(g.count)).filter { it.isNotBlank() }.joinToString(" · "), color = C.Sub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+private fun AlbumCard(g: MusicGroup, modifier: Modifier, index: Int = Int.MAX_VALUE, onClick: () -> Unit) {
+    val sub = listOf(g.sub, fmtCount(g.count)).filter { it.isNotBlank() }.joinToString(" · ")
+    Column(modifier.enterRise(index).pressScale(Motion.PRESS_SCALE_LARGE).clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
+        .semantics(mergeDescendants = true) { contentDescription = "${g.title}，$sub" }) {
+        MusicArt(g.art, Modifier.fillMaxWidth().aspectRatio(1f), corner = Radius.s, lifted = true)
+        Text(g.title, color = C.Text, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = Space.s))
+        Text(sub, color = C.Sub, style = MaterialTheme.typography.bodySmall.merge(Type.num), maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
 @Composable
 private fun GroupRow(g: MusicGroup, round: Boolean = false, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        if (g.kind == "folder") Box(Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).background(C.Surface2), contentAlignment = Alignment.Center) { Icon(LI.folder(), null, tint = C.Text, modifier = Modifier.size(22.dp)) }
-        else MusicArt(g.art, Modifier.size(48.dp), corner = if (round) 24.dp else 8.dp)
-        Column(Modifier.weight(1f).padding(start = 12.dp)) {
-            Text(g.title, color = C.Text, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(listOf(fmtCount(g.count), g.sub).filter { it.isNotBlank() }.joinToString(" · "), color = C.Sub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    val sub = listOf(fmtCount(g.count), g.sub).filter { it.isNotBlank() }.joinToString(" · ")
+    Row(Modifier.fillMaxWidth().clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick).semantics(mergeDescendants = true) { contentDescription = "${g.title}，$sub" }
+        .heightIn(min = Space.row + Space.xs).padding(horizontal = Space.page, vertical = Space.xs + 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (g.kind == "folder") Box(Modifier.size(48.dp).clip(RoundedCornerShape(Radius.s)).background(C.Surface2), contentAlignment = Alignment.Center) { Icon(KI.folder(), null, tint = C.Sub, modifier = Modifier.size(22.dp)) }
+        else MusicArt(g.art, Modifier.size(48.dp), corner = if (round) 24.dp else Radius.s)
+        Column(Modifier.weight(1f).padding(start = Space.m)) {
+            Text(g.title, color = C.Text, style = MaterialTheme.typography.bodyLarge, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(sub, color = C.Sub, style = MaterialTheme.typography.bodySmall.merge(Type.num), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Icon(LI.chevron(), null, tint = C.Faint, modifier = Modifier.size(18.dp))
+        Icon(KI.chevron(), null, tint = C.Faint, modifier = Modifier.size(18.dp))
     }
 }
 
@@ -335,7 +370,7 @@ private fun GroupRow(g: MusicGroup, round: Boolean = false, onClick: () -> Unit)
 
 @Composable
 fun MusicListScreen(r: Route.MusicList) {
-    val key = Movies.keyOf() ?: return Page(r.title) { StateMessage(Icons.Rounded.MusicNote, "先添加一个来源", "") }
+    val key = Movies.keyOf() ?: return Page(r.title) { StateMessage(KI.music(), "先添加一个来源", "") }
     val lib = remember(key) { Music.lib(key) }
     val v = lib.version
     // A2：「我喜欢」「最近播放」按记录的顺序（新的在前），库里已不存在的歌跳过
@@ -353,44 +388,45 @@ fun MusicListScreen(r: Route.MusicList) {
     Column(Modifier.fillMaxSize().appBackground()) {
         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 110.dp)) {
             item {
-                Row(Modifier.statusBarsPadding().padding(start = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { Nav.pop() }) { Icon(LI.back(true), "返回", tint = C.Text) }
+                // 1.6.6：二级页同款 44dp 返回圆钮
+                Row(Modifier.statusBarsPadding().padding(start = Space.s + 2.dp, end = Space.xs, top = Space.s), verticalAlignment = Alignment.CenterVertically) {
+                    RoundIcon(KI.back(), size = 44.dp, desc = "返回") { Nav.pop() }
                     Spacer(Modifier.weight(1f))
-                    if (r.kind == "recent" && tracks.isNotEmpty()) TextButton(onClick = { lib.clearRecent() }) { Text("清空", color = C.Sub, fontSize = 14.sp) }
+                    if (r.kind == "recent" && tracks.isNotEmpty()) HeaderTextButton("清空", C.Sub) { lib.clearRecent() }
                 }
             }
             item {
-                Row(Modifier.padding(horizontal = 18.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (r.kind == "fav" || r.kind == "recent") Box(Modifier.size(110.dp).clip(RoundedCornerShape(14.dp)).background(C.Accent.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
-                        Icon(if (r.kind == "fav") Icons.Rounded.Favorite else Icons.Rounded.History, null, tint = C.Accent, modifier = Modifier.size(44.dp))
+                // 1.6.6：封面 116dp（专辑 / 歌手有照片轻影），我喜欢 / 最近 / 文件夹用中性底 + 线性图标（不再铺强调色方块）
+                Row(Modifier.padding(horizontal = Space.page, vertical = Space.s), verticalAlignment = Alignment.CenterVertically) {
+                    if (r.kind == "fav" || r.kind == "recent" || r.kind == "folder") Box(Modifier.size(116.dp).skeuoCard(RoundedCornerShape(Radius.l), color = C.Surface2), contentAlignment = Alignment.Center) {
+                        Icon(when (r.kind) { "fav" -> KI.heart(); "recent" -> KI.history(); else -> KI.folder() }, null, tint = C.Sub, modifier = Modifier.size(40.dp))
                     }
-                    else if (r.kind == "folder") Box(Modifier.size(110.dp).clip(RoundedCornerShape(14.dp)).background(C.Surface2), contentAlignment = Alignment.Center) { Icon(LI.folder(), null, tint = C.Text, modifier = Modifier.size(40.dp)) }
-                    else MusicArt(art, Modifier.size(110.dp), corner = if (r.kind == "artist") 55.dp else 14.dp)
-                    Column(Modifier.padding(start = 16.dp).weight(1f)) {
-                        Text(r.title, color = C.Text, fontSize = 21.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    else MusicArt(art, Modifier.size(116.dp), corner = if (r.kind == "artist") 58.dp else Radius.l, lifted = true)
+                    Column(Modifier.padding(start = Space.l).weight(1f)) {
+                        Text(r.title, style = MaterialTheme.typography.headlineMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.semantics { heading() })
                         val sub = when (r.kind) {
                             "album" -> listOfNotNull(first?.albumArtist?.ifBlank { first.displayArtist }, first?.year?.takeIf { it > 0 }?.toString()).joinToString(" · ")
                             "folder" -> r.key.removePrefix("fm:")
-                            "fav" -> "长按歌曲选「加入我喜欢」，或在正在播放页点 ♡"
+                            "fav" -> "在正在播放页点 ♡，或长按歌曲加入"
                             "recent" -> "最近听过的 ${MusicMarks.RECENT_MAX} 首以内"
                             else -> "${tracks.map { it.albumKey }.distinct().size} 张专辑"
                         }
-                        if (sub.isNotBlank()) Text(sub, color = C.Sub, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
-                        Text("${tracks.size} 首 · ${Music.fmt(tracks.sumOf { it.durationMs })}", color = C.Faint, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                        if (sub.isNotBlank()) Text(sub, color = C.Sub, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = Space.xs))
+                        Text("${tracks.size} 首 · ${Music.fmt(tracks.sumOf { it.durationMs })}", color = C.Sub, style = MaterialTheme.typography.labelSmall.merge(Type.num), modifier = Modifier.padding(top = Space.xs))
                     }
                 }
             }
             item {
-                Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    PillButton(Icons.Rounded.PlayArrow, "全部播放", Modifier.weight(1f), primary = true) { MusicState.play(key, tracks, 0, shuffled = false) }
-                    PillButton(Icons.Rounded.Shuffle, "随机播放", Modifier.weight(1f)) { MusicState.play(key, tracks, -1, shuffled = true) }
+                Row(Modifier.padding(horizontal = Space.page, vertical = Space.m), horizontalArrangement = Arrangement.spacedBy(Space.m)) {
+                    PillButton(KI.playSolid(), "全部播放", Modifier.weight(1f), primary = true) { MusicState.play(key, tracks, 0, shuffled = false) }
+                    PillButton(KI.shuffle(), "随机播放", Modifier.weight(1f)) { MusicState.play(key, tracks, -1, shuffled = true) }
                 }
             }
             if (tracks.isEmpty() && (r.kind == "fav" || r.kind == "recent")) item {
-                Text(if (r.kind == "fav") "还没有喜欢的歌" else "还没有播放记录", style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp, horizontal = 24.dp))
+                Text(if (r.kind == "fav") "还没有喜欢的歌" else "还没有播放记录", style = MaterialTheme.typography.titleLarge, color = C.Sub, textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = Space.xxxl, horizontal = Space.xl))
             }
-            itemsIndexed(tracks, key = { _, t -> t.id }) { i, t -> TrackRow(t, key, showNo = r.kind == "album") { MusicState.play(key, tracks, i) } }
+            itemsIndexed(tracks, key = { _, t -> t.id }) { i, t -> TrackRow(t, key, showNo = r.kind == "album", index = i) { MusicState.play(key, tracks, i) } }
         }
     }
 }
@@ -400,31 +436,38 @@ fun MusicListScreen(r: Route.MusicList) {
 /** Extra bottom space for Home tab lists while the mini bar is showing, so it no longer covers the last row. */
 val miniPlayerPad: Dp get() = if (MusicState.active && !Selection.active) 64.dp else 0.dp
 
-/** Above the bottom navigation (or at the bottom on wide screens) while something is queued. */
+/**
+ * Above the bottom navigation (or at the bottom on wide screens) while something is queued.
+ * 1.6.6 阶段 5：浮起的胶囊（圆角 20、质感卡片影）、底部 2dp 进度细线；整条按压 0.985，点开正在播放页（从下往上展开）；
+ * 播放 / 暂停换图标有缩放过渡；出现 / 消失由 Home 里的 AnimatedVisibility 从底部滑入滑出。
+ */
 @Composable
 fun MiniPlayer(modifier: Modifier = Modifier) {
-    if (!MusicState.active) return
     val t = remember(MusicState.mediaId, MusicState.tick) { MusicState.current() }
     var pos by remember { mutableLongStateOf(0L) }
     // 全面审查 B10：暂停时只读一次位置，不再每 0.5 秒刷新
     LaunchedEffect(MusicState.isPlaying, MusicState.mediaId) { pos = MusicState.position; while (MusicState.isPlaying) { delay(500); pos = MusicState.position } }
     val dur = MusicState.duration
-    Column(modifier.padding(horizontal = 10.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(C.Surface).clickable { Nav.push(Route.MusicNowPlaying) }) {
-        Row(Modifier.padding(start = 8.dp, end = 4.dp, top = 7.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            MusicArt(t?.artPath, Modifier.size(40.dp))
-            Column(Modifier.weight(1f).padding(start = 10.dp)) {
-                Text(t?.title?.ifBlank { t.name } ?: "正在准备…", color = C.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(t?.displayArtist ?: "", color = C.Sub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    val title = t?.title?.ifBlank { t.name } ?: "正在准备…"
+    Column(modifier.padding(horizontal = Space.s + 2.dp).fillMaxWidth().pressScale(Motion.PRESS_SCALE_LARGE).skeuoCard(RoundedCornerShape(Radius.l), elevation = Elevation.raised)
+        .clickable(onClickLabel = "打开正在播放") { Nav.push(Route.MusicNowPlaying) }
+        .semantics(mergeDescendants = false) { contentDescription = "正在播放：$title" + (t?.displayArtist?.takeIf { it.isNotBlank() }?.let { "，$it" } ?: "") }) {
+        Row(Modifier.padding(start = Space.s, end = Space.xs, top = Space.s, bottom = Space.s - 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            MusicArt(t?.artPath, Modifier.size(42.dp), corner = Radius.l - Space.s)
+            Column(Modifier.weight(1f).padding(start = Space.m)) {
+                Text(title, color = C.Text, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(t?.displayArtist ?: "", color = C.Sub, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            IconButton(onClick = { MusicState.toggle() }) {
-                if (MusicState.buffering && MusicState.isPlaying) CircularProgressIndicator(color = C.Accent, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
-                else Icon(if (MusicState.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (MusicState.isPlaying) "暂停" else "播放", tint = C.Text, modifier = Modifier.size(28.dp))
+            IconButton(onClick = { MusicState.toggle() }, modifier = Modifier.semantics { contentDescription = if (MusicState.isPlaying) "暂停" else "播放" }) {
+                if (MusicState.buffering && MusicState.isPlaying) CircularProgressIndicator(color = C.Sub, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
+                else PlayPauseIcon(MusicState.isPlaying, C.Text, 24.dp)
             }
-            IconButton(onClick = { MusicState.next() }) { Icon(Icons.Rounded.SkipNext, "下一首", tint = C.Text, modifier = Modifier.size(26.dp)) }
+            IconButton(onClick = { MusicState.next() }) { Icon(KI.skipFwdSolid(), "下一首", tint = C.Text, modifier = Modifier.size(22.dp)) }
         }
-        Box(Modifier.fillMaxWidth().height(2.dp).background(C.Surface2)) {
+        Box(Modifier.padding(horizontal = Space.l).fillMaxWidth().height(2.dp).clip(RoundedCornerShape(1.dp)).background(C.Line)) {
             if (dur > 0) Box(Modifier.fillMaxWidth((pos.toFloat() / dur).coerceIn(0f, 1f)).fillMaxHeight().background(C.Accent))
         }
+        Spacer(Modifier.height(Space.xs + 2.dp))
     }
 }
 
@@ -450,6 +493,8 @@ fun MusicNowPlayingScreen() {
     }
     BackHandler { if (queueOpen) queueOpen = false else Nav.pop() }
 
+    // 1.6.6 阶段 5：Kubai 图标、实心播放钮 72dp（按压 0.92、换图标缩放过渡）、可加粗的进度条、心形收藏回弹、
+    // 封面暂停时轻轻缩小（弹簧，「移除动画」时直接切换）；时间与时长等宽数字
     Box(Modifier.fillMaxSize().appBackground()) {
         // soft blurred-looking backdrop: the cover, very dim
         if (t?.artPath != null) Box(Modifier.fillMaxSize()) {
@@ -457,68 +502,89 @@ fun MusicNowPlayingScreen() {
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(C.Bg.copy(alpha = 0.86f), C.Bg.copy(alpha = 0.95f), C.Bg))))
         }
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-            Row(Modifier.padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { Nav.pop() }) { Icon(Icons.Rounded.KeyboardArrowDown, "收起", tint = C.Text, modifier = Modifier.size(30.dp)) }
-                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("正在播放", color = C.Sub, fontSize = 12.sp)
-                    if (t != null) Text(t.displayAlbum, color = C.Text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(Modifier.padding(horizontal = Space.xs, vertical = Space.xs), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { Nav.pop() }) { Icon(KI.down(), "收起", tint = C.Text, modifier = Modifier.size(28.dp)) }
+                Column(Modifier.weight(1f).semantics(mergeDescendants = true) {}, horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("正在播放", color = C.Sub, style = MaterialTheme.typography.labelMedium)
+                    if (t != null) Text(t.displayAlbum, color = C.Text, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 // A2：喜欢当前这首
                 if (t != null && lib != null) {
                     val fav = t.id in lib.favs
                     IconButton(onClick = { lib.toggleFav(t.id) }) {
-                        Icon(if (fav) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, if (fav) "取消喜欢" else "喜欢", tint = if (fav) C.Accent else C.Text, modifier = Modifier.size(24.dp))
+                        Icon(if (fav) KI.heartSolid() else KI.heart(), if (fav) "取消喜欢" else "喜欢", tint = if (fav) C.Accent else C.Text, modifier = Modifier.size(24.dp).popOnChange(fav))
                     }
                 }
                 SleepButton()
-                IconButton(onClick = { showLyrics = !showLyrics; Store.putStr("music.showLyrics", if (showLyrics) "1" else "") }) {
-                    Text("词", color = if (showLyrics) C.Accent else C.Text, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                val lyrIx = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                val lyrBg by androidx.compose.animation.animateColorAsState(if (showLyrics) C.AccentSoft else Color.Transparent, Motion.state(), label = "lyrBg")
+                Box(Modifier.size(48.dp).clickable(lyrIx, null, role = androidx.compose.ui.semantics.Role.Switch) { showLyrics = !showLyrics; Store.putStr("music.showLyrics", if (showLyrics) "1" else "") }
+                    .semantics { contentDescription = "歌词"; stateDescription = if (showLyrics) "已显示" else "已隐藏" }, contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(34.dp).pressScale(0.92f).clip(CircleShape).background(lyrBg), contentAlignment = Alignment.Center) {
+                        Text("词", color = if (showLyrics) C.Accent else C.Text, style = MaterialTheme.typography.titleMedium)
+                    }
                 }
             }
             Box(Modifier.weight(1f).fillMaxWidth().clickable(remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, null) {
                 showLyrics = !showLyrics; Store.putStr("music.showLyrics", if (showLyrics) "1" else "")
             }, contentAlignment = Alignment.Center) {
-                if (showLyrics) LyricsView(lyrics, pos) { MusicState.seek(it) }
-                else Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    val scale by animateFloatAsState(if (MusicState.isPlaying) 1f else 0.9f, label = "art")
-                    MusicArt(t?.artPath, Modifier.padding(horizontal = 36.dp).fillMaxWidth().aspectRatio(1f).graphicsScale(scale), corner = 18.dp)
-                    // one current lyric line under the cover
-                    val cur = lyrics?.let { l -> currentLine(l, pos) }?.let { lyrics?.getOrNull(it)?.text }
-                    Text(cur ?: "", color = C.Sub, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(top = 22.dp, start = 24.dp, end = 24.dp).fillMaxWidth())
+                androidx.compose.animation.Crossfade(showLyrics, animationSpec = Motion.enter(), label = "lyrics") { ly ->
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        if (ly) LyricsView(lyrics, pos) { MusicState.seek(it) }
+                        else Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            val scale by animateFloatAsState(if (MusicState.isPlaying) 1f else 0.9f, if (Motion.reduced) androidx.compose.animation.core.snap() else androidx.compose.animation.core.spring(dampingRatio = 0.8f, stiffness = 260f), label = "art")
+                            MusicArt(t?.artPath, Modifier.padding(horizontal = 36.dp).fillMaxWidth().aspectRatio(1f).graphicsScale(scale), corner = Radius.l, lifted = true)
+                            // one current lyric line under the cover
+                            val cur = lyrics?.let { l -> currentLine(l, pos) }?.let { lyrics?.getOrNull(it)?.text }
+                            androidx.compose.animation.AnimatedContent(cur ?: "", transitionSpec = {
+                                (fadeIn(Motion.enter()) + androidx.compose.animation.slideInVertically(Motion.move()) { it / 2 }) togetherWith fadeOut(Motion.exit())
+                            }, label = "curLine") { line ->
+                                Text(line, color = C.Sub, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(top = 22.dp, start = Space.xl, end = Space.xl).fillMaxWidth())
+                            }
+                        }
+                    }
                 }
             }
             Column(Modifier.padding(horizontal = 26.dp)) {
-                Text(t?.title?.ifBlank { t.name } ?: "", color = C.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 3.dp)) {
-                    Text(t?.displayArtist ?: "", color = C.Sub, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                    t?.let { badge(it) }?.let { b -> Text(b, color = C.Sub, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp).clip(RoundedCornerShape(4.dp)).background(C.Chip).padding(horizontal = 4.dp, vertical = 1.dp)) }
+                Text(t?.title?.ifBlank { t.name } ?: "", style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = Space.xxs)) {
+                    Text(t?.displayArtist ?: "", color = C.Sub, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    t?.let { badge(it) }?.let { b -> Text(b, color = C.Sub, style = MaterialTheme.typography.labelSmall, fontSize = 10.sp, modifier = Modifier.padding(start = Space.s).clip(RoundedCornerShape(4.dp)).background(C.Chip).padding(horizontal = 4.dp, vertical = 1.dp)) }
                 }
-                Slider(value = drag ?: if (dur > 0) (pos.toFloat() / dur).coerceIn(0f, 1f) else 0f, onValueChange = { drag = it },
-                    onValueChangeFinished = { drag?.let { f -> if (dur > 0) MusicState.seek((f * dur).toLong()) }; drag = null }, enabled = dur > 0,
-                    colors = SliderDefaults.colors(thumbColor = C.Text, activeTrackColor = C.Text, inactiveTrackColor = C.Surface2), modifier = Modifier.padding(top = 10.dp))
+                val shownPos = drag?.let { (it * dur).toLong() } ?: pos
+                ScrubBar(drag ?: if (dur > 0) (pos.toFloat() / dur).coerceIn(0f, 1f) else 0f, enabled = dur > 0,
+                    onChange = { drag = it }, onCommit = { f -> if (dur > 0) MusicState.seek((f * dur).toLong()); drag = null },
+                    modifier = Modifier.padding(top = Space.m), valueText = "${Music.fmt(shownPos)} / ${if (dur > 0) Music.fmt(dur) else "--:--"}")
                 Row {
-                    Text(Music.fmt(drag?.let { (it * dur).toLong() } ?: pos), color = C.Sub, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                    Text(if (dur > 0) Music.fmt(dur) else "--:--", color = C.Sub, fontSize = 12.sp)
+                    Text(Music.fmt(shownPos), color = if (drag != null) C.Text else C.Sub, style = MaterialTheme.typography.labelSmall.merge(Type.num), modifier = Modifier.weight(1f))
+                    Text(if (dur > 0) Music.fmt(dur) else "--:--", color = C.Sub, style = MaterialTheme.typography.labelSmall.merge(Type.num))
                 }
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                val (modeIcon, modeTint) = when {
-                    MusicState.shuffle -> Icons.Rounded.Shuffle to C.Accent
-                    MusicState.repeat == Player.REPEAT_MODE_ONE -> Icons.Rounded.RepeatOne to C.Accent
-                    MusicState.repeat == Player.REPEAT_MODE_ALL -> Icons.Rounded.Repeat to C.Text
-                    else -> Icons.Rounded.Repeat to C.Faint
+                val modeTint = when {
+                    MusicState.shuffle || MusicState.repeat == Player.REPEAT_MODE_ONE -> C.Accent
+                    MusicState.repeat == Player.REPEAT_MODE_ALL -> C.Text
+                    else -> C.Faint
                 }
-                IconButton(onClick = { cycleMode() }) { Icon(modeIcon, "播放模式", tint = modeTint, modifier = Modifier.size(24.dp)) }
-                IconButton(onClick = { MusicState.prev() }, modifier = Modifier.size(56.dp)) { Icon(Icons.Rounded.SkipPrevious, "上一首", tint = C.Text, modifier = Modifier.size(38.dp)) }
-                Box(Modifier.size(70.dp).clip(CircleShape).background(C.Text).clickable { MusicState.toggle() }, contentAlignment = Alignment.Center) {
+                IconButton(onClick = { cycleMode() }, modifier = Modifier.semantics { stateDescription = modeText() }) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(if (MusicState.shuffle) KI.shuffle() else KI.repeat(), "播放模式", tint = modeTint, modifier = Modifier.size(24.dp))
+                        // 单曲循环：循环图标中间加一个小「1」（Kubai 没有 repeat-one）
+                        if (!MusicState.shuffle && MusicState.repeat == Player.REPEAT_MODE_ONE) Text("1", color = modeTint, style = Type.badge, fontSize = 9.sp)
+                    }
+                }
+                IconButton(onClick = { MusicState.prev() }, modifier = Modifier.size(56.dp)) { Icon(KI.skipBackSolid(), "上一首", tint = C.Text, modifier = Modifier.size(30.dp)) }
+                val playIx = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                Box(Modifier.size(72.dp).skeuoPressable(playIx, CircleShape, C.Text, scale = 0.92f, flat = true).clickable(playIx, null, role = androidx.compose.ui.semantics.Role.Button) { MusicState.toggle() }
+                    .semantics { contentDescription = if (MusicState.isPlaying) "暂停" else "播放" }, contentAlignment = Alignment.Center) {
                     if (MusicState.buffering && MusicState.isPlaying) CircularProgressIndicator(color = C.Bg, strokeWidth = 2.5.dp, modifier = Modifier.size(28.dp))
-                    else Icon(if (MusicState.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (MusicState.isPlaying) "暂停" else "播放", tint = C.Bg, modifier = Modifier.size(40.dp))
+                    else PlayPauseIcon(MusicState.isPlaying, C.Bg, 32.dp)
                 }
-                IconButton(onClick = { MusicState.next() }, modifier = Modifier.size(56.dp)) { Icon(Icons.Rounded.SkipNext, "下一首", tint = C.Text, modifier = Modifier.size(38.dp)) }
-                IconButton(onClick = { queueOpen = true }) { Icon(Icons.Rounded.QueueMusic, "播放列表", tint = C.Text, modifier = Modifier.size(24.dp)) }
+                IconButton(onClick = { MusicState.next() }, modifier = Modifier.size(56.dp)) { Icon(KI.skipFwdSolid(), "下一首", tint = C.Text, modifier = Modifier.size(30.dp)) }
+                IconButton(onClick = { queueOpen = true }) { Icon(KI.playlist(), "播放列表", tint = C.Text, modifier = Modifier.size(24.dp)) }
             }
-            Text(modeText(), color = C.Faint, fontSize = 11.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp))
+            Text(modeText(), color = C.Sub, style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp).clearAndSetSemantics {})
         }
     }
     if (queueOpen) AppBottomSheet(onDismissRequest = { queueOpen = false }, containerColor = C.Surface) { QueueSheet() }
@@ -551,19 +617,28 @@ private fun currentLine(l: List<Lrc.Line>, pos: Long): Int? {
 @Composable
 private fun LyricsView(lines: List<Lrc.Line>?, pos: Long, onSeek: (Long) -> Unit) {
     when {
-        lines == null -> CircularProgressIndicator(color = C.Accent, modifier = Modifier.size(26.dp))
-        lines.isEmpty() -> Text(if (MusicPrefs.online) "没有找到歌词" else "没有歌词（联网补全已关闭）", color = C.Sub, fontSize = 15.sp)
+        lines == null -> CircularProgressIndicator(color = C.Sub, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
+        lines.isEmpty() -> Text(if (MusicPrefs.online) "没有找到歌词" else "没有歌词（联网补全已关闭）", color = C.Sub, style = MaterialTheme.typography.bodyLarge)
         else -> {
             val st = rememberLazyListState()
             val cur = currentLine(lines, pos)
-            LaunchedEffect(cur) { if (cur != null) st.animateScrollToItem((cur - 3).coerceAtLeast(0)) }
+            // 1.6.6：当前行滚到视口约 40% 处（弹簧滚动，用户手动滑动时不抢）；字号固定，当前行靠颜色 + 缩放 1.0 / 0.94 区分，
+            // 换行时不重新排版（以前字号 16↔19 来回变会让整列跳一下）
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            LaunchedEffect(cur) {
+                if (cur != null && !st.isScrollInProgress) {
+                    val off = -(st.layoutInfo.viewportSize.height * 0.4f).toInt() + with(density) { 120.dp.roundToPx() }
+                    if (Motion.reduced) st.scrollToItem(cur, off) else st.animateScrollToItem(cur, off)
+                }
+            }
             LazyColumn(state = st, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 120.dp, horizontal = 26.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 itemsIndexed(lines) { i, l ->
                     val on = i == cur
-                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(enabled = l.ms >= 0) { onSeek(l.ms) }.padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(l.text.ifEmpty { "♪" }, color = if (on) C.Text else C.Sub.copy(alpha = 0.75f), fontSize = if (on) 19.sp else 16.sp,
-                            fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, textAlign = TextAlign.Center)
-                        if (l.sub.isNotEmpty()) Text(l.sub, color = if (on) C.Sub else C.Faint, fontSize = 13.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 2.dp))
+                    val fg by androidx.compose.animation.animateColorAsState(if (on) C.Text else C.Sub.copy(alpha = 0.7f), Motion.state(), label = "lrcFg")
+                    val sc by animateFloatAsState(if (on) 1f else 0.94f, Motion.move(), label = "lrcScale")
+                    Column(Modifier.fillMaxWidth().graphicsLayer { scaleX = sc; scaleY = sc }.clip(RoundedCornerShape(Radius.s)).clickable(enabled = l.ms >= 0, onClickLabel = "从这句开始播放") { onSeek(l.ms) }.padding(vertical = Space.s), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(l.text.ifEmpty { "♪" }, color = fg, fontSize = 18.sp, lineHeight = 26.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal, textAlign = TextAlign.Center)
+                        if (l.sub.isNotEmpty()) Text(l.sub, color = C.Sub, fontSize = 13.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 2.dp))
                     }
                 }
             }
@@ -581,10 +656,12 @@ private fun QueueSheet() {
     var dragDy by remember { mutableFloatStateOf(0f) }
     val rowPx = with(androidx.compose.ui.platform.LocalDensity.current) { 64.dp.toPx() }
     Column(Modifier.fillMaxWidth().fillMaxHeight(0.75f)) {
-        Row(Modifier.padding(horizontal = 20.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("播放列表", color = C.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            Text("  ${q.size} 首 · ${modeText()}", color = C.Sub, fontSize = 13.sp, modifier = Modifier.weight(1f))
-            TextButton(onClick = { confirmClear = true }) { Text("清空", color = C.Danger) }
+        Row(Modifier.padding(start = Space.xl, end = Space.s, top = Space.xs, bottom = Space.xs), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.weight(1f).semantics(mergeDescendants = true) { heading() }, verticalAlignment = Alignment.Bottom) {
+                Text("播放列表", style = MaterialTheme.typography.titleLarge)
+                Text("${q.size} 首 · ${modeText()}", color = C.Sub, style = MaterialTheme.typography.bodySmall.merge(Type.num), modifier = Modifier.padding(start = Space.s, bottom = 2.dp))
+            }
+            HeaderTextButton("清空", C.Danger) { confirmClear = true }
         }
         LazyColumn(state = st, contentPadding = PaddingValues(bottom = 30.dp)) {
             itemsIndexed(q, key = { i, m -> "$i|${m.mediaId}" }) { i, m ->
@@ -594,14 +671,14 @@ private fun QueueSheet() {
                     .zIndex(if (dragging) 1f else 0f)
                     .graphicsLayer { if (dragging) { translationY = dragDy; shadowElevation = 8f } }
                     .background(if (dragging) C.Surface else Color.Transparent)
-                    .clickable { MusicState.playAt(i) }.padding(start = 20.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (on) Icon(Icons.Rounded.GraphicEq, null, tint = C.Accent, modifier = Modifier.size(18.dp).padding(end = 2.dp))
-                    Column(Modifier.weight(1f).padding(start = if (on) 8.dp else 0.dp)) {
-                        Text(m.mediaMetadata.title?.toString() ?: "", color = if (on) C.Accent else C.Text, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(m.mediaMetadata.artist?.toString() ?: "", color = C.Sub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    .clickable(onClickLabel = "播放这首") { MusicState.playAt(i) }.padding(start = Space.xl, end = Space.xs), verticalAlignment = Alignment.CenterVertically) {
+                    if (on) NowPlayingBars(MusicState.isPlaying, C.Accent, Modifier.padding(end = Space.m))
+                    Column(Modifier.weight(1f).semantics(mergeDescendants = true) { if (on) stateDescription = "正在播放" }) {
+                        Text(m.mediaMetadata.title?.toString() ?: "", color = if (on) C.Accent else C.Text, style = MaterialTheme.typography.bodyLarge, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(m.mediaMetadata.artist?.toString() ?: "", color = C.Sub, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     // B9：删除按钮 48dp 触控区（原来 18dp 图标直接点，容易点歪）
-                    if (!on) IconButton(onClick = { MusicState.remove(i) }) { Icon(LI.close(), "从播放列表移除", tint = C.Faint, modifier = Modifier.size(18.dp)) }
+                    if (!on) IconButton(onClick = { MusicState.remove(i) }) { Icon(KI.close(), "从播放列表移除", tint = C.Sub, modifier = Modifier.size(18.dp)) }
                     Box(Modifier.size(48.dp).pointerInput(i, q.size) {
                         detectDragGestures(
                             onDragStart = { dragFrom = i; dragDy = 0f },
@@ -612,7 +689,7 @@ private fun QueueSheet() {
                             onDragCancel = { dragFrom = -1; dragDy = 0f },
                         ) { ch, d -> ch.consume(); dragDy += d.y }
                     }, contentAlignment = Alignment.Center) {
-                        Icon(Icons.Rounded.DragHandle, "拖动排序", tint = C.Faint, modifier = Modifier.size(20.dp))
+                        Icon(KI.menu(), "拖动排序", tint = C.Faint, modifier = Modifier.size(20.dp))
                     }
                 }
             }
@@ -635,7 +712,7 @@ fun MusicSettingsScreen() {
     var confirmClear by remember { mutableStateOf(false) }
     val src = currentSource()
     Page("音乐文件夹", src?.let { "${if (it.kind == "dav") "WebDAV" else "飞牛"} · ${it.title}" } ?: "") {
-        if (lib == null) { StateMessage(Icons.Rounded.MusicNote, "先添加一个来源", ""); return@Page }
+        if (lib == null) { StateMessage(KI.music(), "先添加一个来源", ""); return@Page }
         if (!lib.ready) { LibLoading(); return@Page }   // never save folders over a library that is still loading
         if (picking) { FolderPicker(lib.fs, lib.kind, onDismiss = { picking = false }, fmOnly = true) { path, name ->
             picking = false
@@ -680,10 +757,12 @@ private fun SleepButton() {
     LaunchedEffect(MusicState.sleepAt) { while (MusicState.sleepAt > 0) { left = (((MusicState.sleepAt - System.currentTimeMillis()) + 59_999) / 60_000).toInt().coerceAtLeast(0); delay(15_000) } }
     val on = MusicState.sleepAt > 0 || MusicState.sleepAfterTrack != null
     Box {
-        Row(Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(24.dp)).clickable { open = true }.padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Rounded.Bedtime, "定时关闭", tint = if (on) C.Accent else C.Text, modifier = Modifier.size(22.dp))
-            if (MusicState.sleepAt > 0) Text(" $left 分", color = C.Accent, fontSize = 12.sp)
-            else if (MusicState.sleepAfterTrack != null) Text(" 本首", color = C.Accent, fontSize = 12.sp)
+        Row(Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(24.dp)).clickable(role = androidx.compose.ui.semantics.Role.Button) { open = true }
+            .semantics(mergeDescendants = true) { contentDescription = "定时关闭" + when { MusicState.sleepAt > 0 -> "，剩 $left 分钟"; MusicState.sleepAfterTrack != null -> "，本首播完停止"; else -> "" } }
+            .padding(horizontal = Space.s + 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(KI.moon(on), null, tint = if (on) C.Accent else C.Text, modifier = Modifier.size(22.dp))
+            if (MusicState.sleepAt > 0) Text(" $left 分", color = C.Accent, style = MaterialTheme.typography.labelMedium.merge(Type.num).copy(color = C.Accent))
+            else if (MusicState.sleepAfterTrack != null) Text(" 本首", color = C.Accent, style = MaterialTheme.typography.labelMedium.copy(color = C.Accent))
         }
         AppDropdownMenu(open, onDismissRequest = { open = false }, modifier = Modifier.background(C.Surface)) {
             PlayerHints.sleepChoices.forEach { m -> DropdownMenuItem(text = { Text("$m 分钟后暂停", color = C.Text) }, onClick = { open = false; MusicState.setSleep(m) }) }
@@ -698,13 +777,15 @@ private fun SleepButton() {
 private fun MusicSortMenu() {
     var open by remember { mutableStateOf(false) }
     Box {
-        Row(Modifier.heightIn(min = 40.dp).clip(RoundedCornerShape(10.dp)).clickable { open = true }.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(LI.sort(), null, tint = C.Sub, modifier = Modifier.size(17.dp))
-            Text(MusicUi.sorts[MusicUi.sort], color = C.Sub, fontSize = 13.sp, modifier = Modifier.padding(start = 4.dp))
+        Row(Modifier.heightIn(min = 40.dp).clip(RoundedCornerShape(Radius.s)).clickable(onClickLabel = "选择排序方式", role = androidx.compose.ui.semantics.Role.Button) { open = true }
+            .semantics(mergeDescendants = true) { contentDescription = "排序：${MusicUi.sorts[MusicUi.sort]}" }.padding(horizontal = Space.s), verticalAlignment = Alignment.CenterVertically) {
+            Icon(KI.sort(), null, tint = C.Sub, modifier = Modifier.size(16.dp))
+            Text(MusicUi.sorts[MusicUi.sort], color = C.Sub, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(start = Space.xs))
         }
         AppDropdownMenu(open, onDismissRequest = { open = false }, modifier = Modifier.background(C.Surface)) {
             MusicUi.sorts.forEachIndexed { i, s ->
-                DropdownMenuItem(text = { Text(s, color = C.Text, fontWeight = if (i == MusicUi.sort) FontWeight.SemiBold else FontWeight.Normal) },
+                DropdownMenuItem(text = { Text(s, color = if (i == MusicUi.sort) C.Accent else C.Text, fontWeight = if (i == MusicUi.sort) FontWeight.Medium else FontWeight.Normal) },
+                    trailingIcon = if (i == MusicUi.sort) { { Icon(KI.check(), "当前", tint = C.Accent, modifier = Modifier.size(18.dp)) } } else null,
                     onClick = { open = false; MusicUi.sort = i; Store.putStr("music.sort", "$i") })
             }
         }

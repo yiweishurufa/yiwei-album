@@ -9,6 +9,15 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
@@ -86,6 +95,7 @@ private data class QItem(val path: String, val title: String, val file: MediaFil
 
 
 @androidx.annotation.OptIn(UnstableApi::class)
+@OptIn(androidx.compose.animation.ExperimentalAnimationApi::class)
 @Composable
 fun MoviePlayerScreen(r: Route.MoviePlay) {
     val ctx = LocalContext.current
@@ -875,34 +885,39 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
         // 用户口述 2（2026-10-30，参照 refs/player-ref.webp）：
         // 顶部 返回 + 标题 …… 投屏 / 设置；左侧 旋转屏幕 / 画面比例；右侧中部 锁屏；
         // 进度条一行（两端 00:01:42 / 00:45:26）；底部 倍速 清晰度 | 上一集 后退10秒 播放暂停 前进10秒 下一集 | 音轨 字幕 选集
-        AnimatedVisibility(controls && !inPip && !locked, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
+        // 1.6.6 阶段 5：布局不变（飞牛影视），只换视觉与动效——Kubai 图标、44dp 半透明圆钮（按压 0.92）、可加粗的进度条；
+        // 控制层淡入时顶栏从上、底栏从下各滑入一小段（「移除动画」时只淡入淡出）
+        AnimatedVisibility(controls && !inPip && !locked, enter = fadeIn(Motion.enter()), exit = fadeOut(Motion.exit()), modifier = Modifier.fillMaxSize()) {
+            val slideTop = Modifier.animateEnterExit(enter = slideInVertically(Motion.move()) { if (Motion.reduced) 0 else -it / 3 }, exit = slideOutVertically(Motion.exit()) { if (Motion.reduced) 0 else -it / 4 })
+            val slideBottom = Modifier.animateEnterExit(enter = slideInVertically(Motion.move()) { if (Motion.reduced) 0 else it / 3 }, exit = slideOutVertically(Motion.exit()) { if (Motion.reduced) 0 else it / 4 })
             var pos by remember { mutableLongStateOf(seekGate.position()) }
             var dur by remember { mutableLongStateOf(player.duration.takeIf { it > 0 } ?: 0L) }
             var drag by remember { mutableStateOf<Float?>(null) }
             LaunchedEffect(Unit) { while (true) { pos = seekGate.position(); dur = player.duration.takeIf { it > 0 && it != MC.TIME_UNSET } ?: 0L; delay(500) } }
             fun tap(f: () -> Unit) { poke++; f() }
             Box(Modifier.fillMaxSize()) {
-                Row(Modifier.align(Alignment.TopStart).fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0x99000000), Color.Transparent)))
-                    .systemBarsPadding().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { save(); Nav.pop() }) { Icon(LI.back(true), "返回", tint = Color.White) }
-                    Text(title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                    IconButton(onClick = { player.pause(); casting = true }) { Icon(Icons.Rounded.Cast, "投屏", tint = Color.White) }
-                    IconButton(onClick = { tap { panel = PlayerPanel.SETTINGS } }) { Icon(Icons.Rounded.Settings, "播放设置", tint = Color.White) }
+                Row(Modifier.align(Alignment.TopStart).then(slideTop).fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0x99000000), Color.Transparent)))
+                    .systemBarsPadding().padding(horizontal = Space.s, vertical = Space.xs), verticalAlignment = Alignment.CenterVertically) {
+                    OverlayIcon(KI.back(), "返回") { save(); Nav.pop() }
+                    Text(title, color = Color.White, style = MaterialTheme.typography.titleMedium.copy(color = Color.White), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).padding(start = Space.s).semantics { heading() })
+                    OverlayIcon(KI.cast(), "投屏") { player.pause(); casting = true }
+                    OverlayIcon(KI.settings(), "播放设置") { tap { panel = PlayerPanel.SETTINGS } }
                 }
                 Column(Modifier.align(Alignment.CenterStart).systemBarsPadding().padding(start = 16.dp), verticalArrangement = Arrangement.spacedBy(28.dp)) {
-                    OverlayIcon(Icons.Rounded.ScreenRotation, if (portrait) "横屏播放" else "竖屏播放") { tap {
+                    OverlayIcon(KI.rotate(), if (portrait) "横屏播放" else "竖屏播放") { tap {
                         portrait = !portrait
                         act?.requestedOrientation = if (portrait) ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                     } }
-                    OverlayIcon(if (fitMode == 0) Icons.Rounded.Fullscreen else Icons.Rounded.FullscreenExit, "画面比例：" + PlayerHints.fitLabel(fitMode)) { tap {
+                    OverlayIcon(if (fitMode == 0) KI.maximize() else KI.minimize(), "画面比例：" + PlayerHints.fitLabel(fitMode)) { tap {
                         fitMode = PlayerHints.nextFit(fitMode); applyFit(); hint = "画面比例：" + PlayerHints.fitLabel(fitMode)
                     } }
                 }
                 Box(Modifier.align(Alignment.CenterEnd).systemBarsPadding().padding(end = 16.dp)) {
-                    OverlayIcon(Icons.Rounded.LockOpen, "锁定屏幕") { locked = true; controls = false; hint = "已锁定，轻点屏幕可解锁" }
+                    OverlayIcon(KI.lockOpen(), "锁定屏幕") { locked = true; controls = false; hint = "已锁定，轻点屏幕可解锁" }
                 }
-                Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xB3000000))))
-                    .systemBarsPadding().padding(horizontal = 16.dp).padding(top = 24.dp, bottom = 4.dp)) {
+                Column(Modifier.align(Alignment.BottomStart).then(slideBottom).fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xB3000000))))
+                    .systemBarsPadding().padding(horizontal = Space.page).padding(top = Space.xl, bottom = Space.xs)) {
                     drag?.let { f ->
                         // 优化 13：拖动时的画面预览（取不到帧时只显示时间）
                         Column(Modifier.align(Alignment.CenterHorizontally).padding(bottom = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -910,19 +925,19 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                                 androidx.compose.foundation.Image(img, null, modifier = Modifier.width(160.dp).aspectRatio(img.width.toFloat() / img.height.coerceAtLeast(1))
                                     .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp)))
                             }
-                            Text(PlayerHints.longClock((f * dur).toLong()), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(top = 4.dp).background(Color(0x99000000), androidx.compose.foundation.shape.RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 2.dp))
+                            Text(PlayerHints.longClock((f * dur).toLong()), color = Color.White, style = Type.badge.copy(fontSize = 15.sp, lineHeight = 20.sp),
+                                modifier = Modifier.padding(top = Space.xs).background(Color(0x99000000), androidx.compose.foundation.shape.RoundedCornerShape(Radius.xs)).padding(horizontal = Space.s, vertical = 2.dp))
                         }
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         val shownPos = drag?.let { (it * dur).toLong() } ?: pos
-                        Text(PlayerHints.longClock(shownPos), color = Color.White, fontSize = 13.sp, style = androidx.compose.ui.text.TextStyle(fontFeatureSettings = "tnum"))
-                        Slider(value = drag ?: if (dur > 0) (pos.toFloat() / dur).coerceIn(0f, 1f) else 0f,
-                            onValueChange = { drag = it; poke++; wantThumb((it * dur).toLong()) }, enabled = dur > 0,
-                            onValueChangeFinished = { drag?.let { f -> seekGate.seekTo((f * dur).toLong(), "bar"); pos = (f * dur).toLong() }; drag = null; seekThumb = null },
-                            colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.White, inactiveTrackColor = Color(0x59FFFFFF)),
-                            modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
-                        Text(PlayerHints.longClock(dur), color = Color.White, fontSize = 13.sp, style = androidx.compose.ui.text.TextStyle(fontFeatureSettings = "tnum"))
+                        Text(PlayerHints.longClock(shownPos), color = Color.White, style = Type.badge.copy(fontSize = 13.sp, lineHeight = 18.sp))
+                        ScrubBar(drag ?: if (dur > 0) (pos.toFloat() / dur).coerceIn(0f, 1f) else 0f, enabled = dur > 0,
+                            onChange = { drag = it; poke++; wantThumb((it * dur).toLong()) },
+                            onCommit = { f -> seekGate.seekTo((f * dur).toLong(), "bar"); pos = (f * dur).toLong(); drag = null; seekThumb = null },
+                            active = Color.White, track = Color(0x59FFFFFF), valueText = "${PlayerHints.longClock(shownPos)} / ${PlayerHints.longClock(dur)}",
+                            modifier = Modifier.weight(1f).padding(horizontal = Space.m))
+                        Text(PlayerHints.longClock(dur), color = Color.White, style = Type.badge.copy(fontSize = 13.sp, lineHeight = 18.sp))
                     }
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
@@ -931,31 +946,36 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                         }
                         val hasPrev = player.currentMediaItemIndex > 0
                         val hasNext = player.currentMediaItemIndex < queue.size - 1
-                        if (queue.size > 1) OverlayIcon(Icons.Rounded.SkipPrevious, "上一集", enabled = hasPrev) { tap { save(); player.seekToPreviousMediaItem(); player.play() } }
-                        OverlayIcon(Icons.Rounded.Replay10, "后退 10 秒") { tap { seekGate.step(-10_000, "button-") } }
-                        IconButton(onClick = { tap {
+                        if (queue.size > 1) OverlayIcon(KI.skipBackSolid(), "上一集", enabled = hasPrev) { tap { save(); player.seekToPreviousMediaItem(); player.play() } }
+                        OverlayIcon(KI.rewind(), "后退 10 秒") { tap { seekGate.step(-10_000, "button-") } }
+                        val playIx = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                        Box(Modifier.padding(horizontal = Space.s).size(60.dp).skeuoPressable(playIx, CircleShape, Color(0x33FFFFFF), scale = 0.92f, flat = true)
+                            .clickable(playIx, null, role = androidx.compose.ui.semantics.Role.Button) { tap {
                             if (player.isPlaying) player.pause() else {
                                 if (player.playbackState == Player.STATE_ENDED) player.seekTo(0L)
                                 if (player.playbackState == Player.STATE_IDLE) player.prepare()
                                 player.play()
                             }
-                        } }, modifier = Modifier.padding(horizontal = 8.dp).size(56.dp)) {
-                            Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playing) "暂停" else "播放", tint = Color.White, modifier = Modifier.size(40.dp))
+                        } }.semantics { contentDescription = if (playing) "暂停" else "播放" }, contentAlignment = Alignment.Center) {
+                            PlayPauseIcon(playing, Color.White, 28.dp)
                         }
-                        OverlayIcon(Icons.Rounded.Forward10, "前进 10 秒") { tap { seekGate.step(10_000, "button+") } }
-                        if (queue.size > 1) OverlayIcon(Icons.Rounded.SkipNext, "下一集", enabled = hasNext) { tap { save(); player.seekToNextMediaItem(); player.play() } }
+                        OverlayIcon(KI.fastFwd(), "前进 10 秒") { tap { seekGate.step(10_000, "button+") } }
+                        if (queue.size > 1) OverlayIcon(KI.skipFwdSolid(), "下一集", enabled = hasNext) { tap { save(); player.seekToNextMediaItem(); player.play() } }
                         Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                            OverlayIcon(Icons.Rounded.GraphicEq, "音轨") { tap { panel = PlayerPanel.AUDIO } }
-                            OverlayIcon(Icons.Rounded.Subtitles, "字幕") { tap { panel = PlayerPanel.TEXT } }
-                            if (queue.size > 1) OverlayIcon(Icons.AutoMirrored.Rounded.PlaylistPlay, "选集") { tap { panel = PlayerPanel.EPISODES } }
+                            OverlayIcon(KI.audio(), "音轨") { tap { panel = PlayerPanel.AUDIO } }
+                            OverlayIcon(KI.subtitles(), "字幕") { tap { panel = PlayerPanel.TEXT } }
+                            if (queue.size > 1) OverlayIcon(KI.playlist(), "选集") { tap { panel = PlayerPanel.EPISODES } }
                         }
                     }
                 }
             }
         }
-        hint?.takeIf { !inPip }?.let { h ->
-            Text(h, color = Color.White, fontSize = 13.sp, modifier = Modifier.align(Alignment.TopCenter).padding(top = 64.dp, start = 24.dp, end = 24.dp)
-                .background(Color(0xB3000000), androidx.compose.foundation.shape.RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 8.dp))
+        // 提示气泡：从上方落下一小段 + 淡入，换文字时交叉淡化
+        androidx.compose.animation.AnimatedContent(hint?.takeIf { !inPip }, Modifier.align(Alignment.TopCenter), transitionSpec = {
+            (fadeIn(Motion.enter()) + slideInVertically(Motion.move()) { if (Motion.reduced) 0 else -it / 2 }) togetherWith fadeOut(Motion.exit())
+        }, label = "hint") { h ->
+            if (h != null) Text(h, color = Color.White, style = MaterialTheme.typography.labelLarge.copy(color = Color.White), modifier = Modifier.padding(top = 64.dp, start = Space.xl, end = Space.xl)
+                .background(Color(0xB3000000), androidx.compose.foundation.shape.RoundedCornerShape(Radius.m)).padding(horizontal = Space.l - 2.dp, vertical = Space.s + 2.dp).semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite })
         }
         if (showStats && !inPip) Text(statsText, color = Color.White, fontSize = 11.sp, modifier = Modifier.align(Alignment.TopStart).padding(top = 64.dp, start = 12.dp)
             .background(Color(0x99000000), androidx.compose.foundation.shape.RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 4.dp))
@@ -994,8 +1014,8 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                 if (lockBtn) Row(Modifier.align(Alignment.CenterEnd).systemBarsPadding().padding(end = 16.dp).clickable { locked = false; lockBtn = false; hint = "已解锁"; controls = true }
                     .background(Color(0xB3000000), androidx.compose.foundation.shape.RoundedCornerShape(24.dp)).padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.Lock, null, tint = Color.White)
-                    Text("  点此解锁", color = Color.White, fontSize = 14.sp)
+                    Icon(KI.lock(), null, tint = Color.White, modifier = Modifier.size(22.dp))
+                    Text("点此解锁", color = Color.White, style = MaterialTheme.typography.labelLarge.copy(color = Color.White), modifier = Modifier.padding(start = Space.s))
                 }
             }
         }
@@ -1179,10 +1199,13 @@ private fun SpeedButton(player: ExoPlayer, showId: String, onOpen: () -> Unit = 
     }
     Box {
         // 用户口述 2：底栏左边直接显示当前倍速「1.0x」
-        TextButton(onClick = { open = true; onOpen() }, modifier = Modifier.heightIn(min = 48.dp)) { Text(PlayerHints.speedLabel(speed), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium) }
+        TextButton(onClick = { open = true; onOpen() }, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "倍速 ${PlayerHints.speedLabel(speed)}" }) {
+            Text(PlayerHints.speedLabel(speed), color = Color.White, style = Type.badge.copy(fontSize = 15.sp, lineHeight = 20.sp))
+        }
         AppDropdownMenu(open, onDismissRequest = { open = false }) {
             listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f, 3f).forEach { s ->
-                DropdownMenuItem(text = { Text("${fmtSpeed(s)}×", fontWeight = if (s == speed) FontWeight.SemiBold else FontWeight.Normal) },
+                DropdownMenuItem(text = { Text("${fmtSpeed(s)}×", color = if (s == speed) C.Accent else C.Text, fontWeight = if (s == speed) FontWeight.Medium else FontWeight.Normal) },
+                    trailingIcon = if (s == speed) { { Icon(KI.check(), "当前", tint = C.Accent, modifier = Modifier.size(18.dp)) } } else null,
                     onClick = { open = false; speed = s; player.setPlaybackSpeed(s); PlayPrefs.setSpeed(showId, s) })
             }
         }
@@ -1223,44 +1246,72 @@ private const val LONG_PRESS_SPEED = 2f
 /** 用户口述 2：控制层上的图标按钮（48dp 触控区，白色图标，带读屏标签）。 */
 @Composable
 private fun OverlayIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, enabled: Boolean = true, onClick: () -> Unit) {
-    IconButton(onClick = onClick, enabled = enabled) { Icon(icon, label, tint = if (enabled) Color.White else Color(0x59FFFFFF), modifier = Modifier.size(26.dp)) }
+    // 1.6.6：48dp 触控区里画一个 44dp 半透明黑圆（压在任何画面上都看得清），按下缩到 0.92
+    val ix = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    Box(Modifier.size(48.dp).clickable(ix, null, enabled = enabled, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick).semantics { contentDescription = label },
+        contentAlignment = Alignment.Center) {
+        Box(Modifier.size(44.dp).skeuoPressable(ix, CircleShape, Color(0x29000000), scale = 0.92f, flat = true), contentAlignment = Alignment.Center) {
+            Icon(icon, null, tint = if (enabled) Color.White else Color(0x59FFFFFF), modifier = Modifier.size(24.dp))
+        }
+    }
 }
 
 @Composable
 private fun TopTextButton(text: String, onClick: () -> Unit) {
-    TextButton(onClick = onClick, modifier = Modifier.heightIn(min = 48.dp)) { Text(text, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium) }
+    TextButton(onClick = onClick, modifier = Modifier.heightIn(min = 48.dp)) { Text(text, color = Color.White, style = MaterialTheme.typography.labelLarge.copy(color = Color.White), fontSize = 15.sp) }
 }
 
-/** Center feedback for gestures: seek preview「+01:23 / 12:00」, volume / brightness level, 2× while long-pressing, play / pause. */
+/**
+ * Center feedback for gestures: seek preview「+01:23 / 12:00」, volume / brightness level, 2× while long-pressing, play / pause.
+ * 1.6.6：气泡统一圆角 20、深色 70%；出现时从 0.92 放大淡入、消失时淡出（「移除动画」只淡入淡出）；音量 / 亮度带图标，
+ * 数字用 Allo 等宽，拖动时不跳；进度是 4dp 圆头细条。
+ */
 @Composable
 private fun BoxScope.GestureHud(seek: String?, seekFrac: Float, level: Pair<String, Float>?, fast: Boolean, flash: Boolean?, thumb: androidx.compose.ui.graphics.ImageBitmap? = null) {
-    val shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
-    if (seek != null) {
-        Column(Modifier.align(Alignment.Center).background(Color(0xB3000000), shape).padding(horizontal = 20.dp, vertical = 14.dp),
-            horizontalAlignment = Alignment.CenterHorizontally) {
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(Radius.l)
+    val pop = fadeIn(Motion.enter()) + scaleIn(Motion.move(), if (Motion.reduced) 1f else 0.92f)
+    val bye = fadeOut(Motion.exit())
+    // 消失动画期间还要画最后一次的内容
+    var lastSeek by remember { mutableStateOf("") }; if (seek != null) lastSeek = seek
+    var lastLevel by remember { mutableStateOf("" to 0f) }; if (level != null) lastLevel = level
+    var lastFlash by remember { mutableStateOf(true) }; if (flash != null) lastFlash = flash
+    AnimatedVisibility(seek != null, Modifier.align(Alignment.Center), enter = pop, exit = bye) {
+        Column(Modifier.background(Color(0xB3000000), shape).padding(horizontal = Space.l + Space.xs, vertical = Space.l - 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             thumb?.let { img ->
-                androidx.compose.foundation.Image(img, null, modifier = Modifier.padding(bottom = 8.dp).width(180.dp).aspectRatio(img.width.toFloat() / img.height.coerceAtLeast(1))
-                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp)))
+                androidx.compose.foundation.Image(img, null, modifier = Modifier.padding(bottom = Space.s).width(180.dp).aspectRatio(img.width.toFloat() / img.height.coerceAtLeast(1))
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(Radius.s)))
             }
-            Text(seek, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-            LinearProgressIndicator(progress = { seekFrac }, color = C.Accent, trackColor = Color(0x4DFFFFFF),
-                modifier = Modifier.padding(top = 10.dp).width(180.dp).height(3.dp))
-        }
-    } else if (level != null) {
-        Column(Modifier.align(Alignment.Center).background(Color(0xB3000000), shape).padding(horizontal = 20.dp, vertical = 14.dp),
-            horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("${level.first} ${(level.second * 100).toInt()}%", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-            LinearProgressIndicator(progress = { level.second }, color = C.Accent, trackColor = Color(0x4DFFFFFF),
-                modifier = Modifier.padding(top = 10.dp).width(150.dp).height(3.dp))
-        }
-    } else if (flash != null) {
-        Box(Modifier.align(Alignment.Center).size(72.dp).background(Color(0x99000000), androidx.compose.foundation.shape.CircleShape), contentAlignment = Alignment.Center) {
-            Icon(if (flash) Icons.Rounded.PlayArrow else Icons.Rounded.Pause, if (flash) "播放" else "暂停", tint = Color.White, modifier = Modifier.size(40.dp))
+            Text(lastSeek, color = Color.White, style = Type.badge.copy(fontSize = 22.sp, lineHeight = 28.sp))
+            HudBar(seekFrac, Modifier.padding(top = Space.s + 2.dp).width(180.dp))
         }
     }
-    if (fast) {
-        Text("${fmtSpeed(LONG_PRESS_SPEED)}× 快进中", color = Color.White, fontSize = 14.sp,
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 24.dp).background(Color(0xB3000000), shape).padding(horizontal = 14.dp, vertical = 8.dp))
+    AnimatedVisibility(level != null && seek == null, Modifier.align(Alignment.Center), enter = pop, exit = bye) {
+        Column(Modifier.background(Color(0xB3000000), shape).padding(horizontal = Space.l + Space.xs, vertical = Space.l - 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (lastLevel.first == "亮度") KI.sun() else KI.volume(), null, tint = Color.White, modifier = Modifier.size(20.dp))
+                Text("${lastLevel.first} ${(lastLevel.second * 100).toInt()}%", color = Color.White, style = Type.badge.copy(fontSize = 17.sp, lineHeight = 22.sp), modifier = Modifier.padding(start = Space.s))
+            }
+            HudBar(lastLevel.second, Modifier.padding(top = Space.s + 2.dp).width(150.dp))
+        }
+    }
+    AnimatedVisibility(flash != null && seek == null && level == null, Modifier.align(Alignment.Center), enter = pop, exit = bye) {
+        Box(Modifier.size(72.dp).background(Color(0x99000000), CircleShape), contentAlignment = Alignment.Center) {
+            Icon(if (lastFlash) KI.playSolid() else KI.pauseSolid(), if (lastFlash) "播放" else "暂停", tint = Color.White, modifier = Modifier.size(30.dp).offset(x = if (lastFlash) 1.dp else 0.dp))
+        }
+    }
+    AnimatedVisibility(fast, Modifier.align(Alignment.TopCenter), enter = fadeIn(Motion.enter()) + slideInVertically(Motion.move()) { if (Motion.reduced) 0 else -it }, exit = bye) {
+        Row(Modifier.padding(top = Space.xl).background(Color(0xB3000000), shape).padding(horizontal = Space.l - 2.dp, vertical = Space.s), verticalAlignment = Alignment.CenterVertically) {
+            Icon(KI.fastFwd(), null, tint = Color.White, modifier = Modifier.size(18.dp))
+            Text("${fmtSpeed(LONG_PRESS_SPEED)}× 快进中", color = Color.White, style = MaterialTheme.typography.labelLarge.copy(color = Color.White), modifier = Modifier.padding(start = Space.s - 2.dp))
+        }
+    }
+}
+
+/** 手势气泡里的进度：4dp 圆头细条，白 30% 底轨 + 强调色。 */
+@Composable
+private fun HudBar(frac: Float, modifier: Modifier) {
+    Box(modifier.height(4.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(2.dp)).background(Color(0x4DFFFFFF))) {
+        Box(Modifier.fillMaxHeight().fillMaxWidth(frac.coerceIn(0f, 1f)).background(C.Accent))
     }
 }
 
