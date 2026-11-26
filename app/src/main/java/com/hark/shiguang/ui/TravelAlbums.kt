@@ -1,5 +1,6 @@
 package com.hark.shiguang.ui
 
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -117,11 +118,13 @@ private fun TripCard(a: TripAlbum, index: Int) {
         .clickable(role = androidx.compose.ui.semantics.Role.Button) { TravelAlbums.open(a) }
         .semantics(mergeDescendants = true) { contentDescription = "旅行相册：${t.place}，$range，${a.photos.size} 张" }) {
         NetImage(a.cover.thumbM, Modifier.fillMaxSize())
-        Box(Modifier.matchParentSize().background(Brush.verticalGradient(0.45f to Color.Transparent, 1f to Color(0x99000000))))
-        Column(Modifier.align(Alignment.BottomStart).padding(Space.m)) {
-            Text(t.place, color = Color.White, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold), maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(range, color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodySmall.merge(Type.num), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
-            Text("${t.days} 天 · ${a.photos.size} 张", color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall.merge(Type.num), maxLines = 1)
+        // 1.7.10 v2：和「那年今天」同一款——地点压在底部的一枚玻璃标签里（照片上的深色玻璃，白字 ≥ 7:1），天数 / 张数是标签右上的小胶囊
+        Text("${t.days} 天", color = Color.White, style = Type.badge.copy(fontSize = 12.sp, lineHeight = 16.sp), modifier = Modifier.align(Alignment.TopEnd).padding(Space.s)
+            .glass(CircleShape, null, tint = Color.Black.copy(alpha = 0.55f), shadow = 0.dp, highlight = 0.6f, onDark = true).padding(horizontal = 10.dp, vertical = 4.dp))
+        Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(Space.s).glass(RoundedCornerShape(Radius.l - Space.s), null, tint = Color.Black.copy(alpha = 0.55f), shadow = 0.dp, highlight = 0.6f, onDark = true)
+            .padding(horizontal = Space.m, vertical = Space.s)) {
+            Text(t.place, color = Color.White, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text("$range · ${a.photos.size} 张", color = Color.White.copy(alpha = 0.82f), style = MaterialTheme.typography.bodySmall.merge(Type.num), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
         }
     }
 }

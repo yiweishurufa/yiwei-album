@@ -415,8 +415,8 @@ private fun watchState(m: MovieItem, paths: List<String>, lib: MovieLib): WatchS
 private fun PosterSkeleton() {
     Column {
         Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(Radius.s)).background(shimmerBrush()))
-        Box(Modifier.padding(top = Space.s + 2.dp).fillMaxWidth(0.8f).height(11.dp).clip(RoundedCornerShape(Radius.xs)).background(C.Surface2))
-        Box(Modifier.padding(top = Space.xs + 2.dp).fillMaxWidth(0.4f).height(9.dp).clip(RoundedCornerShape(Radius.xs)).background(C.Surface2))
+        Box(Modifier.padding(top = Space.s + 2.dp).fillMaxWidth(0.8f).height(11.dp).clip(RoundedCornerShape(Radius.xs)).background(skeletonLine))
+        Box(Modifier.padding(top = Space.xs + 2.dp).fillMaxWidth(0.4f).height(9.dp).clip(RoundedCornerShape(Radius.xs)).background(skeletonLine))
     }
 }
 

@@ -57,12 +57,34 @@ import java.util.Locale
 @Composable
 fun shimmerBrush(): Brush {
     // loading-states：骨架只在首屏用；「移除动画」时不扫光，只给静态底色
-    if (Motion.reduced) return androidx.compose.ui.graphics.SolidColor(C.Surface)
+    // 1.7.10 v2：玻璃风格下骨架是半透明的「磨砂」块（正文色 6% → 扫光 12%），环境光晕能透出来，不再是一块块实心灰；简洁风格保持实色
+    val base = if (Glass.on) C.Text.copy(alpha = 0.06f) else C.Surface
+    val hi = if (Glass.on) C.Text.copy(alpha = 0.12f) else androidx.compose.ui.graphics.lerp(C.Surface, C.Surface2, 0.7f)
+    if (Motion.reduced) return androidx.compose.ui.graphics.SolidColor(base)
     val t = rememberInfiniteTransition(label = "s")
     val x by t.animateFloat(0f, 1400f, infiniteRepeatable(tween(1600, easing = LinearEasing), RepeatMode.Restart), label = "x")
-    return Brush.linearGradient(
-        listOf(C.Surface, androidx.compose.ui.graphics.lerp(C.Surface, C.Surface2, 0.7f), C.Surface), start = Offset(x - 400f, 0f), end = Offset(x, 400f)
-    )
+    return Brush.linearGradient(listOf(base, hi, base), start = Offset(x - 400f, 0f), end = Offset(x, 400f))
+}
+
+/** 1.7.10：骨架里的「字行」底色（不扫光）：玻璃风格正文色 6%，简洁风格凹槽色。 */
+val skeletonLine: Color @Composable get() = if (Glass.on) C.Text.copy(alpha = 0.06f) else C.Surface2
+
+/** 1.7.10：歌曲 / 文件这类列表行的骨架（与行同形：方形封面 + 两行字 + 右侧短条），首屏用。 */
+@Composable
+fun ListRowSkeleton(rows: Int = 8, cover: androidx.compose.ui.unit.Dp = 48.dp, coverShape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(Radius.s)) {
+    Column(Modifier.fillMaxWidth().padding(top = Space.xs).semantics { contentDescription = "正在加载" }) {
+        val b = shimmerBrush()
+        repeat(rows) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = Space.page, vertical = Space.s), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(cover).clip(coverShape).background(b))
+                Column(Modifier.weight(1f).padding(start = Space.m)) {
+                    Box(Modifier.fillMaxWidth(0.6f).height(12.dp).clip(RoundedCornerShape(Radius.xs)).background(skeletonLine))
+                    Box(Modifier.padding(top = Space.s).fillMaxWidth(0.4f).height(10.dp).clip(RoundedCornerShape(Radius.xs)).background(skeletonLine))
+                }
+                Box(Modifier.size(36.dp, 10.dp).clip(RoundedCornerShape(Radius.xs)).background(skeletonLine))
+            }
+        }
+    }
 }
 
 @Composable

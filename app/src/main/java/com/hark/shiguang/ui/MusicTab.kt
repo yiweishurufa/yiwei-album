@@ -108,7 +108,8 @@ fun MusicTab() {
     PullRefreshBox(enabled = lib.ready && lib.dirs.isNotEmpty() && !lib.scanning, onRefresh = { lib.scan(quiet = true); ScanService.ensure(App.ctx) }) {
     LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 170.dp)) {
         item { MediaHeader("音乐", SearchScope.None, lib.scanning, lib.dirs.isNotEmpty(), "重新扫描音乐") { lib.scan(); ScanService.ensure(App.ctx) } }
-        if (!lib.ready) { item { Box(Modifier.fillMaxWidth().height(440.dp)) { LibLoading() } }; return@LazyColumn }
+        // 1.7.10：读库时显示和歌曲行同形的骨架（以前是居中转圈）
+        if (!lib.ready) { item { ListRowSkeleton(9, 48.dp) }; return@LazyColumn }
         if (lib.dirs.isEmpty()) {
             item {
                 Box(Modifier.fillMaxWidth().height(440.dp)) {

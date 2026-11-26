@@ -1,5 +1,9 @@
 package com.hark.shiguang.ui
 
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -178,13 +182,14 @@ private fun DavGroupsBody(r: Route.DavGroups, overrides: MutableMap<String, Bool
     }) {
         Column(Modifier.fillMaxSize()) {
             header()
-            if (pending) Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(C.Accent.copy(alpha = 0.10f))
-                .clickable { HomeState.openAiTab() }.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            // 1.7.10 v2：分析进度横幅改成玻璃卡（圆角 24），右侧「去发现页」是强调色胶囊
+            if (pending) Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp).fillMaxWidth().glass(RoundedCornerShape(Radius.l), null, tint = C.Surface, shadow = 6.dp).clip(RoundedCornerShape(Radius.l))
+                .clickable(role = androidx.compose.ui.semantics.Role.Button) { HomeState.openAiTab() }.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(if (lib.analyzing) "发现页正在分析 ${n(analyzedN)}/${n(imgs)} 张" else "已分析 ${n(analyzedN)}/${n(imgs)} 张", color = C.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     Text(if (lib.analyzing) "结果会自动出现在这里" else "其余照片在「发现」页的整理里继续分析", color = C.Sub, fontSize = 12.sp)
                 }
-                Text("去发现页", color = C.Accent, fontSize = 13.sp)
+                Text("去发现页", color = C.Accent, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clip(CircleShape).background(C.Accent.copy(alpha = 0.16f)).padding(horizontal = 12.dp, vertical = 6.dp))
             }
             if (groups.isEmpty()) Box(Modifier.weight(1f)) {
                 StateMessage(if (dup) LI.copy() else LI.layers(), if (pending) "还没分析完" else "没有${if (dup) "重复" else "相似"}照片",
@@ -193,23 +198,34 @@ private fun DavGroupsBody(r: Route.DavGroups, overrides: MutableMap<String, Bool
             else LazyColumn(Modifier.weight(1f), state = listState, contentPadding = PaddingValues(bottom = 16.dp)) {
                 itemsIndexed(groups, key = { _, g -> g.first().key }) { gi, g ->
                     val best = Quality.best(g)
-                    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().skeuoCard().padding(12.dp)) {
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().skeuoCard(RoundedCornerShape(Radius.l)).padding(14.dp)) {
+                        // 1.7.10 v2：组标题 titleMedium 粗体 + 张数胶囊；推荐理由单独一行
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("第 ${gi + 1} 组 · ${g.size} 张", color = C.Text, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                            Text("推荐保留：" + Quality.why(best, g), color = C.Sub, fontSize = 12.sp)
+                            Text("第 ${gi + 1} 组", color = C.Text, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), modifier = Modifier.semantics { heading() })
+                            Text("${g.size} 张", color = C.Sub, style = MaterialTheme.typography.labelMedium.merge(Type.num), modifier = Modifier.padding(start = 8.dp)
+                                .clip(CircleShape).background(C.Text.copy(alpha = 0.07f)).padding(horizontal = 8.dp, vertical = 2.dp))
                         }
+                        Text("推荐保留：" + Quality.why(best, g), color = C.Sub, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
                         if (!SimilarCluster.autoSelect(g.size)) Text("这组照片较多，没有自动勾选，请点开逐张确认后再勾选要删的", color = C.Gold, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
                         LazyRow(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             itemsIndexed(g, key = { _, p -> p.key }) { i, p ->
                                 val sel = del[p.key] == true
                                 Column(Modifier.width(120.dp)) {
-                                    Box(Modifier.size(120.dp).clip(RoundedCornerShape(12.dp)).border(if (p === best) 2.dp else 0.dp, if (p === best) C.Green else Color.Transparent, RoundedCornerShape(12.dp))
-                                        .clickable { Nav.push(Route.Viewer(g, i)) }) {
+                                    // 1.7.10 v2：圆角 16；推荐保留 = 底部一枚深色玻璃胶囊（绿点 + 白字，不只靠颜色）；删除勾 48dp 触摸区、读屏「标记删除」复选框
+                                    Box(Modifier.size(120.dp).clip(RoundedCornerShape(16.dp)).border(if (p === best) 2.dp else 0.dp, if (p === best) C.Green else Color.Transparent, RoundedCornerShape(16.dp))
+                                        .clickable(role = androidx.compose.ui.semantics.Role.Button, onClickLabel = "查看大图") { Nav.push(Route.Viewer(g, i)) }) {
                                         NetImage(p.thumbM, Modifier.fillMaxSize())
-                                        if (p === best) Text("推荐保留", color = Color.White, fontSize = 11.sp, modifier = Modifier.align(Alignment.BottomStart).background(C.Green.copy(alpha = 0.9f), RoundedCornerShape(topEnd = 8.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
-                                        Box(Modifier.align(Alignment.TopEnd).padding(6.dp).size(24.dp).clip(CircleShape).background(if (sel) C.Danger else Color(0x66000000)).border(1.5.dp, Color.White, CircleShape)
-                                            .clickable { setDel(p.key, !sel) }, contentAlignment = Alignment.Center) {
-                                            if (sel) Icon(KI.check(), null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                        if (p === best) Row(Modifier.align(Alignment.BottomStart).padding(6.dp).glass(CircleShape, null, tint = Color.Black.copy(alpha = 0.6f), shadow = 0.dp, highlight = 0.6f, onDark = true)
+                                            .padding(horizontal = 8.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Box(Modifier.size(6.dp).clip(CircleShape).background(C.Green))
+                                            Text("推荐保留", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 5.dp))
+                                        }
+                                        Box(Modifier.align(Alignment.TopEnd).size(48.dp)
+                                            .toggleable(sel, role = androidx.compose.ui.semantics.Role.Checkbox) { setDel(p.key, it) }
+                                            .semantics { contentDescription = "标记删除" }, contentAlignment = Alignment.Center) {
+                                            Box(Modifier.size(26.dp).clip(CircleShape).background(if (sel) C.Danger else Color(0x66000000)).border(1.5.dp, Color.White, CircleShape), contentAlignment = Alignment.Center) {
+                                                if (sel) Icon(KI.check(), null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                            }
                                         }
                                     }
                                     val res = if (p.width > 0) "${p.width}×${p.height} · " else ""

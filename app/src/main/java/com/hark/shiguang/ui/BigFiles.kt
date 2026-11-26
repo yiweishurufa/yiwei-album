@@ -118,17 +118,7 @@ private fun BigFileRow(p: Photo, size: Long, index: Int, onClick: () -> Unit) {
 /** 加载中：8 行与 [BigFileRow] 同形的骨架。 */
 @Composable
 private fun BigFileSkeleton() {
-    Column(Modifier.fillMaxSize().padding(top = Space.xs)) {
-        repeat(8) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = Space.page, vertical = Space.s), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(56.dp).clip(RoundedCornerShape(Radius.s)).background(shimmerBrush()))
-                Column(Modifier.weight(1f).padding(start = Space.m)) {
-                    Box(Modifier.fillMaxWidth(0.6f).height(12.dp).clip(RoundedCornerShape(Radius.xs)).background(C.Surface2))
-                    Box(Modifier.padding(top = Space.s).fillMaxWidth(0.4f).height(10.dp).clip(RoundedCornerShape(Radius.xs)).background(C.Surface2))
-                }
-                Box(Modifier.size(48.dp, 12.dp).clip(RoundedCornerShape(Radius.xs)).background(C.Surface2))
-            }
-        }
-    }
+    // 1.7.10：改用通用的列表行骨架（玻璃风格下半透明）
+    ListRowSkeleton(8, 56.dp)
 }
 
