@@ -134,9 +134,9 @@
 | 位移（开关钮、底栏选中胶囊展开） | `spring(1, 700)`（临界阻尼，约 250ms） | `Motion.move()`；底栏胶囊 scaleX 0.5→1 + 淡入。 |
 | 进入 / 退出 | 进入 `tween(240, EaseOut)`；退出 `tween(160)` | 退出比进入快。【emil-design-eng · 退出更快】 |
 | 页面转场 | 共享 X 轴：进栈新页从右 28dp 滑入 + 淡入，旧页左移 14dp + 淡出；出栈反向；`spring(1, 420)` | `MainActivity`。只走一小段，不整屏推。【impeccable android.md · shared-axis】 |
-| 大图 / 播放器打开 | 放大淡入 0.94→1，`spring(0.86, 320)`；关闭淡出 + 缩到 0.96 | 第 1 阶段是整页放大；真正的共享元素（从缩略图位置展开、下拉缩回）在 ROADMAP「大图查看器」阶段做。【impeccable android.md · container transform；gestures】 |
-| 底部面板 / 对话框 | `spring(0.9, StiffnessMediumLow)`（bounce ≈ 0.1） | `Motion.sheet()`；拖动关闭要带速度判定。【emil-design-eng · drawer；gestures】 |
-| 列表进入 | 只给首屏前 6 项：上浮 8dp + 淡入，间隔 32ms | `Motion.STAGGER / STAGGER_MAX / RISE`；不阻塞交互，滚动加载的项不做。【choreograph；emil-design-eng · stagger 30–80ms】 |
+| 大图 / 播放器打开 | 放大淡入 0.94→1，`spring(0.86, 320)`；关闭淡出 + 缩到 0.96 | 1.6.3 起是共享元素式：从缩略图位置展开；下拉时照片跟手缩小、背景变透明，松手按距离 96dp 或向下速度关闭，缩回网格里那一格（`ViewerScreen` + `Hero`），找不到格子时退回整页淡出。【impeccable android.md · container transform；gestures】 |
+| 底部面板 / 对话框 | `spring(0.9, StiffnessMediumLow)`（bounce ≈ 0.1） | `Motion.sheet()`；拖动关闭要带速度判定。页面里只用 `ui/Dialogs.kt` 的 `AppAlertDialog`（0.94→1 弹出、标题 titleLarge、圆角 28）、`AppBottomSheet`（统一拖动条、上沿 28；弹簧与速度判定用 Material 自带）、`AppDropdownMenu`（圆角 14）。【emil-design-eng · drawer；gestures】 |
+| 列表进入 | 只给首屏前 6 项：上浮 8dp + 淡入，间隔 32ms | `Modifier.enterRise(index)`（UiKit，只播一次）；`Motion.STAGGER / STAGGER_MAX / RISE`；不阻塞交互，滚动加载的项不做。【choreograph；emil-design-eng · stagger 30–80ms】 |
 | 骨架屏扫光 | 1600ms 线性循环，只在首屏 | 循环只给「正在加载」这一真实状态。【loading-states；unslop §9】 |
 
 - **遵守系统「移除动画」**：`ShiGuangTheme` 读 `Settings.Global.ANIMATOR_DURATION_SCALE`，为 0 时 `Motion.reduced = true`：缩放、位移、弹簧改成直接切换，转场只剩 90ms 淡入淡出，骨架不扫光；颜色变化保留（不会引起晕动），状态变化同时有颜色 / 文字变化，不只靠动画表达。【emil-design-eng · reduced motion；interaction-physics「反馈不只靠动作」；impeccable android.md】
