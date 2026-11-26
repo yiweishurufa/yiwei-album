@@ -295,9 +295,9 @@ fun DavFolderSelectDialog(initial: List<String>, onDismiss: () -> Unit, onSave: 
 /** Settings group label (small grey text). Deliberately NOT [SectionTitle]: that one is a titleMedium row with a trailing count for content lists — merging them would restyle every Settings section. */
 @Composable
 fun Section(t: String, info: String? = null) {
-    // 1.6.0：分组标题与卡片内文字左对齐（16 页边距 + 16 卡片内边距），上 28 下 8：离自己的组近、离上一组远
-    Row(Modifier.semantics { heading() }.padding(start = 32.dp, end = 12.dp, top = 28.dp, bottom = if (info == null) 8.dp else 2.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(t, color = C.Sub, style = MaterialTheme.typography.labelLarge, fontSize = 13.sp)
+    // 1.7.0 v2：分组标题大号粗体左对齐（titleLarge 20sp Bold、负字距、正文色），与卡片左沿对齐（20），上 32 下 10
+    Row(Modifier.semantics { heading() }.padding(start = 20.dp, end = 12.dp, top = 32.dp, bottom = if (info == null) 10.dp else 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(t, color = C.Text, style = MaterialTheme.typography.titleLarge)
         if (info != null) InfoDot(info, t)
     }
 }

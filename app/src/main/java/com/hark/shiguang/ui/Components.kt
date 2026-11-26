@@ -32,6 +32,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -224,31 +228,44 @@ fun ErrorState(message: String?, onRetry: () -> Unit, onFix: ((com.hark.shiguang
 }
 
 /**
- * 主按钮（一屏最多一个）。1.6.0：实心强调色、14dp 圆角、按下缩到 0.97（[skeuoPressable]），质感风格下阴影变浅。
- * 名字沿用 GradientButton 以免改动 40 多处调用；表面已经不是渐变。
+ * 主按钮（一屏最多一个）。1.7.0 v2：全圆角胶囊、高 52；玻璃风格下表面是上亮下实的强调色 + 上沿白色高光边 + 同色柔光晕
+ * （像一颗发光的彩色玻璃），按下液体形变并压暗。简洁风格：实心强调色。名字沿用 GradientButton 以免改动 40 多处调用。
  */
 @Composable
 fun GradientButton(text: String, modifier: Modifier = Modifier, loading: Boolean = false, onClick: () -> Unit) {
     val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val shape = CircleShape
+    val accent = C.Accent
+    val glass = Glass.on
     Box(
-        modifier.heightIn(min = 50.dp).skeuoPressable(interaction, RoundedCornerShape(Radius.m), C.Accent)
+        modifier.heightIn(min = 52.dp).glassPress(interaction, 0.6f)
+            .then(if (glass) Modifier.drawWithCache {
+                val layers = SkeuoShadow.layers(14.dp.toPx(), 0.55f)
+                val outlines = layers.map { l -> shape.createOutline(androidx.compose.ui.geometry.Size(size.width + 2 * l.spread, size.height + 2 * l.spread), layoutDirection, this) }
+                onDrawBehind { layers.forEachIndexed { i, l -> translate(-l.spread, -l.spread + l.dy) { drawOutline(outlines[i], accent.copy(alpha = l.alpha)) } } }
+            } else Modifier)
+            .clip(shape)
+            .background(if (glass) Brush.verticalGradient(listOf(androidx.compose.ui.graphics.lerp(accent, Color.White, 0.18f), accent)) else androidx.compose.ui.graphics.SolidColor(accent))
+            .then(if (pressed) Modifier.background(Color.Black.copy(alpha = 0.1f)) else Modifier)
+            .then(if (glass) Modifier.border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.5f), Color.Transparent)), shape) else Modifier)
             .clickable(interaction, null, enabled = !loading, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
-            .padding(horizontal = Space.xl),
+            .padding(horizontal = Space.xl + 4.dp),
         contentAlignment = Alignment.Center
     ) {
         if (loading) CircularProgressIndicator(Modifier.size(22.dp), color = C.OnAccent, strokeWidth = 2.dp)
-        else Text(text, color = C.OnAccent, style = MaterialTheme.typography.labelLarge, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        else Text(text, color = C.OnAccent, style = MaterialTheme.typography.labelLarge, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1)
     }
 }
 
-/** 次要按钮：中性底 + 正文色，和主按钮同高同圆角、同样的按压缩放。 */
+/** 次要按钮：1.7.0 玻璃胶囊（磨砂 + 高光边）+ 正文色，和主按钮同高、同样的按压形变。简洁风格中性底。 */
 @Composable
 fun SecondaryButton(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
     Box(
-        modifier.heightIn(min = 50.dp).skeuoPressable(interaction, RoundedCornerShape(Radius.m), if (Skeuo.on) C.Surface else C.Surface2)
+        modifier.heightIn(min = 52.dp).glassPress(interaction, 0.6f).glass(CircleShape, null, tint = C.Surface, shadow = 6.dp).clip(CircleShape)
             .clickable(interaction, null, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
-            .padding(horizontal = Space.xl),
+            .padding(horizontal = Space.xl + 4.dp),
         contentAlignment = Alignment.Center
     ) { Text(text, color = C.Text, style = MaterialTheme.typography.labelLarge, fontSize = 16.sp, maxLines = 1) }
 }
@@ -259,12 +276,14 @@ fun SecondaryButton(text: String, modifier: Modifier = Modifier, onClick: () -> 
 @Composable
 fun ChoiceChip(text: String, selected: Boolean, modifier: Modifier = Modifier, role: androidx.compose.ui.semantics.Role = androidx.compose.ui.semantics.Role.Tab, onClick: () -> Unit) {
     val view = androidx.compose.ui.platform.LocalView.current
-    val bg by androidx.compose.animation.animateColorAsState(if (selected) C.AccentSoft else C.Chip, Motion.state(), label = "chipBg")
-    val fg by androidx.compose.animation.animateColorAsState(if (selected) C.Accent else C.Sub, Motion.state(), label = "chipFg")
-    Box(modifier.minimumInteractiveComponentSize().pressScale().clip(RoundedCornerShape(Radius.s + 6.dp)).background(bg)
+    // 1.7.0 v2：全圆角胶囊；玻璃风格下未选中是磨砂玻璃，选中是实心强调色 + 近黑 / 白字（更饱和、一眼可见）
+    val glass = Glass.on
+    val bg by androidx.compose.animation.animateColorAsState(if (selected) (if (glass) C.Accent else C.AccentSoft) else if (glass) Color.Transparent else C.Chip, Motion.state(), label = "chipBg")
+    val fg by androidx.compose.animation.animateColorAsState(if (selected) (if (glass) C.OnAccent else C.Accent) else C.Sub, Motion.state(), label = "chipFg")
+    Box(modifier.minimumInteractiveComponentSize().pressScale().then(if (glass) Modifier.glass(CircleShape, null, tint = C.Surface, shadow = 0.dp, highlight = 0.7f) else Modifier).clip(CircleShape).background(bg)
         .clickable(role = role) { if (!selected) Haptics.tick(view); onClick() }.semantics { this.selected = selected }
         .heightIn(min = 32.dp).padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
-        Text(text, color = fg, style = MaterialTheme.typography.labelLarge, fontSize = 13.sp, fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal, maxLines = 1)
+        Text(text, color = fg, style = MaterialTheme.typography.labelLarge, fontSize = 13.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, maxLines = 1)
     }
 }
 
