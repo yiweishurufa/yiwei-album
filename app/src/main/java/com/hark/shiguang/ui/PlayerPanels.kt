@@ -16,11 +16,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.MutableTransitionState
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.slideInHorizontally
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.heading
@@ -111,40 +106,40 @@ internal fun hasVideoOverride(player: ExoPlayer) =
 // ---- UI
 
 /*
- * 1.7.6 v2：播放器上的玻璃（DESIGN §4、§9）。播放器永远是黑底（onDark），视频画在 SurfaceView 上，RenderNode 拿不到画面，
- * 所以这里一律走降级玻璃外观（着色 + 噪点 + 高光边），不做实时模糊；简洁风格是不透明纯色面。
- * 只有图标的圆钮用较浅的着色（≈46% 黑，白色图标在纯白画面上仍 ≥ 3:1）；带文字的气泡 / 胶囊用深着色（≈67% 黑，白字 ≥ 7:1）。
+ * 1.7.16 安全回退（用户真机反馈：播放影视视频闪退，无崩溃日志）：1.7.6 起播放器上的气泡 / 圆钮 / 面板走 Modifier.glass
+ * （composed + drawWithCache + 噪点 ImageShader + 多层路径），全部叠在 SurfaceView 视频层上，是 1.7.5→1.7.15 之间
+ * 播放页唯一的绘制层改动。找不到确定根因前，播放器回到 1.7.5 的做法：纯色半透明底 + 形状（不再画玻璃材质、噪点和高光边），
+ * 布局和圆角保持 v2。透明度沿用 1.7.5：只有图标的圆钮 ≈ 40% 黑，带文字的气泡 / 胶囊 ≈ 70–80% 黑（白字 ≥ 7:1）。
  */
-internal fun Modifier.playerGlass(shape: Shape, text: Boolean = false, highlight: Float = 0.7f): Modifier =
-    this.glass(shape, backdrop = null, tint = Color.Black.copy(alpha = if (text) 0.9f else 0.62f), shadow = 0.dp, highlight = highlight, onDark = true)
+internal fun Modifier.playerGlass(shape: Shape, text: Boolean = false, @Suppress("UNUSED_PARAMETER") highlight: Float = 0.7f): Modifier =
+    this.background(if (text) Color(0xB3000000) else Color(0x66000000), shape)
 
 /** 面板上的次要文字：白 78%（玻璃上不用灰色，用正文色降透明度，最差背景下 ≥ 4.5:1）。 */
 private val Dim = Color(0xC7FFFFFF)
 private val Note = Color(0xB3FFFFFF)
 
 /**
- * Right-side panel over the video; tapping outside closes it. 1.7.6：浮在右侧的玻璃面板（离边 12dp、圆角 32），
- * 打开时「材质到来」——从右侧滑入一小段 + 放大 + 淡入（移除动画时只淡入）。
+ * Right-side panel over the video; tapping outside closes it. 1.7.16：回到 1.7.5 的结构（直接显示，不再用
+ * AnimatedVisibility + MutableTransitionState 滑入放大，不叠玻璃材质）；保留 v2 的离边 12dp、圆角与字阶。
  */
 @Composable
 internal fun SidePanel(title: String, onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
-    val shown = remember { MutableTransitionState(false).apply { targetState = true } }
     Box(Modifier.fillMaxSize().background(Color(0x40000000))
         .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss)) {
-        AnimatedVisibility(shown, Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
-            enter = if (Motion.reduced) fadeIn(Motion.enter()) else fadeIn(Motion.enter()) + slideInHorizontally(Motion.materialize()) { it / 5 } + scaleIn(Motion.materialize(), 0.94f)) {
-            val shape = RoundedCornerShape(Radius.sheet)
-            Column(Modifier.fillMaxHeight().systemBarsPadding().padding(12.dp).widthIn(min = 280.dp, max = 360.dp).fillMaxWidth(0.36f)
-                .playerGlass(shape, text = true, highlight = 1f).clip(shape)
-                .clickable(remember { MutableInteractionSource() }, indication = null) { }   // taps inside do not close it
-                .padding(top = 18.dp, bottom = 10.dp)) {
-                Text(title, style = MaterialTheme.typography.titleLarge.copy(color = Color.White), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(horizontal = 22.dp, vertical = 6.dp).semantics { heading() })
-                Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(top = 4.dp), content = content)
-            }
+        val shape = RoundedCornerShape(Radius.sheet)
+        Column(Modifier.align(Alignment.CenterEnd).fillMaxHeight().systemBarsPadding().padding(12.dp).widthIn(min = 280.dp, max = 360.dp).fillMaxWidth(0.36f)
+            .background(PanelBg, shape).clip(shape)
+            .clickable(remember { MutableInteractionSource() }, indication = null) { }   // taps inside do not close it
+            .padding(top = 18.dp, bottom = 10.dp)) {
+            Text(title, style = MaterialTheme.typography.titleLarge.copy(color = Color.White), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 22.dp, vertical = 6.dp).semantics { heading() })
+            Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(top = 4.dp), content = content)
         }
     }
 }
+
+/** 1.7.5 的面板底色（近不透明深灰）。 */
+private val PanelBg = Color(0xF0141414)
 
 /**
  * One choice: main text plus optional small secondary line. 1.7.6：选中项是一块强调色淡底的圆角胶囊 + 勾 + 强调色粗字

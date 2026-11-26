@@ -55,6 +55,9 @@ object Diag {
 
     fun e(tag: String, t: Throwable) = log(tag, "ERROR ${t.javaClass.simpleName}: ${t.message}")
 
+    /** 1.7.16：关键步骤的面包屑——写一行并立即落盘（不等 1 秒批量），进程随后被原生崩溃杀掉时日志里也有最后一步。少用（主线程写文件）。 */
+    fun logNow(tag: String, msg: String) { log(tag, msg); runCatching { flush() } }
+
     /** Writes every queued line now (crash handler, export, background batch). */
     private fun flush() {
         if (!::dir.isInitialized || pending.isEmpty()) return

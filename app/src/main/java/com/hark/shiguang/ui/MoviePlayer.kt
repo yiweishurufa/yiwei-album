@@ -100,19 +100,19 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     // queue: a movie plays the chosen version; a show plays from the chosen episode onward (auto next).
     // 用户 2026-11-02 反馈「播放仍会黑屏」：以前按 item 对象做 key，后台扫描 / 刮削把这一项换成新对象时整个队列重建，
     // 播放器跟着被释放重建，画面回到黑底转圈。现在只按路由（哪部、哪一集）建一次，拿到 item 后不再变。
-    val queue = remember(r.itemId, r.path, item != null) {
+    val queue = remember(r.itemId, r.path, item != null) { runCatching {
         if (item == null) emptyList() else if (item.kind == "movie") {
             val f = item.files.firstOrNull { it.path == r.path } ?: item.files.first()
             listOf(QItem(f.path, item.title, f))
         } else item.episodes.mapNotNull { e -> e.file?.let { QItem(e.path, "${item.title} · 第${e.season}季 第${e.episode}集" + (e.title?.let { " $it" } ?: ""), it) } }
-    }
+    }.onFailure { Diag.logNow("PLAYER", "build queue failed: ${it.javaClass.simpleName} ${it.message}") }.getOrDefault(emptyList()) }   // 1.7.16：没有文件的条目（files 为空）不再抛异常
     val start = queue.indexOfFirst { it.path == r.path }.coerceAtLeast(0)
 
     // landscape + immersive while playing
     DisposableEffect(Unit) {
         MusicState.pauseForVideo()   // 1.0.3 #4: a video stops the music (the music player is its own ExoPlayer); resumed on exit
         Analyzer.videoPlaying = true   // 2026-10-22: background WebDAV duration reads wait until the player closes
-        Diag.log("PLAY", "open ${if (lib.kind == "dav") "WebDAV" else "飞牛"} video")
+        Diag.logNow("PLAY", "open ${if (lib.kind == "dav") "WebDAV" else "飞牛"} video")   // 1.7.16：立即落盘，闪退后日志里也能看到最后一步
         val old = act?.requestedOrientation
         act?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         val w = act?.window
@@ -168,7 +168,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
             runCatching { fs.playUrl(q0.file) }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { urls[q0.path] = it }
             kotlinx.coroutines.withTimeoutOrNull(8_000) { fetchSubs(q0) }?.let { subMap[q0.path] = it }
         }
-        Diag.log("PLAYER", "startup ready in ${System.currentTimeMillis() - t0} ms (queue=${queue.size}, url=${urls.containsKey(q0.path)}, subs=${subMap[q0.path]?.size ?: -1})")
+        Diag.logNow("PLAYER", "startup ready in ${System.currentTimeMillis() - t0} ms (queue=${queue.size}, url=${urls.containsKey(q0.path)}, subs=${subMap[q0.path]?.size ?: -1})")
         startReady = true
     }
     if (!startReady) {
@@ -244,7 +244,9 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
     var nextCancelledFor by remember { mutableStateOf("") }
 
     val bufferParams = remember { PlayerBuffer.forHeap(Runtime.getRuntime().maxMemory()) }
-    val player = remember(queue) {
+    // 1.7.16 兜底（用户真机反馈播放闪退、无日志）：建播放器失败不再让整个 App 崩掉，记进诊断日志（立即落盘），页面显示出错 + 返回
+    val player = remember(queue) { runCatching {
+        Diag.logNow("PLAYER", "build player (queue=${queue.size}, start=$start, ext=${NameParser.ext(queue[start].file.name)})")
         val upstream = OkHttpDataSource.Factory(PlayHttp.client)
         val resolving = ResolvingDataSource.Factory(DefaultDataSource.Factory(ctx, upstream)) { spec0 ->
             // 后面几集的地址在这里（加载线程）才查，见 [PENDING]
@@ -287,6 +289,16 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
             pauseAtEndOfMediaItems = queue.size > 1 && !autoNext
             if (startExternal) playWhenReady = false else { prepare(); playWhenReady = true }
         }
+    }.onFailure { Diag.logNow("PLAYER", "build player failed: ${it.stackTraceToString().take(1500)}") }.getOrNull() }
+    if (player == null) {
+        Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("播放器启动失败", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                Text("已记录到诊断日志（设置 → 导出诊断日志）", color = Color(0xB3FFFFFF), fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
+                TextButton(onClick = { Nav.pop() }, modifier = Modifier.padding(top = 12.dp)) { Text("返回", color = C.Accent) }
+            }
+        }
+        return
     }
     // 其余集的外挂字幕在后台下载（最多往后 40 集），下好的挂到还没在播的那一集上
     LaunchedEffect(player) {
@@ -942,8 +954,8 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                         if (queue.size > 1) OverlayIcon(KI.skipBackSolid(), "上一集", enabled = hasPrev) { tap { save(); player.seekToPreviousMediaItem(); player.play() } }
                         OverlayIcon(KI.rewind(), "后退 10 秒") { tap { seekGate.step(-10_000, "button-") } }
                         val playIx = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-                        // 1.7.6：播放键是一颗更大的玻璃圆钮（高光边更亮），按下液体形变
-                        Box(Modifier.padding(horizontal = Space.s).size(60.dp).glassPress(playIx, 1.4f).playerGlass(CircleShape, highlight = 1f)
+                        // 1.7.16：回到 1.7.5 的播放键（半透明白圆 + 按下缩放），不再叠玻璃材质与液体形变
+                        Box(Modifier.padding(horizontal = Space.s).size(60.dp).skeuoPressable(playIx, CircleShape, Color(0x33FFFFFF), scale = 0.92f, flat = true)
                             .clickable(playIx, null, role = androidx.compose.ui.semantics.Role.Button) { tap {
                             if (player.isPlaying) player.pause() else {
                                 if (player.playbackState == Player.STATE_ENDED) player.seekTo(0L)
@@ -1239,10 +1251,10 @@ private const val LONG_PRESS_SPEED = 2f
 @Composable
 private fun OverlayIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, enabled: Boolean = true, onClick: () -> Unit) {
     val ix = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-    // 1.7.6：44dp 玻璃圆钮（降级玻璃：着色 + 噪点 + 高光边，视频画面拿不到所以不模糊），按下液体形变
-    Box(Modifier.size(48.dp).glassPress(ix, 1.4f).clickable(ix, null, enabled = enabled, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick).semantics { contentDescription = label },
+    // 1.7.16：回到 1.7.5 的圆钮（48dp 触控区里 44dp 半透明黑圆，按下缩到 0.92），不再叠玻璃材质与液体形变
+    Box(Modifier.size(48.dp).clickable(ix, null, enabled = enabled, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick).semantics { contentDescription = label },
         contentAlignment = Alignment.Center) {
-        Box(Modifier.size(44.dp).playerGlass(CircleShape), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(44.dp).skeuoPressable(ix, CircleShape, Color(0x29000000), scale = 0.92f, flat = true), contentAlignment = Alignment.Center) {
             Icon(icon, null, tint = if (enabled) Color.White else Color(0x59FFFFFF), modifier = Modifier.size(24.dp))
         }
     }
@@ -1252,7 +1264,7 @@ private fun OverlayIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, l
 @Composable
 private fun TopTextButton(text: String, desc: String? = null, onClick: () -> Unit) {
     val ix = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-    Box(Modifier.heightIn(min = 48.dp).padding(end = Space.xs).glassPress(ix, 0.8f)
+    Box(Modifier.heightIn(min = 48.dp).padding(end = Space.xs)
         .clickable(ix, null, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
         .then(if (desc != null) Modifier.semantics { contentDescription = desc } else Modifier), contentAlignment = Alignment.Center) {
         Box(Modifier.height(36.dp).playerGlass(androidx.compose.foundation.shape.RoundedCornerShape(50), text = true).padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {

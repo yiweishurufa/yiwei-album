@@ -285,6 +285,10 @@ class MainActivity : ComponentActivity() {
                             // 1.6.6：正在播放页像从迷你播放条展开的面板——从下往上滑入（面板弹簧），收起时向下滑出并压在上层
                             !Motion.reduced && targetState.route == Route.MusicNowPlaying -> (slideInVertically(Motion.sheet()) { it / 2 } + fadeIn(Motion.enter())) togetherWith fadeOut(Motion.exit())
                             !Motion.reduced && initialState.route == Route.MusicNowPlaying -> (fadeIn(Motion.enter()) togetherWith (slideOutVertically(Motion.page()) { it / 2 } + fadeOut(Motion.exit()))).apply { targetContentZIndex = -1f }
+                            // 1.7.16 安全回退：播放器（SurfaceView 视频层）进出回到 1.7.5 的转场——进入放大淡入、下层只淡出，
+                            // 退出时播放器略缩淡出、下层只淡入（不再让下层同时做 1.04 缩放、也不调 zIndex）。大图仍用 1.7.12 的。
+                            targetState.route is Route.MoviePlay -> (fadeIn(Motion.enter()) + scaleIn(Motion.zoom(), initialScale = if (Motion.reduced) 1f else 0.94f)) togetherWith fadeOut(Motion.exit())
+                            initialState.route is Route.MoviePlay -> fadeIn(Motion.enter()) togetherWith (fadeOut(Motion.exit()) + scaleOut(Motion.exit(), targetScale = if (Motion.reduced) 1f else 0.96f))
                             media(targetState.route) -> Motion.mediaEnter() togetherWith Motion.pageExit(true)
                             media(initialState.route) -> (Motion.pageEnter(false) togetherWith Motion.mediaExit()).apply { targetContentZIndex = -1f }
                             // 1.7.12 统一转场（Motion.pageEnter / pageExit）：进栈时新页面从 0.92 放大淡入、下层放大到 1.04 淡出（往里走）；
