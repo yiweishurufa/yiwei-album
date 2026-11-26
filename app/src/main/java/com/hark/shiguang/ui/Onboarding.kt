@@ -68,7 +68,8 @@ fun OnboardingScreen(start: Int) {
     var step by remember { mutableIntStateOf(start.coerceIn(0, 3)) }
     Column(Modifier.fillMaxSize().appBackground().statusBarsPadding().navigationBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("欢迎使用一维相册", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+            // 1.7.0 v2：引导页标题用大号展示字（headlineLarge 32sp 粗体、负字距），背景是环境光晕
+            Text("欢迎使用一维相册", style = MaterialTheme.typography.headlineLarge, modifier = Modifier.weight(1f))
             if (step < 3) TextButton(onClick = { Onboarding.finish() }) { Text("跳过", color = C.Sub) }
         }
         // step dots
@@ -98,7 +99,7 @@ fun OnboardingScreen(start: Int) {
 
 @Composable
 private fun Lead(title: String, sub: String) {
-    Text(title, color = C.Text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp))
+    Text(title, color = C.Text, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp))
     Text(sub, style = MaterialTheme.typography.bodySmall, lineHeight = 18.sp, modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 6.dp, bottom = 4.dp))
 }
 

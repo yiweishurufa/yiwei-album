@@ -82,20 +82,21 @@ fun MemoriesRow(groups: List<MemoryGroup>) {
     AnimatedVisibility(visible.isNotEmpty(), enter = fadeIn(Motion.enter()) + expandVertically(Motion.enter())) {
         Column(Modifier.padding(bottom = Space.s)) {
             // 1.6.2：分区标题 titleMedium（DESIGN §3），日期是次要色副标题，同一基线
-            Row(Modifier.padding(start = Space.l, end = Space.l, bottom = Space.s).semantics(mergeDescendants = true) { heading() }, verticalAlignment = Alignment.Bottom) {
-                Text("那年今天", color = C.Text, style = MaterialTheme.typography.titleMedium)
+            Row(Modifier.padding(start = 18.dp, end = Space.l, top = Space.m, bottom = Space.m).semantics(mergeDescendants = true) { heading() }, verticalAlignment = Alignment.Bottom) {
+                Text("那年今天", color = C.Text, style = MaterialTheme.typography.titleLarge)
                 Text(LocalDate.now().let { "${it.monthValue}月${it.dayOfMonth}日" }, color = C.Sub, style = MaterialTheme.typography.bodySmall.merge(Type.num), modifier = Modifier.padding(start = Space.s, bottom = 1.dp))
             }
             LazyRow(contentPadding = PaddingValues(horizontal = Space.l), horizontalArrangement = Arrangement.spacedBy(Space.m)) {
                 itemsIndexed(visible, key = { _, g -> g.year }) { i, g ->
                     val title = if (g.yearsAgo == 1) "一年前" else "${g.yearsAgo} 年前"
                     // 封面卡：大卡按压 0.985（DESIGN §7）、圆角 Radius.l，首屏前几张错开上浮进入
-                    Box(Modifier.enterRise(i).size(132.dp, 168.dp).pressScale(Motion.PRESS_SCALE_LARGE).skeuoPhoto(RoundedCornerShape(Radius.l))
+                    // 1.7.0 v2：更大的竖卡（150×200、圆角 24），标题压在底部的一枚玻璃标签里
+                    Box(Modifier.enterRise(i).size(150.dp, 200.dp).pressScale(Motion.PRESS_SCALE_LARGE).skeuoPhoto(RoundedCornerShape(Radius.l))
                         .clickable(role = Role.Button, onClickLabel = "查看") { Nav.push(Route.Viewer(g.photos, 0)) }
                         .semantics(mergeDescendants = true) { contentDescription = "$title，${g.year} 年，${g.photos.size} 张" }) {
                         NetImage(g.photos.first().thumbM, Modifier.fillMaxSize())
-                        Box(Modifier.matchParentSize().background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to Color(0x99000000))))
-                        Column(Modifier.align(Alignment.BottomStart).padding(Space.m)) {
+                        Column(Modifier.align(Alignment.BottomStart).padding(Space.s).glass(RoundedCornerShape(Radius.l - Space.s), null, tint = Color.Black.copy(alpha = 0.55f), shadow = 0.dp, highlight = 0.6f, onDark = true)
+                            .padding(horizontal = Space.m, vertical = Space.s)) {
                             Text(title, color = Color.White, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
                             Text("${g.year} · ${g.photos.size} 张", color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodySmall.merge(Type.num), modifier = Modifier.padding(top = 2.dp))
                         }
