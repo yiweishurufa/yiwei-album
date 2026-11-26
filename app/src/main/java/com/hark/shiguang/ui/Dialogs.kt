@@ -21,6 +21,9 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
@@ -53,7 +56,7 @@ private fun Modifier.popIn(): Modifier = composed {
 }
 
 /**
- * 统一的对话框：圆角 28、卡片色底、无色调叠加；标题 titleLarge（DESIGN §3「对话框标题」）、正文次要色。
+ * 统一的对话框：圆角 32（1.7.0）、卡片色底、无色调叠加；标题 titleLarge（DESIGN §3「对话框标题」）、正文次要色。
  * 调用处给了 containerColor / 颜色的照旧生效。
  */
 @Composable
@@ -73,16 +76,18 @@ fun AppAlertDialog(
     tonalElevation: Dp = 0.dp,
     properties: DialogProperties = DialogProperties(),
 ) {
+    // 1.7.0 v2：玻璃对话框——窗口背后模糊（API 31+）+ 半透明卡片色 + 上沿高光边；圆角 32
+    var blur by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismissRequest,
-        confirmButton = confirmButton,
-        modifier = modifier.popIn(),
+        confirmButton = { blur = WindowBlurBehind(); confirmButton() },
+        modifier = modifier.popIn().glassRim(shape),
         dismissButton = dismissButton,
         icon = icon,
         title = title?.let { t -> { ProvideTextStyle(MaterialTheme.typography.titleLarge) { t() } } },
         text = text,
         shape = shape,
-        containerColor = containerColor,
+        containerColor = glassOverlayColor(containerColor, blur),
         iconContentColor = iconContentColor,
         titleContentColor = titleContentColor,
         textContentColor = textContentColor,
@@ -111,14 +116,17 @@ fun AppBottomSheet(
     dragHandle: (@Composable () -> Unit)? = { SheetHandle() },
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    // 1.7.0 v2：玻璃面板——窗口背后模糊（API 31+）+ 半透明卡片色 + 上沿高光边；上沿圆角 32
+    var blur by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(topStart = Radius.sheet, topEnd = Radius.sheet)
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
-        modifier = modifier,
+        modifier = modifier.glassRim(shape),
         sheetState = sheetState,
-        shape = RoundedCornerShape(topStart = Radius.sheet, topEnd = Radius.sheet),
-        containerColor = containerColor,
+        shape = shape,
+        containerColor = glassOverlayColor(containerColor, blur),
         tonalElevation = 0.dp,
-        dragHandle = dragHandle,
+        dragHandle = { blur = WindowBlurBehind(); dragHandle?.invoke() },
         content = content,
     )
 }
@@ -137,7 +145,10 @@ fun AppDropdownMenu(
     properties: PopupProperties = PopupProperties(focusable = true),
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    MaterialTheme(shapes = MaterialTheme.shapes.copy(extraSmall = RoundedCornerShape(Radius.m))) {
-        DropdownMenu(expanded, onDismissRequest, modifier, offset, scrollState, properties, content)
+    // 1.7.0 v2：玻璃菜单——几乎不透明的卡片色（菜单很小，不开窗口模糊）+ 上沿高光边，圆角 18
+    val shape = RoundedCornerShape(18.dp)
+    MaterialTheme(shapes = MaterialTheme.shapes.copy(extraSmall = shape),
+        colorScheme = MaterialTheme.colorScheme.copy(surfaceContainer = glassOverlayColor(C.Surface, false))) {
+        DropdownMenu(expanded, onDismissRequest, modifier.glassRim(shape, fadeAt = 40.dp), offset, scrollState, properties, content)
     }
 }
