@@ -85,7 +85,24 @@ class MusicTagsEncodingTest {
         val old = Track("1", "/a.wav", "a.wav", 1, 1, "??", "??", "", scanned = true)
         assertTrue(old.staleTags)
         assertFalse(old.copy(tagVer = Music.TAG_VER).staleTags)
-        assertFalse(old.copy(title = "晴天", artist = "周杰伦").staleTags)
+        assertFalse(old.copy(title = "晴天", artist = "周杰伦", tagged = true).staleTags)
+    }
+
+    @Test fun `1_7_16 旧版没读到标签也没封面的歌重读一次，读过的和有封面的不重读`() {
+        val poisoned = Track("2", "/b.mp3", "b.mp3", 1000, 1, "b", "", "", scanned = true, tagVer = 2)
+        assertTrue(poisoned.staleTags)
+        assertFalse(poisoned.copy(tagVer = Music.TAG_VER).staleTags)          // 新版读过（真没标签）不再反复重读
+        assertFalse(poisoned.copy(tagged = true, artist = "周杰伦").staleTags)  // 读到过标签
+        assertFalse(poisoned.copy(artPath = "/x/art.img").staleTags)          // 有封面（文件夹封面 / 联网补全）
+        assertFalse(poisoned.copy(scanned = false).staleTags)                 // 还没读过的本来就会读
+    }
+
+    @Test fun `1_7_16 读不到文件算读失败要重试，不算没有标签`() {
+        assertTrue(Music.readFailed(hasTags = false, size = 1000, reachable = false, gotBytes = false))   // 播放地址没查到
+        assertTrue(Music.readFailed(hasTags = false, size = 1000, reachable = true, gotBytes = false))    // 请求全失败
+        assertFalse(Music.readFailed(hasTags = false, size = 1000, reachable = true, gotBytes = true))    // 读到了，真没标签
+        assertFalse(Music.readFailed(hasTags = true, size = 1000, reachable = true, gotBytes = true))
+        assertFalse(Music.readFailed(hasTags = false, size = 0, reachable = true, gotBytes = false))      // 空文件
     }
 
     @Test fun `歌词文本编码识别`() {

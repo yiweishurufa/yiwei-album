@@ -50,8 +50,12 @@ data class Track(
 ) {
     /** 用户 2026-11-02 反馈：旧版本把有损的 WAV INFO（中文已变成 ??）存进了曲库。 */
     val garbled: Boolean get() = MusicTags.isGarbled(title) || MusicTags.isGarbled(artist) || MusicTags.isGarbled(album)
-    /** 这条缓存要不要按新版读取器重读：旧版读出来、且歌名 / 歌手 / 专辑是乱码。 */
-    val staleTags: Boolean get() = scanned && tagVer < Music.TAG_VER && garbled
+    /**
+     * 这条缓存要不要按新版读取器重读：旧版读出来、且歌名 / 歌手 / 专辑是乱码；或（1.7.16）旧版读的时候一个字节都没读到
+     * ——那时文件头拿不到（播放地址没查到 / 网络或 NAS 暂时不通）也被当成「没有标签」永久记为已读，于是一直只有文件名、没有封面。
+     * 只能从结果判断：没读到标签、也没有封面的，升级后重读一次（真没标签的文件读完照旧，之后不再重复）。
+     */
+    val staleTags: Boolean get() = scanned && tagVer < Music.TAG_VER && (garbled || (!tagged && artPath == null))
     val ext: String get() = NameParser.ext(name)
     val displayArtist: String get() = artist.ifBlank { albumArtist }.ifBlank { "未知歌手" }
     val displayAlbum: String get() = album.ifBlank { "未知专辑" }
@@ -292,19 +296,23 @@ class MusicLib(val sourceKey: String) {
                 val todo = fresh.filter { !it.scanned }
                 withContext(Dispatchers.Main) { total = todo.size; done = 0; phase = if (todo.isEmpty()) "" else "正在读取歌曲信息" }
                 val gate = Semaphore(3)
+                val failed = java.util.concurrent.atomic.AtomicInteger(0)
                 val coverCache = java.util.concurrent.ConcurrentHashMap<String, String>()   // folder → cover file ("" = none)
                 val batch = Batch()
                 coroutineScope {
                     todo.forEach { t ->
                         launch {
                             gate.withPermit {
-                                val n = runCatching { readTags(t, folders[t.folder].orEmpty(), coverCache) }.getOrElse { t.copy(scanned = true) }
+                                // 1.7.16：读失败（网络 / 地址）时保持未读（scanned = false），下次扫描重试；以前记成已读，永远不再刮削
+                                val n = runCatching { readTags(t, folders[t.folder].orEmpty(), coverCache) }
+                                    .getOrElse { e -> if (failed.incrementAndGet() <= 3) Diag.log("MUSIC", "tag read failed, will retry next scan: ${e.javaClass.simpleName} ${e.message?.take(80)}"); t }
                                 batch.add(n)
                             }
                         }
                     }
                 }
                 batch.flush(true)
+                if (failed.get() > 0) Diag.log("MUSIC", "tags: ${failed.get()} of ${todo.size} files could not be read this time (kept unread, retried next scan)")
 
                 // online completion: only what is missing, never overwrites tags; failures are silent
                 if (MusicPrefs.online) {
@@ -318,7 +326,8 @@ class MusicLib(val sourceKey: String) {
                             need.forEach { t ->
                                 launch {
                                     g2.withPermit {
-                                        val n = runCatching { MusicOnline.complete(this@MusicLib, t, albumArt) }.getOrDefault(t).copy(online = true)
+                                        // 1.7.16：联网出异常时不记为「已补全」，下次扫描再试（查无结果才记）
+                                        val n = runCatching { MusicOnline.complete(this@MusicLib, t, albumArt) }.fold({ it.copy(online = true) }, { t })
                                         b2.add(n)
                                     }
                                 }
@@ -424,6 +433,9 @@ class MusicLib(val sourceKey: String) {
         private val headers: Map<String, String> = url?.let { runCatching { fs.headers(it) }.getOrDefault(emptyMap()) }.orEmpty()
         private val blocks = ArrayList<Pair<Long, ByteArray>>()
         var requests = 0
+        /** 1.7.16：真正从服务器拿到过字节没有。没有（地址查不到、请求全失败）= 这次读失败，不是「文件没标签」。 */
+        var gotBytes = false
+        val reachable: Boolean get() = url != null
         override fun at(off: Long, len: Int): ByteArray? {
             val u = url ?: return null
             if (off < 0) return null
@@ -436,6 +448,7 @@ class MusicLib(val sourceKey: String) {
             // big reads (large cover art / moov): only one file at a time holds one, so 3 parallel scans can't fill the heap
             if (want > BIG && !big) { BIG_GATE.acquire(); big = true }
             val b = PlayHttp.range(u, headers, off, want) ?: return null
+            if (b.isNotEmpty()) gotBytes = true
             if (blocks.sumOf { it.second.size } + b.size <= 2 * MusicTagsMax) blocks.add(off to b)
             return b
         }
@@ -447,6 +460,9 @@ class MusicLib(val sourceKey: String) {
         var t = t0.copy(scanned = true, tagVer = Music.TAG_VER)
         val src = RemoteSrc(t0)
         val tags = try { withContext(Dispatchers.IO) { MusicTags.read(src, t0.ext).also { tg -> tg.picture = tg.picture?.takeIf { it.size > 200 }?.let { shrinkArt(it) } } } } finally { src.release() }
+        // 1.7.16：文件一个字节都没读到（播放地址没查到 / 网络、NAS 暂时不通）→ 这是读失败，不能当「没有标签」记为已读，
+        // 否则这首歌以后的扫描都会跳过它，永远只有文件名、没有歌手 / 专辑 / 封面。抛出去，由 scan 保持未读、下次重试。
+        if (Music.readFailed(tags.hasAny, t0.size, src.reachable, src.gotBytes)) throw java.io.IOException(if (!src.reachable) "no play url" else "no bytes read")
         if (tags.hasAny) t = t.copy(tagged = true)
         else if (t0.ext == "wav") Diag.log("MUSIC", "wav without usable tags (missing or garbled ??), using the file name")
         t = t.copy(
@@ -531,7 +547,9 @@ object MusicPrefs {
 
 object Music {
     /** 标签读取器版本：2 = 1.4.0（WAV 优先 id3 块、?? 乱码当作没有标签）。升高后旧的乱码缓存会重读。 */
-    const val TAG_VER = 2
+    /** 1.7.16：这次读标签算不算「读失败」（要重试），而不是「文件没有标签」。有标签、空文件都不算失败。 */
+    fun readFailed(hasTags: Boolean, size: Long, reachable: Boolean, gotBytes: Boolean): Boolean = !hasTags && size > 0 && (!reachable || !gotBytes)
+    const val TAG_VER = 3   // 3 = 1.7.16：读不到文件时不再记为已读；旧库里「没标签也没封面」的重读一次
     /** Extensions the scanner collects. */
     val AUDIO = setOf("mp3", "flac", "ape", "wav", "m4a", "aac", "alac", "ogg", "oga", "opus", "wma", "dsf", "dff", "aiff", "aif", "aifc", "wv", "m4b")
     /** media3 extractors (with the Jellyfin FFmpeg decoder for ALAC / Opus / Vorbis fallbacks). */
