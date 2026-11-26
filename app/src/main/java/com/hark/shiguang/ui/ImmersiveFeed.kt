@@ -11,6 +11,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -34,20 +39,38 @@ fun ImmersiveFeed(
 ) {
     val nearEnd by remember(entries) { derivedStateOf { (state.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) >= entries.size - 8 } }
     LaunchedEffect(nearEnd, entries.size) { if (nearEnd && entries.isNotEmpty()) onEnd() }
-    LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = PaddingValues(bottom = bottom), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    // 1.6.4（DESIGN 阶段 2「沉浸大图流」）：卡片左右留 8dp、圆角 14、卡间 8dp；日期标题与网格同款（Allo 等宽日期 + 次要色副标题）；
+    // 视频时长 / 实况角标用小号图标 + Allo 数字；点开时从卡片位置展开（与网格同一套 Hero 共享元素转场）
+    LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = PaddingValues(bottom = bottom), verticalArrangement = Arrangement.spacedBy(Space.s)) {
         item(key = "header") { header() }
         itemsIndexed(entries, key = { _, e -> when (e) { is Entry.Header -> "h" + e.key; is Entry.Cell -> "c" + e.photo.key } }) { _, e ->
             when (e) {
-                is Entry.Header -> Text(listOf(e.title, e.sub).filter { it.isNotEmpty() }.joinToString("  "), color = C.Sub, fontSize = 13.sp, fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(start = 16.dp, top = 14.dp, bottom = 6.dp))
+                is Entry.Header -> Row(Modifier.padding(start = Space.l, end = Space.l, top = Space.l).semantics(mergeDescendants = true) { heading() }, verticalAlignment = Alignment.Bottom) {
+                    Text(e.title, color = C.Text, style = MaterialTheme.typography.titleMedium.copy(fontFamily = C.P.display, fontWeight = FontWeight.SemiBold, fontFeatureSettings = Type.TNUM))
+                    if (e.sub.isNotEmpty()) Text(e.sub, color = C.Sub, style = MaterialTheme.typography.bodySmall, maxLines = 1, modifier = Modifier.padding(start = Space.s, bottom = 1.dp))
+                }
                 is Entry.Cell -> {
                     val p = e.photo
                     val ratio = if (p.width > 0 && p.height > 0) (p.width.toFloat() / p.height).coerceIn(0.56f, 1.8f) else 1f
-                    Box(Modifier.fillMaxWidth().aspectRatio(ratio).background(C.Surface2).clickable { onOpen(e.index) }) {
+                    val badge = when {
+                        p.isVideo -> if (p.duration > 0) "%d:%02d".format(p.duration / 60, p.duration % 60) else "视频"
+                        p.isLive -> "实况"
+                        else -> null
+                    }
+                    DisposableEffect(p.key) { onDispose { Hero.bounds.remove(p.key) } }
+                    Box(Modifier.padding(horizontal = Space.s).fillMaxWidth().aspectRatio(ratio)
+                        .onGloballyPositioned { Hero.bounds[p.key] = it.boundsInRoot() }
+                        .clip(RoundedCornerShape(Radius.m)).background(C.Surface2)
+                        .clickable(role = androidx.compose.ui.semantics.Role.Button, onClickLabel = "查看") { Hero.open(p); onOpen(e.index) }
+                        .semantics { contentDescription = (if (p.isVideo) "视频" else if (p.isLive) "实况照片" else "照片") + (if (p.isVideo && p.duration > 0) "，时长 ${p.duration / 60} 分 ${p.duration % 60} 秒" else "") }) {
                         NetImage(p.thumbM, Modifier.fillMaxSize())
-                        if (p.isVideo || p.isLive) Text(if (p.isVideo) (if (p.duration > 0) "▶ %d:%02d".format(p.duration / 60, p.duration % 60) else "▶ 视频") else "实况",
-                            color = Color.White, fontSize = 12.sp, modifier = Modifier.align(Alignment.TopEnd).padding(10.dp)
-                                .clip(RoundedCornerShape(6.dp)).background(Color(0x80000000)).padding(horizontal = 6.dp, vertical = 2.dp))
+                        if (badge != null) Row(
+                            Modifier.align(Alignment.TopEnd).padding(Space.s).clip(RoundedCornerShape(Radius.xs)).background(Color(0x66000000)).padding(horizontal = 6.dp, vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(if (p.isVideo) KI.play() else KI.live(), null, tint = Color.White, modifier = Modifier.size(12.dp))
+                            Text(badge, color = Color.White, style = Type.badge, modifier = Modifier.padding(start = 3.dp))
+                        }
                     }
                 }
             }
