@@ -1,187 +1,178 @@
-# 一维相册 设计语言 1.6.0「暗房与相纸」
+# 一维相册 设计语言 v2（1.7.0）「液态玻璃 + 沉浸照片」
 
-> 2026-11-25 起草，第 1 阶段。用户要求：「装上这些技能，然后根据技能重新设计一维相册的 UI 交互 模块，动画 图标 字体 排版 颜色 元素等等」。
-> 本文件是所有界面代码的依据；token 的唯一出处是 `app/src/main/java/com/hark/shiguang/ui/Theme.kt`（颜色 / 字号 / 间距 / 圆角 / 动效）、
-> `Skeuo.kt`（层级与阴影）、`KubaiIcons.kt`（图标）、`UiKit.kt`（按压、触感）。页面里不写裸数值。
-> 每条规则后面的【】注明借鉴自哪个设计技能。分模块的落地进度见 `docs/iteration/redesign-ROADMAP.md`（与工作区 ROADMAP 同步）。
+> 2026-11-26 起草。用户 11:27：「现在的 UI 变化并不大，我要完全不同的」；14:04：「一直干」。
+> v1「暗房与相纸」（1.6.0–1.6.9）是安静的中性灰扁平界面，用户装上后觉得和以前差不多。v2 换掉整个材质与气质，
+> 信息架构、功能、存储格式一律不动。
+> token 的唯一出处：`ui/Theme.kt`（颜色 / 字号 / 间距 / 圆角 / 动效）、`ui/Glass.kt`（玻璃材质、环境光晕）、
+> `ui/Skeuo.kt`（卡片、凹槽、按压）、`ui/KubaiIcons.kt`（图标）、`ui/UiKit.kt`（按压、触感）。页面里不写裸数值。
+> 落地进度见 `docs/iteration/redesign-ROADMAP.md`（与工作区 ROADMAP 同步）。v1 的规范见 git 历史（`0b26715` 时的本文件）。
 
-## 0. 不变的边界
+## 0. 为什么换、换什么
 
-- 不改信息架构、不删功能、不改存储格式：`ui.style`（`skeuo` / `flat`）、`themeMode`、`accent`（0–5 索引）等键原样兼容。
-- 保留深色 / 浅色 / 跟随系统，保留「界面风格」两档开关（重新定义见 §4）、6 个强调色。
-- 照片网格、大图、播放器的性能优先于装饰：网格不加阴影、不做逐格动画。
+| | v1 暗房与相纸 | v2 液态玻璃 + 沉浸照片 |
+|---|---|---|
+| 一句话 | 界面退后，中性灰托住照片 | 照片铺满屏幕，界面是浮在照片上的玻璃 |
+| 背景 | 中性灰纯色 | 极深蓝黑（浅色：带冷调的近白）+ 从照片取色的环境光晕 |
+| 导航 | 贴底的不透明底栏 + 发丝线 | 悬浮的玻璃胶囊，内容从下面透出（真模糊） |
+| 照片 | 左右留 2dp、圆角 3dp | 全出血、直角、间隙 1.5dp；首页顶部 56% 屏高的大图 |
+| 标题 | 30sp SemiBold | 60sp Bold、负字距，压在照片上 |
+| 层级 | 面的明度台阶 + 小阴影 | 玻璃（着色 + 模糊 + 高光边 + 外投影） |
+| 选中态 | 线性双色图标 + 浅色胶囊 | 实心感图标 + 发光 + 会拉伸的彩色玻璃气泡 |
+| 动效 | 克制、临界阻尼 | 有弹性（bounce ≈ 0.35）、玻璃按压形变、标题缩放收进顶栏 |
 
-## 1. 产品气质
+**不变的边界**：不改信息架构、不删功能、不改存储键（`ui.style` 的 `skeuo` / `flat`、`themeMode`、`accent` 0–5）；读屏标签与角色保持；
+照片网格与播放器的性能优先于装饰（见 §4.4）。
 
-- **一句话**：把 NAS 和网盘里的照片、影视、音乐安静地摆出来，让内容本身是屏幕上唯一有颜色的东西。
-- **性格**：安静、精确、带一点暖。【unslop · Direction：用具体的词，不用 clean/modern/minimal】
-- **世界**：暗房与相纸——中性的灰，像相纸边缘和灯箱；颜色只来自照片、海报、专辑封面。【unslop §2；impeccable Modes：相册是 Experience 模式，界面要退后，作品先行】
-- **签名细节**：数字用 Allo 等宽数字（月份大标题、年份、时长、计数），滚动时宽度不跳。【unslop · Signature；typography-system】
-- **去 AI 味清单**（新代码禁止）：彩色圆底 + 图标的空状态模板、渐变文字、彩色发光阴影、纸面噪点 / 大渐变底、`!` 感叹号、只为好看的循环动画、层层嵌套的卡片、每个标题前的小 emoji 或 eyebrow 小字。【impeccable craft-floor · Refuse；unslop §4 §8 §9；taste-skill】
-- 少说明：一行副标题只放状态值；解释放 ⓘ。（用户 2026-10-23 反馈「小字说明太多」）【product-design-review】
+## 1. 气质
+
+- **性格**：通透、明亮、有弹性。照片是主角，界面像一层会反光的玻璃浮在照片上。
+- **签名细节**：①首页全出血大图 + 60sp 月份大字；②底栏的液体气泡（滑动时横向拉长再回弹）；③背景随照片变色的环境光晕。
+- **仍然禁止**（沿用 v1 的去 AI 味清单）：渐变文字、emoji 小标题、层层嵌套的卡片、只为好看的循环动画、彩色圆底图标的空状态模板。
+  玻璃不叠玻璃（两层半透明叠在一起文字会糊）。【apple-design §12「Never stack a light translucent surface on another」】
 
 ## 2. 颜色
 
-一条中性灰阶（只带极少暖意）+ 一个强调色 + 少量功能色。强调色只用于：主按钮、选中态、关键数字。功能色只表达含义。【unslop §2；color-system；impeccable android.md · Material color roles】
+### 2.1 中性色（`Theme.kt`）
 
-### 2.1 中性色
-
-| token | 简洁·深色 | 简洁·浅色 | 质感·深色 | 质感·浅色 | 用途 |
+| token | 玻璃·深色 | 玻璃·浅色 | 简洁·深色 | 简洁·浅色 | 用途 |
 |---|---|---|---|---|---|
-| `C.Bg` | #0E0E10 | #F5F4F1 | #121214 | #EFECE6 | 页面底 |
-| `C.Surface` | #18181B | #FFFFFF | #1D1D20 | #FCFBF8 | 卡片、面板 |
-| `C.Surface2` | #222226 | #ECEBE7 | #28282C | #E6E3DC | 凹槽、输入框、次级面 |
-| `C.Line` | 白 8% | 黑 8% | 白 9% | 黑 9% | 发丝线 |
-| `C.Text` | #F2F1EE | #1B1B1D | #F2F1EE | #1E1D1B | 正文 |
-| `C.Sub` | #A6A49F | #5C5B57 | #A9A7A2 | #5A5853 | 次要文字、默认图标 |
-| `C.Faint` | #7C7A76 | #85847F | #7E7C78 | #83817B | 只给装饰图标、箭头、禁用；**不用于必须读的文字** |
+| `C.Bg` | #070A12 | #EEF2F8 | #0B0E15 | #F5F7FA | 页面底（玻璃风格上叠环境光晕） |
+| `C.Surface` | #121827 | #FFFFFF | #161B26 | #FFFFFF | 卡片底色（玻璃风格以 74% 着色画成磨砂玻璃） |
+| `C.Surface2` | #1B2335 | #E3E8F1 | #212735 | #E9EDF3 | 凹槽、输入框 |
+| `C.Line` | 白 10% | 黑 8% | 白 9% | 黑 8% | 发丝线 |
+| `C.Text` | #F3F5FA | #0E1320 | 同左 | 同左 | 正文 |
+| `C.Sub` | #A7B0C2 | #4B5468 | 同左 | 同左 | 次要文字 |
+| `C.Faint` | #737D92 | #7A8498 | 同左 | 同左 | 只给装饰图标、禁用 |
+| `C.OnGlass` / `C.OnGlassSub` | 正文 / 正文 78% | 同左 | | | 玻璃上的文字：不用灰色，用正文色降透明度【apple-design · vibrancy】 |
 
-三个文字角色（正文 / 次要 / 弱），不再增加。【unslop §2「三种文字角色」】
+### 2.2 对比度（`contrast_v2.py`，WCAG 2.x）
 
-### 2.2 对比度（WCAG 2.x，脚本 `contrast.py` 计算）
+- 正文/底：玻璃深 18.1、玻璃浅 16.5、简洁深 17.7、简洁浅 17.3；次要/底 ≥ 6.7；弱/底 ≥ 3.3（只给图标）。
+- **玻璃上的文字（最差情况：玻璃后面是纯白 / 纯黑）**：
+  - 真模糊（API 31+）：模糊层先「饱和度 ×1.5、深色压暗到 70% / 浅色 ×0.75 + 64」，再盖 58% 着色 → 正文 6.7（深）/ 8.5（浅），`OnGlassSub` 4.9 / 5.6。
+  - 降级（无模糊）：74% 着色 → 正文 7.4 / 9.9，`OnGlassSub` 5.3 / 6.2。
+- 压在照片上的字（大图标题、顶栏按钮）：白字 + 照片下沿 72% 黑渐变 + 文字投影（28px、45% 黑）。
 
-| 主题 | 正文/底 | 正文/卡片 | 次要/底 | 次要/卡片 | 弱/底（只给图标、禁用） | 错误色/卡片 |
-|---|---|---|---|---|---|---|
-| 简洁·深色 | 17.1 | 15.7 | 7.7 | 7.1 | 4.5 | 6.7 |
-| 简洁·浅色 | 15.6 | 17.2 | 6.2 | 6.8 | 3.4 | 5.3 |
-| 质感·深色 | 16.6 | 14.9 | 7.8 | 7.0 | 4.5 | 6.4 |
-| 质感·浅色 | 14.3 | 16.3 | 6.0 | 6.9 | 3.3 | 5.2 |
+### 2.3 强调色（更饱和、更亮；深色档按钮字用近黑 #070A12，浅色档用白）
 
-- 正文、次要文字、占位文字 ≥ 4.5:1；弱色 ≥ 3:1（非文字图形的下限）。输入框占位提示改用 `C.Sub`。【accessibility-excellence；impeccable craft-floor · Contrast】
+| 强调色 | 深色值 | 作文字/深色卡片 | 浅色值 | 作文字/浅色卡片 | 按钮字对比 |
+|---|---|---|---|---|---|
+| 蓝（默认） | #5EA2FF | 6.8 | #1D5BE0 | 5.8 | 7.6 / 5.8 |
+| 绿 | #34DB8C | 9.8 | #0B7A4A | 5.4 | 11.0 / 5.4 |
+| 橙 | #FF9A3D | 8.4 | #AD4F00 | 5.4 | 9.4 / 5.4 |
+| 粉 | #FF6B9E | 6.6 | #C0185A | 6.0 | 7.4 / 6.0 |
+| 紫 | #A68BFF | 6.5 | #6A3DE8 | 6.1 | 7.3 / 6.1 |
+| 石墨 | #DDE3EE | 13.7 | #2A3040 | 13.2 | 15.4 / 13.2 |
 
-### 2.3 强调色（每个有深色 / 浅色两档）
+### 2.4 环境光晕（`Glass.kt · Ambient / ambientGlow`）
 
-| 强调色 | 深色值 | 作文字/深色卡片 | 按钮字（近黑）/深色值 | 浅色值 | 作文字/浅色卡片 | 按钮字（白）/浅色值 | 选中胶囊：强调字/14% 浅底（质感浅色） |
-|---|---|---|---|---|---|---|---|
-| 蓝（默认） | #7AA7FF | 7.4 | 8.1 | #2F62D6 | 5.3 | 5.5 | 4.5 |
-| 绿 | #4FCB8A | 8.6 | 9.4 | #17744A | 5.6 | 5.8 | 4.7 |
-| 橙 | #FFA45C | 9.0 | 9.8 | #A64E0F | 5.5 | 5.6 | 4.6 |
-| 粉 | #FF8AA0 | 7.9 | 8.6 | #B22D4D | 6.0 | 6.2 | 5.0 |
-| 紫 | #B89CFF | 7.8 | 8.5 | #6F4BD8 | 5.5 | 5.7 | 4.7 |
-| 石墨 | #D9D7D2 | 12.3 | 13.4 | #3A3936 | 11.2 | 11.5 | 9.0 |
-
-- 深色主题的强调色是浅色，按钮上的字用近黑 #0E0E10（白字只有约 2:1）。【unslop §2「accent 上的字要 4.5:1，不够就换深色字」】
-- 原「琥珀」与「橙」几乎同色，索引 5 改为无色相的「石墨」，给想让照片成为唯一颜色的人。
-- `C.AccentSoft` = 强调色 16%（深色）/ 12%（浅色），用于选中胶囊、底栏选中块。
-- 功能色 `Green / Gold / Danger …` 降一档饱和度，深浅各一档；只表达成功 / 警告 / 错误，不做装饰。【unslop §2「语义色调低」】
+- 页面底上两团很大的柔光：左上取自当前照片 / 封面（深色 30%、浅色 20%），右侧固定冷蓝（16% / 9%）。只在玻璃风格画。
+- 取色：Coil 取 32px 小图 → 按饱和度加权平均 → 饱和度夹到 0.45–0.85、明度 0.70–0.95（`AmbientMath`，有单测）；全灰图返回 null，用强调色。
+- 换色用 1.4 s 过渡（移除动画时直接换）。来源：首页大图、大图查看器当前照片、影片海报、正在播放的专辑封面（分批接入，见 ROADMAP）。
 
 ## 3. 字体与字号
 
-- 中文与正文：系统字体（各厂商的思源黑体 / HarmonyOS Sans / MiSans 等），跟随系统字号（全部用 sp）。【impeccable android.md · sp units】
-- 数字与拉丁字母展示位：**Allo**（Josh Puckett，SIL OFL 1.1，Inter 衍生）。只取 ASCII + `·–—…×°` 子集，opsz 24、ROND 50，Medium / SemiBold 两个静态字重，各约 28 KB（`res/font/allo_num_*.ttf`，许可 `assets/licenses/allo-OFL.txt`）。中文由系统字体按字回退。【typography-system；unslop §5「一套界面字体 + 至多一个搭档」】
-- 所有会变化的数字开 `tnum`（`Type.num` / `Type.TNUM`）：计数、时长、文件大小、进度。【unslop §5「数字 tabular-nums」】
-- 字重只用 Normal 400 / Medium 500 / SemiBold 600；不再用 Bold 700。层级靠字号和颜色。【unslop §5】
-- 小字不收字距；只有 ≥ 26sp 的展示字收紧到约 −0.02em。【unslop §5；impeccable craft-floor · tracking floor】
+- 中文正文：系统字体；数字 / 拉丁字母展示位：Allo（SIL OFL，ASCII 子集，Medium / SemiBold 两个文件，Bold 映射到 SemiBold 文件，中文由系统粗体回退）。会变的数字开 `tnum`。
+- v2：**大标题极大且紧**（负字距约 −0.035em、粗体），**正文不变**；分区标题大号粗体左对齐，去掉标题下的小字说明。
 
-| 角色 | 字号 / 行高 (sp) | 字重 | 字体 | 用在 |
+| 角色 | 字号 / 行高 (sp) | 字重 | 字距 | 用在 |
 |---|---|---|---|---|
-| displayLarge | 40 / 46 | 600 | Allo + 系统 | 年份封面 |
-| displayMedium | 34 / 40 | 600 | Allo + 系统 | 年份卡 |
-| displaySmall | 30 / 36 | 600 | Allo + 系统 | 照片页月份大标题 |
-| headlineLarge | 26 / 32 | 600 | 系统 | 详情页标题 |
-| headlineMedium | 22 / 28 | 600 | 系统 | 面板标题 |
-| headlineSmall | 19 / 26 | 600 | 系统 | 二级页顶栏标题 |
-| titleLarge | 18 / 24 | 500 | 系统 | 吸顶栏、空状态标题、对话框标题 |
-| titleMedium | 16 / 22 | 500 | 系统 | 分区标题、来源胶囊 |
-| titleSmall | 14 / 20 | 500 | 系统 | 卡片小标题 |
-| bodyLarge | 16 / 24 | 400 | 系统 | 设置行标题、输入框 |
-| bodyMedium | 14 / 21 | 400 | 系统 | 正文、说明 |
-| bodySmall | 12.5 / 18 | 400 | 系统（次要色） | 一行副标题 |
-| labelLarge | 14 / 20 | 500 | 系统 | 按钮、胶囊、分段 |
-| labelMedium | 12 / 16 | 500 | 系统 | 底栏标签 |
-| labelSmall | 11 / 14 | 500 | 系统 | 角标 |
-| `Type.badge` | 11 / 14 | 600 | Allo，tnum | 缩略图上的视频时长 |
+| displayLarge | 60 / 62 | Bold | −2.2 | 首页大图上的月份 |
+| displayMedium | 46 / 50 | Bold | −1.6 | 年份卡 |
+| displaySmall | 40 / 44 | Bold | −1.3 | 页面大标题（发现…） |
+| headlineLarge | 32 / 38 | Bold | −0.9 | 详情页标题 |
+| headlineMedium | 26 / 32 | Bold | −0.6 | 面板标题 |
+| headlineSmall | 22 / 28 | Bold | −0.4 | 照片网格的日期 / 月份标题、二级页标题 |
+| titleLarge | 20 / 26 | Bold | −0.3 | 分区标题、顶栏胶囊、对话框标题 |
+| titleMedium / Small | 16 / 14 | SemiBold | 0 | 卡片标题 |
+| body* | 16 / 14 / 12.5 | Normal | 0 | 不变 |
+| label* | 14 / 12 / 11 | SemiBold / Medium | 0 | 按钮、底栏标签、角标 |
 
-比例约 1.2；中文行高 1.4–1.5 倍。【typography-system；layout-system】
+## 4. 材质：玻璃（`Glass.kt`）
 
-## 4. 两种界面风格（存储键不变）
+### 4.1 一个组件、四个参数
 
-| | 质感（`skeuo`，默认，原「拟物」） | 简洁（`flat`） |
+`GlassSurface(shape, backdrop, tint, blur, shadow, highlight)` / `Modifier.glass(...)`：
+
+| 参数 | 默认 | 说明 |
 |---|---|---|
-| 页面底 | 中性纸色纯色（去掉了颗粒和渐变） | 中性纯色 |
-| 卡片 | 2dp 中性柔影 + 上沿高光线 + 同色内极小明度变化 | 纯色面 |
-| 凹槽（开关轨道 / 输入框 / 分段） | 上沿略暗的内凹 | 纯色 `Surface2` / `Chip` |
-| 按钮 / 圆钮 | 3dp 浮起，按下 1dp + 压暗 + 缩放 | 纯色，按下压暗 + 缩放 |
-| 底栏 | 不透明 + 发丝线 + 极淡上投影 | 不透明 + 发丝线 |
+| tint | 深色 #0D1322 / 浅色白；真模糊 58%、降级 74% | 也可传卡片色、黑色（压在照片上） |
+| blur | 22dp | 只对玻璃自己那一块模糊 |
+| highlight | 1 | 高光边：1dp 描边，上沿白 30%（浅色 95%）→ 中段几乎透明 → 下沿 8%（45%）；内部上半部再加一层柔光 |
+| shadow | 14dp | 只画在形状**外面**（ClipOp.Difference），不会透过半透明玻璃看到投影 |
 
-保留锤子拟物「东西浮在纸上、按下会陷下去」的骨架，去掉米黄底、颗粒和大渐变（用户当年要的是「拟物阴影」，不是做旧）。【unslop §2「渐变只允许同一中性色内的小幅明度变化」；impeccable craft-floor · Depth「阴影要有偏移和柔和模糊」；apple-design · 材质与层级】
+圆角：面板 32、卡片 24、胶囊 / 圆钮全圆。按压：`Modifier.glassPress` 横向鼓出 3.5%、纵向压扁 5%，松手液体弹簧回位。
+圆钮：`GlassIconButton`（42dp 玻璃 + 48dp 触摸区；`overPhoto` 压在照片上时黑色着色 + 白图标、无投影）。
 
-## 5. 间距、栅格、圆角、层级
+### 4.2 真模糊怎么做（API 31+）
 
-- **间距**：4 的倍数（2 只用于小控件内部微调）。`Space.xxs 2 / xs 4 / s 8 / m 12 / l 16 / xl 24 / xxl 32 / xxxl 48`；页面左右 16；卡片内边距 16；列表 / 设置行最小高 56；触摸目标 ≥ 48。同组小、组间大：分组标题上 28 下 8。【unslop §1；layout-system；impeccable android.md · 48dp】
-- **对齐**：设置行图标占固定 32dp 一列，标题起点 = 16 + 32 + 12 = 60，分隔线从 60 开始；分组标题与卡片内文字左对齐（32）。【unslop §1「东西要对齐」】
-- **照片网格**：间隙 2dp（≥ 6 列 1dp），缩略图圆角 3dp（≥ 6 列 0）；手机默认 4 列，平板 +2、≥ 1000dp +4。【apple-design · 内容优先；layout-system】
-- **圆角**：`Radius.photo 3 / xs 6 / s 10 / m 14 / l 20 / sheet 28`。按钮、输入框 14；卡片 20；面板上沿、对话框 28；嵌套圆角 = 外圆角 − 内边距（最小 4）。Material `Shapes` 同步：extraSmall 6、small 10、medium 14、large 20、extraLarge 28。【unslop §7 · Nested radius】
-- **层级**：`Elevation.card 2 / raised 3 / pressed 1 / photo 2`（dp）。深色主题层级主要靠面的明度台阶（Bg → Surface → Surface2 每级 +约 4% 明度）+ 发丝线；阴影只在质感风格里辅助。【unslop §2「深色主题靠面的台阶和发丝线」；impeccable android.md · tonal elevation】
+- 内容容器挂 `Modifier.glassSource(backdrop)`：把内容录进一个 RenderNode（`DrawScope.draw` 换画布），再原样画出。
+- 玻璃 `glass(backdrop = …)`：一个小 RenderNode（`RenderEffect` = 颜色矩阵 ∘ 模糊，CLAMP 边缘）里平移引用上面那份内容，按形状裁剪后画出。
+- 子层（LazyGrid 的格子）滚动时显示列表自己更新，玻璃里的内容跟着变，不需要每帧重录。
+- **玻璃必须在 glassSource 外面**；放在里面的玻璃（页头里的胶囊、卡片）用 `backdrop = null` 走降级外观。录制中有保护标记，误用也不会自引用。
+
+### 4.3 降级
+
+| 情况 | 外观 |
+|---|---|
+| API < 31、软件绘制、没有 backdrop | 74% 着色 + 72×72 细噪点平铺（≤ 7%）+ 高光边 + 外投影——磨砂玻璃，不是一块灰 |
+| 简洁风格（`ui.style = flat`） | 不透明面（深色 Surface2 / 浅色 Surface）+ 发丝线，无投影、无噪点、无光晕 |
+
+### 4.4 性能边界
+
+- 带真模糊的玻璃同屏 ≤ 3 块（底栏、顶栏胶囊、迷你播放条）；其余玻璃都是降级外观（只是几次 drawPath）。
+- 不对大面积内容实时模糊；网格不加阴影、不做逐格动画；照片缩略图直角（不 clip 圆角）。
+- 环境光晕只是两个径向渐变，画在页面根节点上，滚动时不重画。
+
+## 5. 布局
+
+- **照片铺满**：网格无页边距、直角、间隙 1.5dp（≥ 6 列 1dp）。
+- **首页大图**（`PhotoHero`）：那年今天封面（没有时用最新一张），宽度铺满、56% 屏高（340–560dp）；0.45 倍速视差 + 轻微放大；上沿 50% 黑渐变给顶栏、下沿 72% 黑托住标题；
+  标题（小字「N 年前的今天」+ 60sp 月份 + 年份 · 张数）随滚动缩小淡出；滚过 55% 后由**顶栏玻璃胶囊**接手（「11月 · 2026年」+ 搜索）。点大图打开那组照片。
+- **悬浮底栏**：离底 10dp + 系统导航条，左右 14dp，高 66，全圆角；内容区底部留白不变（内容从玻璃下透出）。
+- **顶栏**：来源胶囊 + 日历 / 搜索都是独立的玻璃胶囊 / 圆钮，不再是一条栏。
+- 间距仍是 4 的倍数（`Space`）；触摸目标 ≥ 48dp；分区标题上 28–30、下 8–10。
 
 ## 6. 图标
 
-- 来源：**Kubai Icons「icons-line」**（MIT，© 2026 Kubai087 and contributors）。由 `tools/gen_kubai_icons.py` 从 JSON 生成 `ui/KubaiIcons.kt` 的 `KI.*`（Compose `ImageVector`，不引入运行时依赖）；许可原文 `assets/licenses/kubai-icons-MIT.txt`，设置 → 通用 → 开源许可 里有声明。【kubai087_kubai-icons；line】
-- 规格：24 网格、线宽 1.5、圆头圆角；显示尺寸 24dp（底栏、顶栏）、22dp（设置行）、18dp（行尾箭头）、16dp（胶囊内）。一处一种尺寸。【unslop §3「一种尺寸一种线宽」；line · GUIDE】
-- 颜色：跟随所在文字角色（默认 `C.Sub`，顶栏操作 `C.Text`）；图标不自带颜色。【unslop §3】
-- **选中态 = 线性双色**：外形内先铺一层 22% 同色，再描线（`KI.x(duo = true)`），用 `Icon(tint = 强调色)` 着色。比换成实心更安静，也保留了线条的统一。【duotone；line · 四种变体中的 line-duo】
-- 已替换：全部 `LI.*`（36 个，`Icons.kt` 现在只是转到 `KI` 的别名）；底栏、顶栏、吸顶栏、二级页返回、设置行尾箭头、网格 / 大图流切换直接用 `KI`。Kubai 的前后遮挡（`occ` / `gap`）由生成脚本算成裁剪路径，前面的部件会在后面的部件上留出空隙。Material Rounded 图标（播放器控件、错误图标、收藏 / 实况角标等）按 ROADMAP 分批替换，替换完成前允许并存，但同一行 / 同一栏内必须是同一套。
-- App 图标：保留「蓝色简约 + 飞牛元素」方向，按 design-playful-app-icons 的规则重画在 ROADMAP 的最后阶段做。
+- Kubai 线性体系不变（24 网格、1.5 线宽）。
+- **选中态 = 实心感 + 发光**：`KI.xxxFilled()`（外形填 50% 同色再描线，内部细节仍可辨），背后一团强调色径向光（深色 55%、浅色 35%）；
+  底栏图标 25dp（v1 24），选中时上移 7dp、放大 8%，标签淡入。其余地方的 `duo` 双色保留给非导航的选中态。
+- 生成：`tools/gen_kubai_icons.py` 的 `FILLED` 集合。
 
-## 7. 动效（`Theme.kt · object Motion`）
+## 7. 动效（`Theme.kt · Motion`）
 
-原则：动效只用来解释「发生了什么」；按下立刻有反馈；进入稍慢、退出更快；弹簧可被手势打断并保留速度；不做循环装饰。【emil-design-eng；interaction-physics；animate；choreograph；unslop §9】
-
-| 场景 | 规格（Compose） | 说明 |
+| 场景 | 规格 | 说明 |
 |---|---|---|
-| 按压（按钮、圆钮、胶囊、底栏项、来源胶囊） | 按下 `spring(dampingRatio = 1, stiffness = 1600)` 缩到 0.97（圆钮 0.92、底栏项 0.94、大卡 0.985）；松手 `spring(0.75, 900)` | `Motion.pressIn/pressOut`，`Modifier.pressScale` / `skeuoPressable`。不从 0 放大。【emil-design-eng · scale(0.97)；mobile-native §5 按下即反馈】 |
-| 状态（颜色、选中、文字色） | `tween(180, CubicBezier(0.23, 1, 0.32, 1))` | `Motion.state()`；只动颜色 / 透明度。【emil-design-eng · 强 ease-out】 |
-| 位移（开关钮、底栏选中胶囊展开） | `spring(1, 700)`（临界阻尼，约 250ms） | `Motion.move()`；底栏胶囊 scaleX 0.5→1 + 淡入。 |
-| 进入 / 退出 | 进入 `tween(240, EaseOut)`；退出 `tween(160)` | 退出比进入快。【emil-design-eng · 退出更快】 |
-| 页面转场 | 共享 X 轴：进栈新页从右 28dp 滑入 + 淡入，旧页左移 14dp + 淡出；出栈反向；`spring(1, 420)` | `MainActivity`。只走一小段，不整屏推。【impeccable android.md · shared-axis】 |
-| 大图 / 播放器打开 | 放大淡入 0.94→1，`spring(0.86, 320)`；关闭淡出 + 缩到 0.96 | 1.6.3 起是共享元素式：从缩略图位置展开；下拉时照片跟手缩小、背景变透明，松手按距离 96dp 或向下速度关闭，缩回网格里那一格（`ViewerScreen` + `Hero`），找不到格子时退回整页淡出。【impeccable android.md · container transform；gestures】 |
-| 底部面板 / 对话框 | `spring(0.9, StiffnessMediumLow)`（bounce ≈ 0.1） | `Motion.sheet()`；拖动关闭要带速度判定。页面里只用 `ui/Dialogs.kt` 的 `AppAlertDialog`（0.94→1 弹出、标题 titleLarge、圆角 28）、`AppBottomSheet`（统一拖动条、上沿 28；弹簧与速度判定用 Material 自带）、`AppDropdownMenu`（圆角 14）。【emil-design-eng · drawer；gestures】 |
-| 列表进入 | 只给首屏前 6 项：上浮 8dp + 淡入，间隔 32ms | `Modifier.enterRise(index)`（UiKit，只播一次）；`Motion.STAGGER / STAGGER_MAX / RISE`；不阻塞交互，滚动加载的项不做。【choreograph；emil-design-eng · stagger 30–80ms】 |
-| 迷你播放条 / 正在播放页 | 播放条从底栏上方滑入（`Motion.sheet`）；正在播放页从下往上滑入半屏距离 + 淡入，收起时向下滑出并压在上层 | 1.6.6 起；`Home` 的 AnimatedVisibility + `MainActivity` 转场。像从播放条展开的面板。 |
-| 播放 ↔ 暂停 / 进度条 | 换图标：0.6→1 缩放（`Motion.move`）+ 淡入；进度条按住 4→8dp 并出现 14dp 圆点 | `ui/PlayerKit.kt`：`PlayPauseIcon`、`ScrubBar`（点哪跳哪、读屏 setProgress）。音乐与视频播放器共用。 |
-| 视频播放器控制层 | 整体淡入淡出；顶栏从上、底栏从下各滑 1/3 自身高度；手势气泡 0.92→1 放大淡入 | 布局保持飞牛影视（用户决定），只换视觉与动效。 |
-| 提示条（代替 Toast） | 从下方滑入（`Motion.sheet`）、淡出；普通 2.5 s，带「撤销」4 s | `ui/Snack.kt`：反色胶囊、圆角 14、liveRegion；App 在后台时仍用系统 Toast。 |
-| 骨架屏扫光 | 1600ms 线性循环，只在首屏 | 循环只给「正在加载」这一真实状态。【loading-states；unslop §9】 |
+| 玻璃气泡 / 指示器 | `Motion.liquid()` = spring(0.62, 380) | 底栏气泡滑动；移动中横向拉长到 1.34 倍、纵向压 10%，到位回弹 |
+| 玻璃出现 | `Motion.materialize()` = spring(0.72, 520) | 缩放 0.78→1 + 透明度 + 下落 14dp 一起（「材质到来」，不只是淡入）【apple-design】 |
+| 按压玻璃 | 按下 `pressIn`，松手 `liquid` | 横向鼓、纵向扁；移除动画时只降透明度 |
+| 大标题收进顶栏 | 跟随滚动 | 标题缩到 0.82 并淡出 → 胶囊从上方落入 |
+| 大图视差 | 跟随滚动 | 0.45 倍速 + 放大 1.04→1.08 |
+| 环境光晕换色 | tween 1400 | |
+| 其余（按压缩放、页面转场、大图共享元素、面板） | 沿用 v1 | 见 v1 §7（git 历史） |
 
-- **遵守系统「移除动画」**：`ShiGuangTheme` 读 `Settings.Global.ANIMATOR_DURATION_SCALE`，为 0 时 `Motion.reduced = true`：缩放、位移、弹簧改成直接切换，转场只剩 90ms 淡入淡出，骨架不扫光；颜色变化保留（不会引起晕动），状态变化同时有颜色 / 文字变化，不只靠动画表达。【emil-design-eng · reduced motion；interaction-physics「反馈不只靠动作」；impeccable android.md】
-- 只动 `graphicsLayer`（scale / alpha / translation）和颜色；不动宽高和阴影半径。【animation-performance；interaction-physics「只动 transform 和 opacity」】
-- 高频操作（双击回顶、连续翻页）不加额外动画。【emil-design-eng · 频率表】
+- **遵守系统「移除动画」**：弹簧改直接切换，视差 / 缩放关闭，光晕直接换色，按压只用透明度。
 
-## 8. 触感反馈（`UiKit.kt · object Haptics`）
+## 8. 触感
 
-只在「状态真的变了」的时刻轻轻一下，跟随系统触感开关。【gestures；interaction-physics；apple-design · Haptics】
+沿用 v1：切 tab / 分段只在切到新项时 `CLOCK_TICK`；开关 `TOGGLE_ON/OFF`；长按多选 `LongPress`；完成 / 被拒 `CONFIRM` / `REJECT`。
 
-| 时刻 | 反馈 |
-|---|---|
-| 切换底栏 tab、分段、筛选胶囊（只在切到新项时） | `CLOCK_TICK` |
-| 开关打开 / 关闭（设置行整行可点） | API 34+ `TOGGLE_ON/OFF`，以下 `CLOCK_TICK` |
-| 长按进入多选、拖动多选 | `LongPress`（已有） |
-| 操作完成 / 被拒 | `CONFIRM` / `REJECT`（API 30+），以下 `VIRTUAL_KEY` / `LONG_PRESS` |
+## 9. 组件（v2 已换 / 待换见 ROADMAP）
 
-## 9. 通用组件（第 1 阶段已换新）
-
-- **主按钮 `GradientButton`**（名字保留以免改 40 多处）：实心强调色、高 50、圆角 14、文字 16sp 600、左右 24；按压缩放；一屏一个。**次要按钮 `SecondaryButton`**：中性底、正文色。【impeccable android.md · 一个主操作】
-- **选择胶囊 `ChoiceChip`**：高 32（触摸区 48），圆角 16；选中 = 14% 强调浅底 + 强调字，不用实心色块；颜色渐变 180ms；读屏「标签页 / 按钮，已选中」。
-- **列表行 `NavRow` / 开关行 `ToggleRow`**：最小高 56；图标 22dp 次要色、无底块；标题 bodyLarge；右侧状态值次要色等宽数字；开关行整行 `toggleable(Role.Switch)`，读屏只读一次。
-- **卡片 `Card`**：圆角 20，内边距由行决定（16）；不嵌套卡片。【impeccable craft-floor「嵌套卡片永远是错的」】
-- **分段 `Segmented` / `FillSegmented`**：凹槽 + 选中块，文字颜色渐变，切换轻震。
-- **圆形按钮 `RoundIcon`**：40–44dp，按下缩到 0.92；照片上的半透明底保持扁平。
-- **底栏**：不透明底 + 顶部发丝线；整格可点；选中 = 双色图标 + 浅色胶囊横向展开 + 文字正文色 500。宽屏（≥ 600dp）换 NavigationRail，同一套图标与颜色。【impeccable android.md · 导航随尺寸变化】
-- **顶栏**：来源胶囊（状态点 + 名称 + 下拉）+ 日历 / 搜索 24dp 图标按钮；吸顶栏 = 98% 页面底 + 底部发丝线，标题 titleLarge（Allo 数字）。二级页顶栏：44dp 返回圆钮 + headlineSmall 标题。
-- **海报 `PosterCard`**（1.6.6）：2:3、圆角 10、质感轻影、按压 0.985、角标深色 60% 底 + 白字（不用强调色块）、观看进度 3dp 线压在白 24% 底轨上。
-- **播放器小部件 `PlayerKit`**（1.6.7）：`PlayPauseIcon`、`ScrubBar`、`popOnChange`（收藏心形回弹）、`NowPlayingBars`（正在播放三根小柱，只在真在播时动）。
-- **提示条 `Snack`**（1.6.9）：`toast()` 在前台时自动走它；可逆操作用 `toastUndo()` 带「撤销」。
-- **空状态 / 错误**：一个 44dp 弱色线性图标 + titleLarge 标题 + 一句 bodyMedium + 一个主按钮；去掉彩色圆底。需要用户处理的错误（密码、证书、空间）图标用错误色。【unslop · 空状态；loading-states；impeccable onboard】
+- **底栏**（Home.kt `BottomBar`）：玻璃胶囊 + 液体气泡 + 实心发光图标 + 标签淡入；读屏「标签页，已选中」。宽屏仍用 NavigationRail。
+- **顶栏胶囊**（`HomeTopCapsule` / `HomeChrome` / `ChromeTitle`）：滚过大图后出现，标题 titleLarge（Allo）。
+- **来源胶囊 / 顶栏圆钮**（`TopSwitch`）：玻璃；`overPhoto` 时深色着色白字。
+- **卡片**（`skeuoCard`）：玻璃风格下是磨砂玻璃（卡片色 74% + 噪点 + 高光边 + 4dp 外投影），环境光晕从下面透出；简洁风格纯色。
+- 面板 / 菜单 / 对话框、播放器控件、迷你播放条、设置行：按 ROADMAP 分批换成玻璃。
 
 ## 10. 读屏与无障碍
 
-- 每个可点元素有角色：按钮 `Role.Button`、底栏 / 分段 / 筛选 `Role.Tab` + `selected`、开关行 `Role.Switch`（整行）、强调色 `Role.RadioButton` + 「蓝色」等描述。【accessibility-excellence】
-- 标题有 `heading()`：照片页月份大标题、吸顶栏标题、二级页标题、设置分组标题，读屏可按标题跳转。
-- 纯装饰图标 `contentDescription = null`；只有图标的按钮必须有描述（「搜索照片」「按日期查看照片」「返回」）。
-- 触摸目标 ≥ 48dp；文字对比度见 §2.2；全部字号用 sp，系统字体放大到 130% 时单行标题省略而不是裁切。【impeccable android.md · Verifying：深色 + 字体缩放要进验收】
-- 状态不只靠颜色：选中同时改字重 / 图标变体，错误同时有图标和文字。
+- 沿用 v1：每个可点元素有角色；底栏 `Role.Tab` + `selected`；标题 `heading()`（首页大图标题、顶栏胶囊标题、日期标题）。
+- 底栏未选中项的文字标签视觉上隐藏，但仍在语义树里（读屏读「照片，标签页」）。
+- 对比度见 §2.2；状态不只靠颜色（选中同时换实心图标、出现标签）。
 
 ## 11. 验收
 
-- 每批改动：本地 `assembleDebug + testDebugUnitTest` 通过才推送；推送后看 GitHub Actions。
-- 真机：深色 / 浅色 × 质感 / 简洁 × 字体 100% / 130% × 「移除动画」开 / 关，截图对比（impeccable android.md · Verifying the build）。**第 1 阶段未在真机上验证**。
+- 每批：本地 `assembleDebug + testDebugUnitTest` 通过才推送；推送后看 GitHub Actions。
+- 真机待验（**1.7.0 起未在真机上验证**）：Android 12+ 真模糊的效果与滚动帧率；Android 8–11 降级外观；深 / 浅 × 玻璃 / 简洁 × 字体 130% × 移除动画。
