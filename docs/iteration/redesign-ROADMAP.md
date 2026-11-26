@@ -15,11 +15,11 @@
 - [x] 设置 → 通用 → 开源许可（Kubai MIT、Allo OFL）；README 许可段
 
 ## 阶段 2 照片时间线与大图
-- [~] 照片网格：选中态缩放 0.92 + 勾选圆色渐变（1.6.1 a78885f）；多选底栏换新（1.6.2 e665c66）；快速滚动条 + 年月气泡（Allo）+ 跨月轻震、日期标题对齐与「全选」按钮（1.6.2 b94607d）。剩：双色勾、捏合缩放层级切换的交叉淡入
+- [x] 照片网格：选中态缩放 0.92 + 勾选圆色渐变（1.6.1 a78885f）；多选底栏换新（1.6.2 e665c66）；快速滚动条 + 年月气泡（Allo）+ 跨月轻震、日期标题对齐与「全选」按钮（1.6.2 b94607d）；Kubai 勾回弹弹出、捏合换层级时新网格缩放淡入（1.6.5 462d627；不是两层网格真交叉淡入，为性能只做新网格入场）
 - [x] 回忆横条（MemoriesRow）：封面卡按压 0.985、标题字号、错开进入（1.6.2 b94607d）
-- [ ] 沉浸大图流（ImmersiveFeed）：卡片间距、元信息排版
+- [x] 沉浸大图流（ImmersiveFeed）：卡片间距、元信息排版、从卡片位置展开（1.6.5 28f70aa）
 - [x] 大图查看器：从缩略图位置展开 / 下拉缩回的共享元素式转场（`Motion.zoom`，可被手势打断）、背景随下拉变透明、顶部 / 底部工具栏换 Kubai 图标与 44dp 圆钮、「⋯」面板分三组（1.6.3 ce702dd；未真机验证手感）
-- [ ] 图片编辑器：工具栏图标、比例胶囊用 ChoiceChip
+- [x] 图片编辑器：工具栏图标、比例胶囊（黑底专用 DarkChip，ChoiceChip 的主题色在黑底上对比不够）（1.6.5 38638a6）
 
 ## 阶段 3 合集与发现
 - [x] 合集页：相册 / 人物 / 地点 / 分类封面卡统一（圆角 20、标题 titleSmall、计数 tnum）、人物圆头像、占位骨架（与 C3 合并）——ui/Covers.kt（1.6.3 8af0529）
@@ -44,9 +44,9 @@
 - [ ] 使用引导：步骤指示、插画位、按钮
 
 ## 阶段 7 对话框、面板与状态
-- [x] AlertDialog / InputDialog / ActionListDialog：统一标题 titleLarge、圆角 28、无色调叠加、弹出 0.94→1（Motion.sheet）——ui/Dialogs.kt `AppAlertDialog`，全部 30 处调用改用它（1.6.4）
-- [~] 底部面板（ModalBottomSheet）：`AppBottomSheet` 统一拖动条（36×4）、上沿 28、无色调叠加（1.6.4）；弹出弹簧与松手速度判定沿用 Material 自带（M3 1.2 不能换 spec）
-- [~] 下拉菜单（DropdownMenu）：`AppDropdownMenu` 圆角 14、行高 48（1.6.4）；勾选图标换 KI.check 未做
+- [x] AlertDialog / InputDialog / ActionListDialog：统一标题 titleLarge、圆角 28、无色调叠加、弹出 0.94→1（Motion.sheet）——ui/Dialogs.kt `AppAlertDialog`，全部 30 处调用改用它（1.6.4 8c1ec27）
+- [~] 底部面板（ModalBottomSheet）：`AppBottomSheet` 统一拖动条（36×4）、上沿 28、无色调叠加（1.6.4 8c1ec27）；弹出弹簧与松手速度判定沿用 Material 自带（M3 1.2 不能换 spec）
+- [x] 下拉菜单（DropdownMenu）：`AppDropdownMenu` 圆角 14、行高 48（1.6.4 8c1ec27）；全 App 勾选标记换 KI.check（1.6.5 6241ca5）
 - [ ] Toast → Snackbar（可撤销操作）评估
 - [~] 空状态 / 加载 / 错误：通用组件已换（阶段 1）；逐页检查文案只剩一句、骨架屏形状与真实布局一致
 
