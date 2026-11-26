@@ -7,8 +7,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -129,7 +127,7 @@ fun FilterChipsRow(onOpen: () -> Unit, onClear: () -> Unit) {
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         Row(Modifier.clip(RoundedCornerShape(12.dp)).background(if (AdvFilter.active) C.Accent.copy(alpha = 0.16f) else C.Surface).semantics(mergeDescendants = true) { role = Role.Button; stateDescription = if (AdvFilter.active) "已启用筛选" else "未启用筛选" }.clickable(onClick = onOpen)
             .padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Rounded.Tune, null, tint = if (AdvFilter.active) C.Accent else C.Sub, modifier = Modifier.size(16.dp))
+            Icon(KI.sliders(), null, tint = if (AdvFilter.active) C.Accent else C.Sub, modifier = Modifier.size(16.dp))
             Text("筛选", color = if (AdvFilter.active) C.Accent else C.Text, fontSize = 13.sp, modifier = Modifier.padding(start = 6.dp))
         }
         AdvFilter.chips().forEach { c ->

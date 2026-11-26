@@ -10,8 +10,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -53,19 +51,19 @@ fun BgGuideScreen() {
 
             Section("1. 通知")
             Card {
-                StepRow(Icons.Rounded.Notifications, "允许通知", if (notif) "已允许，通知栏会显示扫描和整理进度" else "用来显示进度和暂停/继续按钮", notif) {
+                StepRow(KI.bell(), "允许通知", if (notif) "已允许，通知栏会显示扫描和整理进度" else "用来显示进度和暂停/继续按钮", notif) {
                     if (Build.VERSION.SDK_INT >= 33) perm.launch(Manifest.permission.POST_NOTIFICATIONS) else BgRun.openNotificationSettings(ctx)
                 }
             }
 
             Section("2. 电池优化")
             Card {
-                StepRow(Icons.Rounded.BatteryChargingFull, "不优化一维相册的电池使用", if (battery) "已设置" else "系统弹窗里选「允许」", battery) { BgRun.requestIgnoreBattery(ctx) }
+                StepRow(KI.battery(), "不优化一维相册的电池使用", if (battery) "已设置" else "系统弹窗里选「允许」", battery) { BgRun.requestIgnoreBattery(ctx) }
             }
 
             Section("3. 自启动与后台运行（${mine.label}）")
             Card {
-                StepRow(Icons.Rounded.RocketLaunch, "打开系统设置页", "找到一维相册，按下面的说明打开", null) {
+                StepRow(KI.rocket(), "打开系统设置页", "找到一维相册，按下面的说明打开", null) {
                     if (!BgRun.openVendorPage(ctx, mine)) toast(ctx, "这台手机没有找到对应页面，已打开应用信息")
                 }
                 Text(BgRun.tips(mine), style = MaterialTheme.typography.bodySmall, lineHeight = 19.sp, modifier = Modifier.padding(start = 18.dp, end = 18.dp, bottom = 14.dp))
@@ -78,7 +76,7 @@ fun BgGuideScreen() {
                     Column(Modifier.fillMaxWidth().semantics(mergeDescendants = true) { stateDescription = if (open == v) "已展开" else "已折叠" }.clickable(onClickLabel = if (open == v) "收起" else "展开") { open = if (open == v) null else v }.padding(horizontal = 18.dp, vertical = 12.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(v.label, color = C.Text, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                            Icon(if (open == v) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null, tint = C.Faint)
+                            Icon(if (open == v) KI.up() else KI.down(), null, tint = C.Faint)
                         }
                         if (open == v) {
                             Text(BgRun.tips(v), style = MaterialTheme.typography.bodySmall, lineHeight = 19.sp, modifier = Modifier.padding(top = 6.dp))

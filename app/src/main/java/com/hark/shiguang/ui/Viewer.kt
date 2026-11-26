@@ -31,8 +31,6 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -442,7 +440,7 @@ private fun VideoPage(p: Photo, current: Boolean, onTap: () -> Unit) {
         else {
             AsyncImage(p.thumbM, null, Modifier.fillMaxSize().clickable(onClick = onTap), contentScale = ContentScale.Fit)
             Box(Modifier.size(76.dp).clip(RoundedCornerShape(38.dp)).background(Color(0x66000000)).clickable { started = true }, contentAlignment = Alignment.Center) {
-                Icon(Icons.Rounded.PlayArrow, null, tint = Color.White, modifier = Modifier.size(44.dp))
+                Icon(KI.playSolid(), null, tint = Color.White, modifier = Modifier.size(44.dp))
             }
         }
     }
@@ -514,7 +512,7 @@ private fun InfoSheet(p: Photo, onDismiss: () -> Unit) {
             val camera = listOf(p.make, p.model).filter { it.isNotBlank() }.joinToString(" ").trim()
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(C.Surface2).padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.PhotoCamera, null, tint = C.Gold, modifier = Modifier.size(20.dp))
+                    Icon(KI.camera(), null, tint = C.Gold, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(10.dp))
                     Text(camera.ifEmpty { "未知设备" }, style = MaterialTheme.typography.titleSmall)
                 }
@@ -534,8 +532,8 @@ private fun InfoSheet(p: Photo, onDismiss: () -> Unit) {
                 val mp = if (p.width > 0) "%.1f MP".format(p.width * p.height / 1_000_000f) else ""
                 Text(listOf(if (p.width > 0) "${p.width} × ${p.height}" else "", mp, fmtBytes(p.size)).filter { it.isNotEmpty() }.joinToString("  ·  "), style = MaterialTheme.typography.bodySmall)
             }
-            if (p.geo.isNotBlank()) InfoRow(Icons.Rounded.Place, p.geo)
-            if (p.path.isNotBlank()) InfoRow(Icons.Rounded.Folder, p.path)
+            if (p.geo.isNotBlank()) InfoRow(KI.pin(), p.geo)
+            if (p.path.isNotBlank()) InfoRow(KI.folder(), p.path)
         }
     }
 }

@@ -17,8 +17,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -79,7 +77,7 @@ fun NetImage(url: String?, modifier: Modifier = Modifier, scale: ContentScale = 
             contentDescription = null, contentScale = scale, modifier = Modifier.matchParentSize(),
             onState = { failed = it is coil.compose.AsyncImagePainter.State.Error },
         )
-        if (failed) Icon(Icons.Rounded.BrokenImage, "图片加载失败", tint = C.Faint, modifier = Modifier.size(22.dp))
+        if (failed) Icon(KI.fileImage(), "图片加载失败", tint = C.Faint, modifier = Modifier.size(22.dp))
     }
 }
 
@@ -98,14 +96,14 @@ fun Thumb(p: Photo, corner: Dp, small: Boolean = false, onClick: () -> Unit) {
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.55f to Color.Transparent, 1f to Color(0x99000000))))
         }
         if (!small) Row(Modifier.align(Alignment.BottomStart).padding(5.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (p.collected) Icon(Icons.Rounded.Favorite, null, tint = Color.White, modifier = Modifier.size(13.dp))
+            if (p.collected) Icon(KI.heartSolid(), null, tint = Color.White, modifier = Modifier.size(13.dp))
         }
         if (!small) Row(Modifier.align(Alignment.BottomEnd).padding(5.dp), verticalAlignment = Alignment.CenterVertically) {
             if (p.isVideo) {
-                Icon(Icons.Rounded.PlayArrow, null, tint = Color.White, modifier = Modifier.size(14.dp))
+                Icon(KI.playSolid(), null, tint = Color.White, modifier = Modifier.size(14.dp))
                 if (p.duration > 0) Text(fmtDuration(p.duration), color = Color.White, style = Type.badge)
             } else if (p.isLive) {
-                Icon(Icons.Rounded.MotionPhotosOn, null, tint = Color.White, modifier = Modifier.size(14.dp))
+                Icon(KI.live(), null, tint = Color.White, modifier = Modifier.size(14.dp))
             }
         }
     }
@@ -196,12 +194,12 @@ fun NoSourceState(icon: ImageVector, sub: String) =
 fun ErrorState(message: String?, onRetry: () -> Unit, onFix: ((com.hark.shiguang.ErrorKind) -> Unit)? = null) {
     val k = com.hark.shiguang.ErrorKind.of(message)
     val icon = when (k) {
-        com.hark.shiguang.ErrorKind.NETWORK -> Icons.Rounded.CloudOff
-        com.hark.shiguang.ErrorKind.AUTH -> Icons.Rounded.Lock
-        com.hark.shiguang.ErrorKind.CERT -> Icons.Rounded.GppMaybe
-        com.hark.shiguang.ErrorKind.SPACE -> Icons.Rounded.Storage
-        com.hark.shiguang.ErrorKind.NOT_FOUND -> Icons.Rounded.FolderOff
-        com.hark.shiguang.ErrorKind.OTHER -> Icons.Rounded.ErrorOutline
+        com.hark.shiguang.ErrorKind.NETWORK -> KI.cloud()
+        com.hark.shiguang.ErrorKind.AUTH -> KI.lock()
+        com.hark.shiguang.ErrorKind.CERT -> KI.shield()
+        com.hark.shiguang.ErrorKind.SPACE -> KI.drive()
+        com.hark.shiguang.ErrorKind.NOT_FOUND -> KI.folder()
+        com.hark.shiguang.ErrorKind.OTHER -> KI.alert()
     }
     Column(Modifier.fillMaxSize().padding(horizontal = 40.dp, vertical = Space.xxl), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         // 网络 / 其它错误用中性色（多半能重试）；密码、证书、空间这类要用户处理的用错误色
@@ -312,7 +310,7 @@ fun QuietStatusLine(scanning: Boolean, error: String?, modifier: Modifier = Modi
             CircularProgressIndicator(color = C.Sub, strokeWidth = 1.5.dp, modifier = Modifier.size(12.dp))
             Text("正在更新…", color = C.Sub, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp))
         } else if (error != null) {
-            Icon(androidx.compose.material.icons.Icons.Rounded.CloudOff, null, tint = C.Sub, modifier = Modifier.size(14.dp))
+            Icon(KI.cloud(), null, tint = C.Sub, modifier = Modifier.size(14.dp))
             Text(offlineText(error), color = C.Sub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 8.dp).weight(1f))
             if (onRetry != null) TextButton(onClick = onRetry, modifier = Modifier.heightIn(min = 48.dp)) { Text("重试", color = C.Accent, fontSize = 13.sp) }
         }

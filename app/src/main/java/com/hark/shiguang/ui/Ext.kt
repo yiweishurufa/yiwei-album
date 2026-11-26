@@ -7,8 +7,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -118,14 +116,14 @@ private fun PersonScreen(s: ExtScreen.Person) {
     DisposableEffect(p?.key) {
         val cur = p
         SelExtra.actions = if (cur == null) emptyList() else listOf(
-            SelExtraAction(Icons.Rounded.PersonRemove, "移出人物") { l ->
+            SelExtraAction(KI.minusCircle(), "移出人物") { l ->
                 group = fl.edits.ensureGroup(cur)
                 fl.edits.removePhotos(cur, l.map { it.cloudPath }.toSet())
                 Selection.clear(); regroup("已从「${cur.name.ifEmpty { "该人物" }}」移出 ${l.size} 张")
             },
             // 第 4 批：拆分人物——选中照片里的脸拆成一个新人物（「这是另一个人」，不是「这张不是 TA」）。
             // 全选时不拆（拆完原人物就空了）；拆完调 cluster() 重新归类。
-            SelExtraAction(Icons.Rounded.PersonAdd, "拆分为新人物") { l ->
+            SelExtraAction(KI.plusCircle(), "拆分为新人物") { l ->
                 val paths = l.map { it.cloudPath }.toSet()
                 if (paths.size >= cur.photos.size) { toast(ctx, "全选时不能拆分，请至少留一张"); return@SelExtraAction }
                 val n = fl.edits.splitFrom(cur, paths)
@@ -155,7 +153,7 @@ private fun PersonScreen(s: ExtScreen.Person) {
         }
         ExtTop(p?.name?.ifEmpty { "未命名" } ?: "人物") {
             if (p != null) Box {
-                RoundIcon(Icons.Rounded.MoreHoriz, size = 40.dp, desc = "更多") { menu = true }
+                RoundIcon(KI.moreH(), size = 40.dp, desc = "更多") { menu = true }
                 AppDropdownMenu(menu, { menu = false }, Modifier.background(C.Surface2)) {
                     DropdownMenuItem({ Text("命名", color = C.Text) }, { menu = false; renaming = true })
                     DropdownMenuItem({ Text("合并到其他人物…", color = C.Text) }, { menu = false; merging = true })

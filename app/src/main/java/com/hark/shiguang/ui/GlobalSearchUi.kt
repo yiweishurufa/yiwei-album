@@ -11,9 +11,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.MusicNote
-import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -67,7 +64,7 @@ fun GlobalSearchScreen() {
     Column(Modifier.fillMaxSize().appBackground().statusBarsPadding()) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Row(Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(16.dp)).background(C.Surface2).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Rounded.Search, null, tint = C.Sub, modifier = Modifier.size(20.dp))
+                Icon(KI.search(), null, tint = C.Sub, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(10.dp))
                 Box(Modifier.weight(1f)) {
                     if (q.isEmpty()) Text("搜照片、电影剧集、歌曲", color = C.Faint, fontSize = 15.sp)
@@ -105,7 +102,7 @@ fun GlobalSearchScreen() {
                                 Text(t.title.ifBlank { t.name }, color = C.Text, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text(listOf(t.displayArtist, t.album).filter { it.isNotBlank() }.joinToString(" · "), color = C.Sub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
-                            Icon(Icons.Rounded.MusicNote, null, tint = C.Faint, modifier = Modifier.size(18.dp))
+                            Icon(KI.music(), null, tint = C.Faint, modifier = Modifier.size(18.dp))
                         }
                     }
                     if (r.tracks.size > 30) item { Text("还有 ${r.tracks.size - 30} 首，点任意一首会把全部 ${r.tracks.size} 首加入播放队列", color = C.Faint, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }

@@ -15,9 +15,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.*
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -154,7 +151,7 @@ fun SettingsScreen() {
                 if (lockOk) { lockOn = it; Store.lockOn = it }
             }
             Div()
-            NavRow(Icons.Rounded.DeleteSweep, "清理缓存", value = if (clearing) "清理中…" else if (cacheSize == 0L) "无缓存" else if (cacheSize >= 0) sizeLabel(cacheSize) else null) {
+            NavRow(KI.trash(), "清理缓存", value = if (clearing) "清理中…" else if (cacheSize == 0L) "无缓存" else if (cacheSize >= 0) sizeLabel(cacheSize) else null) {
                 if (clearing) return@NavRow
                 if (cacheSize == 0L) { toast(ctx, "没有可清理的缓存"); return@NavRow }
                 clearing = true
@@ -176,7 +173,7 @@ fun SettingsScreen() {
                 }
             }
             Div()
-            NavRow(Icons.Rounded.Storage, "缩略图缓存上限", value = CacheLimit.label(limitMb)) { limitOpen = true }
+            NavRow(KI.drive(), "缩略图缓存上限", value = CacheLimit.label(limitMb)) { limitOpen = true }
         }
 
         // ---- 通用
@@ -196,10 +193,10 @@ fun SettingsScreen() {
                 text = { Text(OPEN_SOURCE_NOTICE, color = C.Sub, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) },
                 confirmButton = { TextButton(onClick = { licOpen = false }) { Text("知道了", color = C.Accent) } })
             Div()
-            NavRow(Icons.Rounded.MailOutline, "反馈与帮助") { helpOpen = true }
+            NavRow(KI.mail(), "反馈与帮助") { helpOpen = true }
             Div()
             // 优化 10（用户 2026-11-02）：一键导出诊断日志（不含密码 / token / 链接参数），调起系统分享
-            NavRow(Icons.Rounded.BugReport, "导出诊断日志", value = "遇到问题时发给开发者") {
+            NavRow(KI.bug(), "导出诊断日志", value = "遇到问题时发给开发者") {
                 scope.launch {
                     val f = runCatching { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { Diag.writeExport() } }.getOrNull()
                     if (f == null) toast(ctx, "导出失败") else Diag.share(ctx, f)

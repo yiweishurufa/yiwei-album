@@ -23,8 +23,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.semantics.contentDescription
@@ -133,7 +131,7 @@ private fun SelCell(p: Photo, onOpen: () -> Unit) {
     Box(Modifier.aspectRatio(1f).clip(RoundedCornerShape(4.dp)).background(C.Surface)
         .combinedClickable(onClick = { if (Selection.active) Selection.toggle(p) else onOpen() }, onLongClick = { Selection.start(p) })) {
         NetImage(p.thumbS, Modifier.fillMaxSize())
-        if (p.isVideo) Icon(Icons.Rounded.PlayArrow, null, tint = Color.White, modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp).size(16.dp))
+        if (p.isVideo) Icon(KI.playSolid(), null, tint = Color.White, modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp).size(16.dp))
         if (Selection.active) Box(Modifier.align(Alignment.TopEnd).padding(5.dp).size(20.dp).clip(CircleShape)
             .background(if (on) C.Accent else Color(0x55000000)).border(1.5.dp, Color.White, CircleShape), contentAlignment = Alignment.Center) {
             if (on) Icon(KI.check(), null, tint = C.OnAccent, modifier = Modifier.size(14.dp))
@@ -300,7 +298,7 @@ fun DuplicatesScreen() {
     DisposableEffect(acct) { onDispose { FnRepeatCache.put(acct, groups.toList(), total) } }
     Page("重复照片", if (total > 0) "$total 组" else "", actions = {
         // 1.0.2: no scan button here; 飞牛's repeat check is started together with the AI tab's 整理 (see DiscoverTab)
-        RoundIcon(Icons.Rounded.Refresh, desc = "刷新") { scope.launch { load(true) } }
+        RoundIcon(KI.refresh(), desc = "刷新") { scope.launch { load(true) } }
         if (groups.isNotEmpty()) TextButton(onClick = { confirmAll = true }) { Text("全部清理", color = C.Accent) }
     }) {
         when {
@@ -376,7 +374,7 @@ fun FoldersScreen(r: Route.Folders) {
             else -> LazyVerticalGrid(GridCells.Adaptive(92.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(2.dp, 0.dp, 2.dp, 60.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 items(f, span = { GridItemSpan(maxLineSpan) }, key = { "d" + it.first }) { (path, name) ->
-                    ListRow(Icons.Rounded.Folder, null, name, "", trailing = { Icon(Icons.Rounded.ChevronRight, null, tint = C.Faint) }) {
+                    ListRow(KI.folder(), null, name, "", trailing = { Icon(KI.chevron(), null, tint = C.Faint) }) {
                         Nav.push(Route.Folders(path, name))
                     }
                 }
@@ -401,7 +399,7 @@ fun TransfersScreen() {
         else LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
             items(Transfers.tasks, key = { it.id }) { t ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(if (t.upload) Icons.Rounded.Upload else Icons.Rounded.Download, null, tint = C.Sub, modifier = Modifier.size(22.dp))
+                    Icon(if (t.upload) KI.upload() else KI.download(), null, tint = C.Sub, modifier = Modifier.size(22.dp))
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(t.name, color = C.Text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -412,8 +410,8 @@ fun TransfersScreen() {
                         Text(st, color = if (t.state == TState.FAILED) C.Danger else C.Sub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         if (t.state == TState.RUNNING) LinearProgressIndicator(progress = { t.progress }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp).semantics { contentDescription = "传输进度 ${(t.progress * 100).toInt()}%" }, color = C.Accent, trackColor = C.Surface2)
                     }
-                    if (t.state == TState.FAILED) IconButton(onClick = { Transfers.retry(t) }) { Icon(Icons.Rounded.Refresh, "重试", tint = C.Accent) }
-                    if (t.state == TState.DONE) Icon(Icons.Rounded.CheckCircle, "已完成", tint = C.Accent, modifier = Modifier.size(20.dp))
+                    if (t.state == TState.FAILED) IconButton(onClick = { Transfers.retry(t) }) { Icon(KI.refresh(), "重试", tint = C.Accent) }
+                    if (t.state == TState.DONE) Icon(KI.checkCircle(), "已完成", tint = C.Accent, modifier = Modifier.size(20.dp))
                 }
             }
         }
@@ -441,9 +439,9 @@ fun UploadScreen(r: Route.Upload) {
                 l.take(30).forEach { m -> Box(Modifier.size(72.dp).clip(RoundedCornerShape(8.dp)).background(C.Surface2)) { NetImage(m.uri.toString(), Modifier.fillMaxSize()) } }
             }
             Section("上传到")
-            ListRow(Icons.Rounded.Dns, null, "飞牛 NAS 相册", "上传到相册的备份目录", trailing = { RadioButton(target == "nas", { target = "nas" }) }) { target = "nas" }
+            ListRow(KI.nas(), null, "飞牛 NAS 相册", "上传到相册的备份目录", trailing = { RadioButton(target == "nas", { target = "nas" }) }) { target = "nas" }
             cloudAccounts.forEach { a ->
-                ListRow(Icons.Rounded.Cloud, null, a.title, kindName(a.kind) + " · 根目录 /一维相册", trailing = { RadioButton(target == a.id, { target = a.id }) }) { target = a.id }
+                ListRow(KI.cloud(), null, a.title, kindName(a.kind) + " · 根目录 /一维相册", trailing = { RadioButton(target == a.id, { target = a.id }) }) { target = a.id }
             }
             if (target == "nas" && albums.isNotEmpty()) {
                 Section("同时加入相册（可选）")
@@ -508,20 +506,20 @@ fun BackupScreen() {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 40.dp)) {
             Section("手动")
             Card {
-                NavRow(Icons.Rounded.AddPhotoAlternate, "选择照片上传") {
+                NavRow(KI.upload(), "选择照片上传") {
                     picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
                 }
             }
             Section("自动备份")
             Card {
-            ToggleRow(Icons.Rounded.Backup, "自动备份新照片", on = on) { v ->
+            ToggleRow(KI.backup(), "自动备份新照片", on = on) { v ->
                 if (v) permLauncher.launch(perms) else { on = false; Store.backupOn = false; BackupScheduler.cancel(ctx) }
             }
             Div()
-            NavRow(Icons.Rounded.Wifi, "网络", value = if (ScanPolicy.allowCellular) "Wi-Fi + 移动网络" else "仅 Wi-Fi") { policyOpen = true }
+            NavRow(KI.wifi(), "网络", value = if (ScanPolicy.allowCellular) "Wi-Fi + 移动网络" else "仅 Wi-Fi") { policyOpen = true }
             if (on) {
                 Div()
-                NavRow(Icons.Rounded.CloudUpload, if (running) "正在加入队列…" else "立即备份",
+                NavRow(KI.backup(), if (running) "正在加入队列…" else "立即备份",
                     value = when { pending > 0 -> "$pending 项待备份"; pending == 0 -> "已全部备份"; else -> null }) {
                     if (running) return@NavRow
                     running = true
@@ -536,7 +534,7 @@ fun BackupScreen() {
                     }
                 }
                 Div()
-                NavRow(Icons.Rounded.History, "把已有照片也备份") { confirmAll = true }
+                NavRow(KI.history(), "把已有照片也备份") { confirmAll = true }
             }
             }
         }
@@ -687,7 +685,7 @@ fun CloudBrowseScreen(r: Route.CloudBrowse) {
     }
     LaunchedEffect(r) { load() }
     Page(r.title, r.path, actions = {
-        RoundIcon(Icons.Rounded.ViewDay, desc = "云端时间线") { Nav.push(Route.CloudTimeline(r.accountId)) }
+        RoundIcon(KI.feed(), desc = "云端时间线") { Nav.push(Route.CloudTimeline(r.accountId)) }
     }) {
         val d = dirs
         when {
@@ -697,7 +695,7 @@ fun CloudBrowseScreen(r: Route.CloudBrowse) {
             else -> LazyVerticalGrid(GridCells.Adaptive(92.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(2.dp, 0.dp, 2.dp, 120.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 items(d, span = { GridItemSpan(maxLineSpan) }, key = { "d" + it.path }) { e ->
-                    ListRow(Icons.Rounded.Folder, null, e.name, "", trailing = { Icon(Icons.Rounded.ChevronRight, null, tint = C.Faint) }) {
+                    ListRow(KI.folder(), null, e.name, "", trailing = { Icon(KI.chevron(), null, tint = C.Faint) }) {
                         Nav.push(Route.CloudBrowse(r.accountId, e.path, e.name))
                     }
                 }
@@ -705,7 +703,7 @@ fun CloudBrowseScreen(r: Route.CloudBrowse) {
                     SelCell(photos[i]) { Nav.push(Route.Viewer(photos, i)) }
                 }
                 items(others, span = { GridItemSpan(maxLineSpan) }, key = { "o" + it.path }) { e ->
-                    ListRow(Icons.Rounded.InsertDriveFile, null, e.name, fmtBytes(e.size)) {}
+                    ListRow(KI.file(), null, e.name, fmtBytes(e.size)) {}
                 }
             }
         }

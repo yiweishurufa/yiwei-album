@@ -30,10 +30,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.ExpandLess
-import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
@@ -477,7 +473,7 @@ fun FaceSettingsDialog(onDismiss: () -> Unit) {
             Slider(minP, { minP = it }, valueRange = 1f..20f, steps = 18)
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { adv = !adv }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("高级参数", color = C.Text, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                Icon(if (adv) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null, tint = C.Faint)
+                Icon(if (adv) KI.up() else KI.down(), null, tint = C.Faint)
             }
             if (adv) {
                 Text("人脸置信度  %.2f".format(conf), color = C.Text, fontSize = 14.sp)

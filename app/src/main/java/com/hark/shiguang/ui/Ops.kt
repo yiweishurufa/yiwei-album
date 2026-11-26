@@ -10,8 +10,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -470,7 +468,7 @@ fun AlbumPicker(onDismiss: () -> Unit, onPick: (Album) -> Unit) {
         LazyColumn(Modifier.fillMaxWidth().heightIn(max = 460.dp), contentPadding = PaddingValues(bottom = 30.dp)) {
             item {
                 Row(Modifier.fillMaxWidth().clickable { creating = true }.padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).background(C.Surface2), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Add, null, tint = C.Accent) }
+                    Box(Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).background(C.Surface2), contentAlignment = Alignment.Center) { Icon(KI.plus(), null, tint = C.Accent) }
                     Spacer(Modifier.width(14.dp)); Text("新建相册", color = C.Text, fontSize = 15.sp)
                 }
             }
@@ -479,7 +477,7 @@ fun AlbumPicker(onDismiss: () -> Unit, onPick: (Album) -> Unit) {
             else items(l, key = { it.id }) { a ->
                 Row(Modifier.fillMaxWidth().clickable { onPick(a) }.padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).background(C.Surface2), contentAlignment = Alignment.Center) {
-                        if (a.poster != null) NetImage(a.poster, Modifier.fillMaxSize()) else Icon(Icons.Rounded.PhotoAlbum, null, tint = C.Sub)
+                        if (a.poster != null) NetImage(a.poster, Modifier.fillMaxSize()) else Icon(KI.album(), null, tint = C.Sub)
                     }
                     Spacer(Modifier.width(14.dp))
                     Column { Text(a.name, color = C.Text, fontSize = 15.sp); Text("${a.photos + a.videos} 项", color = C.Sub, fontSize = 12.sp) }
@@ -549,7 +547,7 @@ private fun SelectionBarContent(onChanged: () -> Unit) {
                     val p = sel.first()
                     Ops.launch { runCatching { AlbumOps.setCover(inAlbum, p) }.onSuccess { toast(ctx, "已设为封面"); Selection.clear() }.onFailure { failToast(ctx, it, "失败") } }
                 }
-                SelAction(Icons.Rounded.RemoveCircleOutline, "移出相册") {
+                SelAction(KI.minusCircle(), "移出相册") {
                     val l = Selection.list
                     Ops.launch { runCatching { AlbumOps.remove(inAlbum, l) }.onSuccess { toast(ctx, "已移出 ${l.size} 项"); Selection.clear(); onChanged() }.onFailure { failToast(ctx, it, "失败") } }
                 }

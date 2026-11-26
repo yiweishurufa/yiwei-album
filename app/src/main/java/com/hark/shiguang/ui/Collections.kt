@@ -15,8 +15,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.ui.semantics.heading
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -248,9 +246,9 @@ private fun mediaTypeLabel(k: String) = when (k) {
 }
 
 private fun mediaTypeIcon(k: String): ImageVector = when (k) {
-    "video" -> KI.videos(); "live_photo" -> KI.live(); "gif" -> Icons.Rounded.Gif
-    "raw" -> Icons.Rounded.RawOn; "360" -> Icons.Rounded.Panorama; "panorama" -> Icons.Rounded.Panorama; "screenshot" -> Icons.Rounded.Screenshot
-    else -> Icons.Rounded.Image
+    "video" -> KI.videos(); "live_photo" -> KI.live(); "gif" -> KI.fileImage()
+    "raw" -> KI.aperture(); "360" -> KI.mountain(); "panorama" -> KI.mountain(); "screenshot" -> KI.phone()
+    else -> KI.photos()
 }
 
 @Composable
@@ -260,8 +258,8 @@ private fun SortDialog(order: List<String>, onMove: (String, Int) -> Unit, onRes
             order.forEachIndexed { i, id ->
                 Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(CollectionLayout.TITLES[id].orEmpty(), color = C.Text, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                    IconButton(onClick = { onMove(id, -1) }, enabled = i > 0) { Icon(Icons.Rounded.KeyboardArrowUp, "上移", tint = if (i > 0) C.Text else C.Faint) }
-                    IconButton(onClick = { onMove(id, 1) }, enabled = i < order.size - 1) { Icon(Icons.Rounded.KeyboardArrowDown, "下移", tint = if (i < order.size - 1) C.Text else C.Faint) }
+                    IconButton(onClick = { onMove(id, -1) }, enabled = i > 0) { Icon(KI.up(), "上移", tint = if (i > 0) C.Text else C.Faint) }
+                    IconButton(onClick = { onMove(id, 1) }, enabled = i < order.size - 1) { Icon(KI.down(), "下移", tint = if (i < order.size - 1) C.Text else C.Faint) }
                 }
             }
         }

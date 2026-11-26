@@ -24,8 +24,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -39,7 +37,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -285,7 +282,7 @@ fun LoginScreen() {
             }
             Spacer(Modifier.height(26.dp))
             Row(verticalAlignment = Alignment.Bottom) {
-                Box(Modifier.weight(1f)) { Field("地址", url, { url = it }, Icons.Rounded.Dns, "IP、域名或 FN ID", KeyboardType.Uri, focusRequester = addrFocus) }
+                Box(Modifier.weight(1f)) { Field("地址", url, { url = it }, KI.nas(), "IP、域名或 FN ID", KeyboardType.Uri, focusRequester = addrFocus) }
                 Spacer(Modifier.width(10.dp))
                 Box(Modifier.width(96.dp)) { Field("端口", port, { v -> port = v.filter { it.isDigit() }.take(5) }, null, "自动", KeyboardType.Number) }
             }
@@ -326,16 +323,16 @@ fun LoginScreen() {
                 }
             }
             Spacer(Modifier.height(14.dp))
-            Field("账号", user, { user = it }, Icons.Rounded.PersonOutline, "飞牛 OS 用户名")
+            Field("账号", user, { user = it }, KI.person(), "飞牛 OS 用户名")
             Spacer(Modifier.height(14.dp))
-            Field("密码", pass, { pass = it }, Icons.Rounded.Lock, "", KeyboardType.Password, password = true, ime = if (need2fa) ImeAction.Next else ImeAction.Go, onGo = ::go)
+            Field("密码", pass, { pass = it }, KI.lock(), "", KeyboardType.Password, password = true, ime = if (need2fa) ImeAction.Next else ImeAction.Go, onGo = ::go)
             if (need2fa) {
                 Spacer(Modifier.height(14.dp))
-                Field("二步验证码", otp, { v -> otp = v.filter { it.isDigit() }.take(8) }, Icons.Rounded.Security, "验证器 App 里的 6 位数字", KeyboardType.Number, ime = ImeAction.Go, onGo = ::go)
+                Field("二步验证码", otp, { v -> otp = v.filter { it.isDigit() }.take(8) }, KI.shield(), "验证器 App 里的 6 位数字", KeyboardType.Number, ime = ImeAction.Go, onGo = ::go)
             }
             AnimatedVisibility(err != null) {
                 Row(Modifier.padding(top = 14.dp).clip(RoundedCornerShape(12.dp)).background(C.Danger.copy(alpha = 0.14f)).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.ErrorOutline, null, tint = C.Danger, modifier = Modifier.size(18.dp))
+                    Icon(KI.alert(), null, tint = C.Danger, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(err.orEmpty(), color = C.Text, fontSize = 13.sp)
                 }
@@ -382,7 +379,7 @@ fun Field(
                 )
             }
             if (password) Icon(
-                if (show) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility, null, tint = C.Sub,
+                if (show) KI.eye(duo = true) else KI.eye(), null, tint = C.Sub,
                 modifier = Modifier.size(20.dp).clickable { show = !show }
             )
         }
@@ -425,7 +422,7 @@ fun CollectionScreen(r: Route.Collection) {
         }
         Box(Modifier.fillMaxWidth().background(C.TopScrim)) {
             Row(Modifier.statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                RoundIcon(Icons.Rounded.ArrowBackIosNew, size = 40.dp, desc = "返回") { Nav.pop() }
+                RoundIcon(KI.back(), size = 40.dp, desc = "返回") { Nav.pop() }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(title, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -433,7 +430,7 @@ fun CollectionScreen(r: Route.Collection) {
                     if (s.isNotEmpty()) Text(s, style = MaterialTheme.typography.bodySmall)
                 }
                 if (r.album != null) Box {
-                    RoundIcon(Icons.Rounded.MoreHoriz, size = 40.dp, desc = "更多") { menu = true }
+                    RoundIcon(KI.moreH(), size = 40.dp, desc = "更多") { menu = true }
                     AppDropdownMenu(menu, { menu = false }, Modifier.background(C.Surface2)) {
                         DropdownMenuItem({ Text("重命名", color = C.Text) }, { menu = false; renaming = true })
                         DropdownMenuItem({ Text("删除相册", color = C.Danger) }, { menu = false; deleting = true })
@@ -540,7 +537,7 @@ fun SearchScreen() {
                 Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(16.dp)).background(C.Surface2).padding(horizontal = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Rounded.Search, null, tint = C.Sub, modifier = Modifier.size(20.dp))
+                Icon(KI.search(), null, tint = C.Sub, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(10.dp))
                 Box(Modifier.weight(1f)) {
                     if (SearchState.query.isEmpty()) Text("用一句话描述你要找的照片", color = C.Faint, fontSize = 15.sp)
@@ -551,7 +548,7 @@ fun SearchScreen() {
                         modifier = Modifier.fillMaxWidth().focusRequester(fr)
                     )
                 }
-                if (SearchState.query.isNotEmpty()) Icon(Icons.Rounded.Cancel, "清除搜索", tint = C.Faint, modifier = Modifier.size(18.dp).clickable { SearchState.query = ""; SearchState.reset(); fr.requestFocus() })
+                if (SearchState.query.isNotEmpty()) Icon(KI.clear(), "清除搜索", tint = C.Faint, modifier = Modifier.size(18.dp).clickable { SearchState.query = ""; SearchState.reset(); fr.requestFocus() })
             }
             Spacer(Modifier.width(12.dp))
             Text("取消", color = C.Text, fontSize = 15.sp, modifier = Modifier.clickable { Nav.pop() })
@@ -572,7 +569,7 @@ fun SearchScreen() {
                         }
                         history.forEach { h ->
                             Row(Modifier.fillMaxWidth().clickable { run(h) }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Rounded.Search, null, tint = C.Faint, modifier = Modifier.size(18.dp))
+                                Icon(KI.search(), null, tint = C.Faint, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(12.dp)); Text(h, fontSize = 15.sp)
                             }
                         }
@@ -582,7 +579,7 @@ fun SearchScreen() {
                     Spacer(Modifier.height(12.dp))
                     listOf("海边的日落", "在吃火锅", "穿红衣服的小孩", "下雪的街道", "猫在睡觉", "生日蛋糕").forEach { s ->
                         Row(Modifier.fillMaxWidth().clickable { run(s) }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Rounded.AutoAwesome, null, tint = C.Gold, modifier = Modifier.size(18.dp))
+                            Icon(KI.discover(), null, tint = C.Gold, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(12.dp)); Text(s, fontSize = 15.sp)
                         }
                     }

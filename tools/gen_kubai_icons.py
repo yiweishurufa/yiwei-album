@@ -28,6 +28,11 @@ ICONS = [  # kotlin name, kubai file
     ('maximize', 'maximize'), ('minimize', 'minimize'), ('lockOpen', 'lock-open'), ('rotate', 'rotate-ccw'), ('audio', 'audio-lines'),
     ('moon', 'moon'), ('menu', 'menu'), ('undo', 'undo'), ('redo', 'redo'), ('gauge', 'gauge'), ('volume', 'volume'),
     ('pip', 'picture-in-picture'), ('sun', 'sun'), ('alert', 'circle-alert'),
+    # 1.7.6：替换剩余的 Material 图标
+    ('up', 'chevron-up'), ('bell', 'bell'), ('battery', 'battery-charging'), ('rocket', 'rocket'), ('fileImage', 'file-image'),
+    ('aperture', 'aperture'), ('mountain', 'mountain'), ('phone', 'smartphone'), ('cloud', 'cloud'), ('shield', 'shield'),
+    ('minusCircle', 'circle-minus'), ('plusCircle', 'circle-plus'), ('checkCircle', 'circle-check'), ('wifi', 'wifi'),
+    ('file', 'file'), ('clear', 'circle-x'), ('mail', 'mail'), ('bug', 'bug'),
 ]
 # 另外生成整块填实版本（xxxSolid）的图标：播放器主控件
 SOLID = {'play', 'pause', 'skipBack', 'skipFwd', 'heart'}

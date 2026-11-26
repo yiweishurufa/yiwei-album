@@ -1,6 +1,5 @@
 package com.hark.shiguang.ui
 
-import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -11,9 +10,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ExpandLess
-import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -554,7 +550,7 @@ internal fun TmdbSettingsCard(extra: @Composable ColumnScope.() -> Unit = {}) {
         Row(Modifier.fillMaxWidth().clickable { adv = !adv }.padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("高级", color = C.Text, fontSize = 15.sp, modifier = Modifier.weight(1f))
             if (custom) Text("已自定义", color = C.Sub, fontSize = 13.sp, modifier = Modifier.padding(end = 8.dp))
-            Icon(if (adv) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null, tint = C.Faint, modifier = Modifier.size(20.dp))
+            Icon(if (adv) KI.up() else KI.down(), null, tint = C.Faint, modifier = Modifier.size(20.dp))
         }
     }
 }
@@ -608,7 +604,7 @@ fun MediaSettingsScreen() {
             }
             Section("资料补全（所有来源共用）")
             TmdbSettingsCard {
-                ToggleRow(androidx.compose.material.icons.Icons.Rounded.Cloud, "音乐联网补全", on = online,
+                ToggleRow(KI.cloud(), "音乐联网补全", on = online,
                     info = "文件里缺专辑、歌手、封面或歌词时，从网易云音乐（国内直连）和 LRCLIB 补上；不会改写文件里已有的信息。") { online = it; MusicPrefs.online = it }
             }
         }
