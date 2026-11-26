@@ -19,6 +19,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.*
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.animateContentSize
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -58,137 +64,174 @@ fun MovieDetailScreen(r: Route.MovieDetail) {
     val resumeEp = m.episodes.firstOrNull { it.path == resume?.first }
 
     // 第 4 批：平板/折叠屏——详情内容最大宽度 720dp 居中，宽屏不再通栏拉伸（头图随内容一起居中）。
+    // 1.6.6 阶段 4：头图视差 + 渐隐到页面底；海报与标题压在头图下沿（不再靠负 offset 叠，下面不留空白）；
+    // 主按钮「播放」独占一行，其余操作是一排图标 + 文字的次要按钮；滚过头图后顶部出现带片名的吸顶栏。
+    val list = androidx.compose.foundation.lazy.rememberLazyListState()
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val headerPx = with(density) { DetailSize.backdrop.toPx() }
+    val pinned by remember { derivedStateOf { list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > headerPx * 0.72f } }
     Box(Modifier.fillMaxSize().appBackground(), contentAlignment = Alignment.TopCenter) {
-        LazyColumn(Modifier.widthIn(max = 720.dp).fillMaxHeight(), contentPadding = PaddingValues(bottom = 60.dp)) {
-            item {
-                Box(Modifier.fillMaxWidth().height(300.dp)) {
-                    val bd = m.backdrop ?: m.poster
-                    if (bd != null) NetImage(posterModel(bd), Modifier.fillMaxSize()) else Box(Modifier.fillMaxSize().background(C.Surface))
-                    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color(0x66000000), 0.35f to Color.Transparent, 1f to C.Bg)))
-                }
-            }
-            item {
-                Row(Modifier.padding(horizontal = 18.dp).offset(y = (-96).dp), verticalAlignment = Alignment.Bottom) {
-                    Box(Modifier.width(108.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp)).background(C.Surface2)) {
-                        if (m.poster != null) NetImage(posterModel(m.poster), Modifier.fillMaxSize())
-                        else Icon(if (m.kind == "tv") LI.tv() else LI.film(), null, tint = C.Faint, modifier = Modifier.align(Alignment.Center).size(30.dp))
+        LazyColumn(Modifier.widthIn(max = 720.dp).fillMaxHeight(), state = list, contentPadding = PaddingValues(bottom = 60.dp)) {
+            item(key = "head") {
+                Box(Modifier.fillMaxWidth()) {
+                    Box(Modifier.fillMaxWidth().height(DetailSize.backdrop).graphicsLayer {
+                        // 视差：头图以一半的速度上移；「移除动画」时不做
+                        if (!Motion.reduced && list.firstVisibleItemIndex == 0) translationY = list.firstVisibleItemScrollOffset * 0.5f
+                        clip = false
+                    }) {
+                        val bd = m.backdrop ?: m.poster
+                        if (bd != null) NetImage(posterModel(bd), Modifier.fillMaxSize()) else Box(Modifier.fillMaxSize().background(C.Surface))
+                        // 上沿压暗给状态栏与返回钮，下沿渐隐到页面底色（三段：顶部 40% 黑 → 透明 → 页面底）
+                        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color(0x66000000), 0.3f to Color.Transparent, 0.62f to C.Bg.copy(alpha = 0.35f), 1f to C.Bg)))
                     }
-                    Column(Modifier.padding(start = 14.dp, bottom = 4.dp).weight(1f)) {
-                        Text(m.title, color = C.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold, lineHeight = 27.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                        if (m.originalTitle.isNotEmpty() && m.originalTitle != m.title) Text(m.originalTitle, color = C.Sub, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
-                        Text(listOfNotNull(
-                            m.year?.toString(),
-                            m.rating?.let { "%.1f 分".format(it) },
-                            if (m.kind == "tv") "${m.seasons.size} 季 ${m.episodes.size} 集" else m.runtime.takeIf { it > 0 }?.let { "${it} 分钟" },
-                        ).joinToString("  ·  "), color = C.Sub, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
-                        if (m.genres.isNotEmpty()) Text(m.genres.take(3).joinToString(" / "), color = C.Sub, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
-                    }
-                }
-            }
-            item {
-                Column(Modifier.padding(horizontal = 18.dp).offset(y = (-80).dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        val label = when {
-                            resume?.second != null -> "继续播放" + (resumeEp?.let { " 第${it.episode}集" } ?: "")
-                            resumeEp != null && m.episodes.indexOf(resumeEp) > 0 -> "播放 第${resumeEp.season}季 第${resumeEp.episode}集"
-                            else -> "播放"
+                    Row(Modifier.padding(start = Space.page, end = Space.page, top = DetailSize.backdrop - DetailSize.posterOverlap), verticalAlignment = Alignment.Bottom) {
+                        Box(Modifier.width(DetailSize.poster).aspectRatio(2f / 3f).skeuoPhoto(RoundedCornerShape(Radius.s)).background(C.Surface2)) {
+                            if (m.poster != null) NetImage(posterModel(m.poster), Modifier.fillMaxSize())
+                            else Icon(if (m.kind == "tv") KI.tv() else KI.film(), null, tint = C.Faint, modifier = Modifier.align(Alignment.Center).size(30.dp))
                         }
-                        Row(Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(14.dp)).background(C.Accent).clickable(enabled = resume != null) {
+                        Column(Modifier.padding(start = Space.l, bottom = Space.xs).weight(1f).semantics(mergeDescendants = true) {}) {
+                            Text(m.title, style = MaterialTheme.typography.headlineMedium, maxLines = 3, overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.semantics { heading() })
+                            if (m.originalTitle.isNotEmpty() && m.originalTitle != m.title) Text(m.originalTitle, color = C.Sub, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = Space.xxs))
+                            Row(Modifier.padding(top = Space.s), verticalAlignment = Alignment.CenterVertically) {
+                                m.rating?.let { r ->
+                                    Icon(KI.star(true), null, tint = C.Gold, modifier = Modifier.size(15.dp))
+                                    Text("%.1f".format(r), color = C.Text, style = MaterialTheme.typography.labelLarge.merge(Type.num), modifier = Modifier.padding(start = Space.xxs, end = Space.s))
+                                }
+                                Text(listOfNotNull(
+                                    m.year?.toString(),
+                                    if (m.kind == "tv") "${m.seasons.size} 季 ${m.episodes.size} 集" else m.runtime.takeIf { it > 0 }?.let { "${it} 分钟" },
+                                ).joinToString("  ·  "), color = C.Sub, style = MaterialTheme.typography.bodyMedium.merge(Type.num), maxLines = 1)
+                            }
+                            if (m.genres.isNotEmpty()) Text(m.genres.take(3).joinToString(" / "), color = C.Sub, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = Space.xxs))
+                        }
+                    }
+                }
+            }
+            item(key = "actions") {
+                Column(Modifier.padding(horizontal = Space.page).padding(top = Space.l + Space.xs)) {
+                    val label = when {
+                        resume?.second != null -> "继续播放" + (resumeEp?.let { " 第${it.episode}集" } ?: "")
+                        resumeEp != null && m.episodes.indexOf(resumeEp) > 0 -> "播放 第${resumeEp.season}季 第${resumeEp.episode}集"
+                        else -> "播放"
+                    }
+                    val playIx = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                    Row(Modifier.fillMaxWidth().height(50.dp).skeuoPressable(playIx, RoundedCornerShape(Radius.m), if (resume != null) C.Accent else C.Surface2)
+                        .clickable(playIx, null, enabled = resume != null, role = androidx.compose.ui.semantics.Role.Button) {
                             resume?.let { Nav.push(Route.MoviePlay(lib.sourceKey, m.id, it.first)) }
                         }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                            Icon(LI.play(true), null, tint = C.OnAccent, modifier = Modifier.size(18.dp))
-                            Text(label, color = C.OnAccent, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 8.dp), maxLines = 1)
+                        Icon(KI.playSolid(), null, tint = if (resume != null) C.OnAccent else C.Faint, modifier = Modifier.size(18.dp))
+                        Text(label, color = if (resume != null) C.OnAccent else C.Faint, style = MaterialTheme.typography.labelLarge, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = Space.s), maxLines = 1)
+                    }
+                    resume?.second?.takeIf { !it.watched }?.let { p ->
+                        Row(Modifier.padding(top = Space.m), verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.weight(1f).height(3.dp).clip(RoundedCornerShape(2.dp)).background(C.Surface2)) {
+                                Box(Modifier.fillMaxHeight().fillMaxWidth(p.ratio).background(C.Accent))
+                            }
+                            Text("剩 ${fmtLeftMin(p)}", color = C.Sub, style = MaterialTheme.typography.labelSmall.merge(Type.num), modifier = Modifier.padding(start = Space.s))
                         }
-                        if (m.kind == "movie" && allVersions.size > 1) GhostButton("版本 ${allVersions.size}") { versions = true }
-                        GhostButton(if (lib.isWish(m.id)) "已收藏" else "收藏") { val w = lib.isWish(m.id); lib.toggleWish(m.id); toast(ctx, if (w) "已取消收藏" else "已收藏，影视页顶部可以找到") }
-                        GhostButton("重新识别") { fixing = true }
-                        GhostButton(if (CastState.device != null) "投屏中" else "投屏") { casting = true }
+                    }
+                    // 次要操作：一排等宽的图标 + 文字按钮（以前四个文字按钮挤在播放键旁边，窄屏放不下）
+                    Row(Modifier.fillMaxWidth().padding(top = Space.m)) {
+                        val wished = lib.isWish(m.id)
+                        DetailAction(KI.heart(wished), if (wished) "已收藏" else "收藏", tint = if (wished) C.Accent else C.Text) {
+                            lib.toggleWish(m.id); toast(ctx, if (wished) "已取消收藏" else "已收藏，影视页顶部可以找到")
+                        }
+                        if (m.kind == "movie" && allVersions.size > 1) DetailAction(KI.layers(), "版本 ${allVersions.size}") { versions = true }
+                        DetailAction(KI.refresh(), "重新识别") { fixing = true }
+                        DetailAction(KI.cast(CastState.device != null), if (CastState.device != null) "投屏中" else "投屏", tint = if (CastState.device != null) C.Accent else C.Text) { casting = true }
                     }
                     // 1.0.9: quality badges of what 播放 starts (real track info once played, else from the file name)
                     val bf = (m.files.firstOrNull { it.path == resume?.first } ?: resumeEp?.file ?: m.files.firstOrNull())
                     if (bf != null) {
                         val badges = remember(bf.path, v) { MediaBadges.of(bf.path, bf.name) }
-                        BadgeRow(badges, Modifier.padding(top = 12.dp))
-                        DeviceCaps.hint(ctx, badges)?.let { Text(it, color = C.Sub, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp)) }
-                    }
-                    resume?.second?.takeIf { !it.watched }?.let { p ->
-                        Box(Modifier.padding(top = 10.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(C.Surface2)) {
-                            Box(Modifier.fillMaxHeight().fillMaxWidth(p.ratio).background(C.Accent))
-                        }
+                        BadgeRow(badges, Modifier.padding(top = Space.m))
+                        DeviceCaps.hint(ctx, badges)?.let { Text(it, color = C.Sub, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = Space.xs + 2.dp)) }
                     }
                     // 全面审查 A1：有进度时可以从头播放；整部标为已看 / 未看
                     val allPaths = if (m.kind == "movie") m.files.map { it.path } else m.episodes.map { it.path }
                     val allWatched = allPaths.isNotEmpty() && allPaths.all { lib.progressOf(it)?.watched == true }
-                    Row(Modifier.padding(top = 6.dp).offset(x = (-12).dp), verticalAlignment = Alignment.CenterVertically) {
-                        if (resume?.second?.watched == false) TextButton(onClick = { resume.let { Nav.push(Route.MoviePlay(lib.sourceKey, m.id, it.first, fromStart = true)) } }) {
-                            Text("从头播放", color = C.Accent, fontSize = 14.sp)
-                        }
-                        if (allPaths.isNotEmpty()) TextButton(onClick = {
+                    Row(Modifier.padding(top = Space.xs).offset(x = (-Space.m)), verticalAlignment = Alignment.CenterVertically) {
+                        if (resume?.second?.watched == false) HeaderTextButton("从头播放", C.Accent) { resume.let { Nav.push(Route.MoviePlay(lib.sourceKey, m.id, it.first, fromStart = true)) } }
+                        if (allPaths.isNotEmpty()) HeaderTextButton(if (allWatched) "标为未看" else if (m.kind == "tv") "全部标为已看" else "标为已看", C.Sub) {
                             if (allWatched) { lib.markUnwatched(allPaths); toast(ctx, "已标为未看") } else { lib.markWatched(allPaths); toast(ctx, "已标为已看") }
-                        }) { Text(if (allWatched) "标为未看" else if (m.kind == "tv") "全部标为已看" else "标为已看", color = C.Sub, fontSize = 14.sp) }
+                        }
                     }
                     // 1.0.1 #6: low-confidence automatic match → ask instead of guessing
                     if (m.pending && m.guess != null) PendingCard(lib, m, m.guess) { fixing = true }
-                    if (!m.overview.isNullOrBlank()) Text(m.overview, color = C.Text.copy(alpha = 0.86f), fontSize = 14.sp, lineHeight = 22.sp,
-                        maxLines = if (fullPlot) Int.MAX_VALUE else 4, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 18.dp).clickable { fullPlot = !fullPlot })
+                    if (!m.overview.isNullOrBlank()) {
+                        var over by remember(m.id) { mutableStateOf(false) }
+                        Text(m.overview, color = C.Text, style = MaterialTheme.typography.bodyMedium, lineHeight = 22.sp,
+                            maxLines = if (fullPlot) Int.MAX_VALUE else 4, overflow = TextOverflow.Ellipsis, onTextLayout = { if (!fullPlot) over = it.hasVisualOverflow },
+                            modifier = Modifier.padding(top = Space.l).animateContentSize(Motion.enter()).clickable(enabled = over || fullPlot, onClickLabel = if (fullPlot) "收起简介" else "展开简介") { fullPlot = !fullPlot })
+                        if (over && !fullPlot) Text("展开", color = C.Accent, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = Space.xs).clickable(role = androidx.compose.ui.semantics.Role.Button) { fullPlot = true })
+                    }
                     else if (!m.matched && !m.pending) Text(if (Tmdb.configured) "还没匹配到资料。点「重新识别」手动搜索。" else "在 设置 → 影视 填上 TMDB 密钥，就能自动配上海报和简介。",
-                        style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 18.dp))
+                        style = MaterialTheme.typography.bodyMedium, color = C.Sub, modifier = Modifier.padding(top = Space.l))
                 }
             }
             if (m.cast.isNotEmpty()) {
-                item { Text("演员", color = C.Text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 18.dp, bottom = 10.dp).offset(y = (-66).dp)) }
-                item {
-                    LazyRow(Modifier.offset(y = (-66).dp), contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                item(key = "cast-h") { ContentHeader("演员", "${m.cast.size}") }
+                item(key = "cast") {
+                    LazyRow(contentPadding = PaddingValues(horizontal = Space.page, vertical = Space.xs), horizontalArrangement = Arrangement.spacedBy(Space.s)) {
                         items(m.cast) { c ->
                             // 全面审查 A9：点演员，看库里还有他 / 她的哪些作品
-                            Column(Modifier.width(72.dp).clip(RoundedCornerShape(8.dp)).clickable { Nav.push(Route.MovieActor(lib.sourceKey, c.name)) }, horizontalAlignment = Alignment.CenterHorizontally) {
-                                Box(Modifier.size(64.dp).clip(CircleShape).background(C.Surface2), contentAlignment = Alignment.Center) {
-                                    if (c.img != null) NetImage(posterModel(c.img), Modifier.fillMaxSize()) else Text(c.name.take(1), color = C.Sub, fontSize = 20.sp)
+                            Column(Modifier.width(76.dp).pressScale().clip(RoundedCornerShape(Radius.m))
+                                .clickable(onClickLabel = "看库里${c.name}的其他作品") { Nav.push(Route.MovieActor(lib.sourceKey, c.name)) }
+                                .semantics(mergeDescendants = true) { role = androidx.compose.ui.semantics.Role.Button; contentDescription = c.name + (if (c.role.isNotEmpty()) "，饰 ${c.role}" else "") }
+                                .padding(vertical = Space.xs), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Box(Modifier.size(64.dp).skeuoPhoto(CircleShape).background(C.Surface2), contentAlignment = Alignment.Center) {
+                                    if (c.img != null) NetImage(posterModel(c.img), Modifier.fillMaxSize()) else Text(c.name.take(1), color = C.Sub, style = MaterialTheme.typography.titleLarge)
                                 }
-                                Text(c.name, color = C.Text, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
-                                if (c.role.isNotEmpty()) Text(c.role, color = C.Faint, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(c.name, color = C.Text, style = MaterialTheme.typography.bodySmall.copy(color = C.Text), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = Space.s))
+                                if (c.role.isNotEmpty()) Text(c.role, color = C.Sub, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
                     }
                 }
             }
             if (m.kind == "tv") {
-                item {
-                    Column(Modifier.offset(y = (-50).dp)) {
-                        if (m.seasons.size > 1) LazyRow(contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 6.dp)) {
-                            items(m.seasons.keys.sorted()) { s ->
-                                val on = s == season
-                                Text(if (s == 0) "特别篇" else "第 $s 季", color = if (on) C.OnAccent else C.Text, fontSize = 13.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
-                                    modifier = Modifier.clip(RoundedCornerShape(16.dp)).background(if (on) C.Accent else C.Surface).clickable { season = s }.padding(horizontal = 14.dp, vertical = 7.dp))
-                            }
-                        } else Text(if (season == 0) "特别篇" else "第 $season 季", color = C.Text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 18.dp, bottom = 6.dp))
-                        // A1：这一季全部标为已看 / 未看
-                        val sp = m.seasons[season].orEmpty().map { it.path }
-                        val sw = sp.isNotEmpty() && sp.all { lib.progressOf(it)?.watched == true }
-                        if (sp.size > 1) TextButton(onClick = { if (sw) lib.markUnwatched(sp) else lib.markWatched(sp) }, modifier = Modifier.padding(start = 6.dp)) {
-                            Text(if (sw) "本季标为未看" else "本季标为已看", color = C.Sub, fontSize = 13.sp)
+                item(key = "seasons") {
+                    Column {
+                        Row(Modifier.fillMaxWidth().padding(end = Space.xs), verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.weight(1f)) { ContentHeader(if (m.seasons.size > 1) "剧集" else if (season == 0) "特别篇" else "第 $season 季", "${m.seasons[season].orEmpty().size} 集") }
+                            // A1：这一季全部标为已看 / 未看；长按某一集的说明收进 ⓘ（DESIGN §1 少说明）
+                            val sp = m.seasons[season].orEmpty().map { it.path }
+                            val sw = sp.isNotEmpty() && sp.all { lib.progressOf(it)?.watched == true }
+                            if (sp.size > 1) Box(Modifier.padding(top = Space.l)) { HeaderTextButton(if (sw) "本季标为未看" else "本季标为已看", C.Sub) { if (sw) lib.markUnwatched(sp) else lib.markWatched(sp) } }
+                            Box(Modifier.padding(top = Space.l)) { InfoDot("长按某一集可以标为已看 / 未看、从头播放。", "剧集操作") }
                         }
-                        Text("长按某一集可以标为已看 / 未看、从头播放", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 18.dp, bottom = 4.dp))
+                        if (m.seasons.size > 1) LazyRow(contentPadding = PaddingValues(horizontal = Space.page), horizontalArrangement = Arrangement.spacedBy(Space.s)) {
+                            items(m.seasons.keys.sorted()) { s -> ChoiceChip(if (s == 0) "特别篇" else "第 $s 季", s == season) { season = s } }
+                        }
                     }
                 }
-                items(m.seasons[season].orEmpty(), key = { it.path }) { e ->
-                    Box(Modifier.offset(y = (-50).dp)) { EpisodeRow(lib, m, e) }
-                }
+                items(m.seasons[season].orEmpty(), key = { it.path }) { e -> EpisodeRow(lib, m, e) }
             } else if (m.files.isNotEmpty()) {
-                item {
-                    Column(Modifier.padding(horizontal = 18.dp).offset(y = (-50).dp)) {
-                        Text("文件", color = C.Text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 6.dp))
+                item(key = "files-h") { ContentHeader("文件", if (m.files.size > 1) "${m.files.size}" else "") }
+                item(key = "files") {
+                    Column(Modifier.padding(horizontal = Space.page)) {
                         m.files.forEach { f ->
-                            Text(f.name, color = C.Sub, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(vertical = 3.dp))
-                            BadgeRow(MediaBadges.of(f.path, f.name), Modifier.padding(bottom = 3.dp))
-                            Text(listOfNotNull(fmtBytes(f.size).takeIf { f.size > 0 }, if (f.subs.isNotEmpty()) "${f.subs.size} 个外挂字幕" else null).joinToString(" · "), color = C.Faint, fontSize = 11.sp)
+                            Text(f.name, color = C.Sub, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = Space.s))
+                            BadgeRow(MediaBadges.of(f.path, f.name), Modifier.padding(vertical = Space.xs))
+                            Text(listOfNotNull(fmtBytes(f.size).takeIf { f.size > 0 }, if (f.subs.isNotEmpty()) "${f.subs.size} 个外挂字幕" else null).joinToString(" · "), color = C.Sub, style = MaterialTheme.typography.labelSmall.merge(Type.num))
                         }
                     }
                 }
             }
         }
-        Box(Modifier.statusBarsPadding().padding(10.dp)) { RoundIcon(LI.back(true), bg = Color(0x55000000), tint = Color.White, desc = "返回") { Nav.pop() } }
+        // 吸顶栏：滚过头图后淡入（98% 页面底 + 发丝线 + 片名），返回钮在两种状态下位置不变
+        androidx.compose.animation.AnimatedVisibility(pinned, Modifier.align(Alignment.TopCenter), enter = fadeIn(Motion.enter()), exit = fadeOut(Motion.exit())) {
+            Box(Modifier.fillMaxWidth().background(C.Bg.copy(alpha = 0.98f)).drawBehind { drawLine(C.Line, androidx.compose.ui.geometry.Offset(0f, size.height), androidx.compose.ui.geometry.Offset(size.width, size.height), 1f) }
+                .statusBarsPadding().height(64.dp), contentAlignment = Alignment.CenterStart) {
+                Text(m.title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 66.dp, end = Space.page))
+            }
+        }
+        Box(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(Space.s + 2.dp)) {
+            val barBg by androidx.compose.animation.animateColorAsState(if (pinned) C.Chip else Color(0x55000000), Motion.state(), label = "backBg")
+            val barFg by androidx.compose.animation.animateColorAsState(if (pinned) C.Text else Color.White, Motion.state(), label = "backFg")
+            RoundIcon(KI.back(), bg = barBg, tint = barFg, size = 44.dp, desc = "返回") { Nav.pop() }
+        }
     }
 
     if (versions) AppAlertDialog(onDismissRequest = { versions = false }, containerColor = C.Surface, title = { Text("选择版本", color = C.Text) }, text = {
@@ -226,23 +269,48 @@ private fun versionLabel(name: String): String {
     return listOfNotNull(res, hdr, codec, NameParser.ext(name).uppercase()).joinToString(" · ")
 }
 
+/** 1.6.6 详情页尺寸。 */
+private object DetailSize {
+    val backdrop = 300.dp
+    val poster = 112.dp
+    /** 海报压进头图的高度。 */
+    val posterOverlap = 96.dp
+}
+
+/** 详情页次要操作：图标在上、文字在下，平分一行；按压缩到 0.94。 */
+@Composable
+private fun RowScope.DetailAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, tint: Color = C.Text, onClick: () -> Unit) {
+    Column(Modifier.weight(1f).heightIn(min = 56.dp).pressScale(0.94f).clip(RoundedCornerShape(Radius.m)).clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
+        .semantics(mergeDescendants = true) {}.padding(vertical = Space.s), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
+        Text(label, color = if (tint == C.Text) C.Sub else tint, style = MaterialTheme.typography.labelMedium.copy(color = if (tint == C.Text) C.Sub else tint), maxLines = 1, modifier = Modifier.padding(top = Space.xs + 2.dp))
+    }
+}
+
+private fun fmtLeftMin(p: Progress): String { val m = ((p.dur - p.pos) / 60000).coerceAtLeast(1); return if (m >= 60) "${m / 60} 小时 ${m % 60} 分" else "$m 分钟" }
+
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun EpisodeRow(lib: MovieLib, m: MovieItem, e: Episode) {
     val p = lib.progressOf(e.path)
     var menu by remember { mutableStateOf(false) }
     Box {
-    // 全面审查 A1：长按菜单 标为已看 / 标为未看 / 从头播放
-    Row(Modifier.fillMaxWidth().combinedClickable(onLongClick = { menu = true }) { Nav.push(Route.MoviePlay(lib.sourceKey, m.id, e.path)) }.padding(horizontal = 18.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.width(132.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp)).background(C.Surface2)) {
+    // 全面审查 A1：长按菜单 标为已看 / 标为未看 / 从头播放。1.6.6：剧照圆角 10、集号等宽数字、看完 = 勾、整行按压
+    val title = e.title ?: NameParser.stem(e.file?.name ?: e.path.substringAfterLast('/'))
+    Row(Modifier.fillMaxWidth().combinedClickable(onLongClick = { menu = true }, onLongClickLabel = "更多操作") { Nav.push(Route.MoviePlay(lib.sourceKey, m.id, e.path)) }
+        .semantics(mergeDescendants = true) { contentDescription = "第 ${e.episode} 集，$title" + when { p?.watched == true -> "，已看完"; p != null -> "，看了 ${(p.ratio * 100).toInt()}%"; else -> "" } }
+        .padding(horizontal = Space.page, vertical = Space.s), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.width(136.dp).aspectRatio(16f / 9f).pressScale(Motion.PRESS_SCALE_LARGE).skeuoPhoto(RoundedCornerShape(Radius.s)).background(C.Surface2)) {
             val img = e.still ?: m.backdrop
             if (img != null) NetImage(posterModel(img), Modifier.fillMaxSize())
-            if (p != null) Box(Modifier.align(Alignment.BottomStart).fillMaxWidth(p.ratio).height(3.dp).background(C.Accent))
-            if (p?.watched == true) Text("看完", color = Color.White, fontSize = 10.sp, modifier = Modifier.align(Alignment.TopEnd).padding(5.dp).clip(RoundedCornerShape(5.dp)).background(Color(0x99000000)).padding(horizontal = 5.dp, vertical = 1.dp))
+            if (p != null && !p.watched) ProgressLine(p.ratio, Modifier.align(Alignment.BottomStart))
+            if (p?.watched == true) Box(Modifier.align(Alignment.TopEnd).padding(Space.xs + 1.dp).size(20.dp).clip(CircleShape).background(Color(0x99000000)), contentAlignment = Alignment.Center) {
+                Icon(KI.check(), null, tint = Color.White, modifier = Modifier.size(13.dp))
+            }
         }
-        Column(Modifier.padding(start = 12.dp).weight(1f)) {
-            Text("第 ${e.episode} 集", color = C.Sub, fontSize = 12.sp)
-            Text(e.title ?: NameParser.stem(e.file?.name ?: e.path.substringAfterLast('/')), color = C.Text, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+        Column(Modifier.padding(start = Space.m).weight(1f)) {
+            Text("第 ${e.episode} 集", color = if (p?.watched == true) C.Sub else C.Accent, style = MaterialTheme.typography.labelMedium.merge(Type.num).copy(color = if (p?.watched == true) C.Sub else C.Accent))
+            Text(title, color = if (p?.watched == true) C.Sub else C.Text, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = Space.xxs))
         }
     }
     WatchMenu(menu, onDismiss = { menu = false }, watched = p?.watched == true, resumable = p != null && !p.watched,

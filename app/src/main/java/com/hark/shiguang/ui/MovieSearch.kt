@@ -8,6 +8,8 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.animation.*
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -17,6 +19,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,19 +53,22 @@ fun MovieSearchScreen() {
     fun saveQuery(q: String) { if (q.isNotBlank()) { MovieSearchHistory.add(q); history = MovieSearchHistory.load() } }
 
     Column(Modifier.fillMaxSize().appBackground()) {
-        Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 4.dp, end = 16.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { Nav.pop() }) { Icon(LI.back(), "返回", tint = C.Text, modifier = Modifier.size(22.dp)) }
-            Row(Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(12.dp)).background(C.Surface).padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(LI.search(), null, tint = C.Faint, modifier = Modifier.size(18.dp))
-                Box(Modifier.weight(1f).padding(start = 8.dp), contentAlignment = Alignment.CenterStart) {
-                    if (text.isEmpty()) Text("输入影片名称搜索", color = C.Faint, fontSize = 15.sp)
+        // 1.6.6 阶段 4：二级页同款 44dp 返回圆钮 + 内凹的搜索槽（高 48、圆角 14）；占位提示用次要色（DESIGN §2.2）
+        Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = Space.s + 2.dp, end = Space.page, top = Space.s, bottom = Space.s), verticalAlignment = Alignment.CenterVertically) {
+            RoundIcon(KI.back(), size = 44.dp, desc = "返回") { Nav.pop() }
+            Row(Modifier.padding(start = Space.m).weight(1f).height(48.dp).skeuoInset(RoundedCornerShape(Radius.m)).padding(start = Space.m), verticalAlignment = Alignment.CenterVertically) {
+                Icon(KI.search(), null, tint = C.Sub, modifier = Modifier.size(18.dp))
+                Box(Modifier.weight(1f).padding(start = Space.s), contentAlignment = Alignment.CenterStart) {
+                    if (text.isEmpty()) Text("输入影片名称搜索", color = C.Sub, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
                     BasicTextField(text, { text = it }, singleLine = true,
-                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = C.Text, fontSize = 15.sp), cursorBrush = SolidColor(C.Accent),
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = C.Text), cursorBrush = SolidColor(C.Accent),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                         keyboardActions = KeyboardActions(onSearch = { saveQuery(text); focus.clearFocus() }),
                         modifier = Modifier.fillMaxWidth().semantics { contentDescription = "搜索影片" })
                 }
-                if (text.isNotEmpty()) IconButton(onClick = { text = "" }) { Icon(LI.close(), "清除搜索", tint = C.Sub, modifier = Modifier.size(18.dp)) }
+                AnimatedVisibility(text.isNotEmpty(), enter = fadeIn(Motion.state()) + scaleIn(Motion.move(), 0.6f), exit = fadeOut(Motion.exit()) + scaleOut(Motion.exit(), 0.6f)) {
+                    IconButton(onClick = { text = "" }) { Icon(KI.close(), "清除搜索", tint = C.Sub, modifier = Modifier.size(18.dp)) }
+                }
             }
         }
         if (key == null) { NoSourceState(LI.film(), "影视库跟着左上角的来源走"); return@Column }
@@ -77,21 +83,18 @@ fun MovieSearchScreen() {
         val filtered = category != MovieFilter.ALL || genre != MovieFilter.ALL || year != MovieFilter.ALL
 
         LazyVerticalGrid(GridCells.Adaptive(104.dp), Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = 40.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            contentPadding = PaddingValues(start = Space.page, end = Space.page, bottom = 40.dp),
+            horizontalArrangement = Arrangement.spacedBy(PosterSize.gap), verticalArrangement = Arrangement.spacedBy(Space.l + Space.xs)) {
             if (text.isEmpty() && history.isNotEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
-                Column(Modifier.bleed(14.dp)) {
-                    Row(Modifier.padding(start = 18.dp, end = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("最近搜索", style = MaterialTheme.typography.labelLarge, color = C.Sub, modifier = Modifier.weight(1f))
-                        TextButton(onClick = { MovieSearchHistory.clear(); history = emptyList() }) { Text("清空", color = C.Sub, fontSize = 13.sp) }
-                    }
-                    LazyRow(contentPadding = PaddingValues(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(history) { h -> FilterChipText(h, false) { text = h } }
+                Column(Modifier.bleed(Space.page)) {
+                    ContentHeader("最近搜索", extra = "清空" to { MovieSearchHistory.clear(); history = emptyList() })
+                    LazyRow(contentPadding = PaddingValues(horizontal = Space.page), horizontalArrangement = Arrangement.spacedBy(Space.s)) {
+                        items(history) { h -> ChoiceChip(h, false, role = androidx.compose.ui.semantics.Role.Button) { text = h; saveQuery(h) } }
                     }
                 }
             }
             if (all.isNotEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
-                Column(Modifier.bleed(14.dp).padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(Modifier.bleed(Space.page).padding(top = Space.s), verticalArrangement = Arrangement.spacedBy(Space.xxs)) {
                     if (cats.size > 1) FilterRow(listOf(MovieFilter.ALL) + cats, category, MovieFilter.ALL) { category = it }
                     FilterRow(MovieFilter.SORTS, MovieFilter.SORTS[sort], MovieFilter.SORTS[0]) { sort = MovieFilter.SORTS.indexOf(it).coerceAtLeast(0) }
                     if (genres.isNotEmpty()) FilterRow(listOf("类型") + genres, if (genre == MovieFilter.ALL) "类型" else genre, "类型") { genre = if (it == "类型") MovieFilter.ALL else it }
@@ -99,17 +102,18 @@ fun MovieSearchScreen() {
                 }
             }
             if (shown.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
-                Column(Modifier.fillMaxWidth().padding(vertical = 60.dp, horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(Modifier.fillMaxWidth().padding(vertical = Space.xxxl, horizontal = Space.xl), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(KI.search(), null, tint = C.Faint, modifier = Modifier.size(44.dp).padding(bottom = Space.l))
                     Text(when {
                         all.isEmpty() && lib.scanning -> "正在扫描影视库…"
                         all.isEmpty() -> "影视库还是空的，先在影视页选好影视文件夹"
                         text.isNotBlank() -> "没有找到「${text.trim()}」"
                         else -> "没有符合筛选条件的影片"
-                    }, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
-                    if (filtered) TextButton(onClick = { category = MovieFilter.ALL; genre = MovieFilter.ALL; year = MovieFilter.ALL }) { Text("清除筛选", color = C.Accent) }
+                    }, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
+                    if (filtered) Box(Modifier.padding(top = Space.m)) { HeaderTextButton("清除筛选", C.Accent) { category = MovieFilter.ALL; genre = MovieFilter.ALL; year = MovieFilter.ALL } }
                 }
-            } else items(shown, key = { it.id }) { m ->
-                SearchPoster(m) { saveQuery(text); Nav.push(Route.MovieDetail(key, m.id)) }
+            } else itemsIndexed(shown, key = { _, m -> m.id }) { i, m ->
+                SearchPoster(m, i) { saveQuery(text); Nav.push(Route.MovieDetail(key, m.id)) }
             }
         }
     }
@@ -118,37 +122,41 @@ fun MovieSearchScreen() {
 /** 一行横滑筛选：[options] 第一个是这一行的「全部」（高亮时表示这一行没筛）。 */
 @Composable
 private fun FilterRow(options: List<String>, selected: String, allLabel: String, onPick: (String) -> Unit) {
-    LazyRow(contentPadding = PaddingValues(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    LazyRow(contentPadding = PaddingValues(horizontal = Space.page - Space.s), horizontalArrangement = Arrangement.spacedBy(Space.xxs)) {
         items(options, key = { it }) { o -> FilterChipText(o, o == selected, bold = o == allLabel) { onPick(o) } }
     }
 }
 
+/**
+ * 飞牛影视式的文字筛选项（用户给的截图版式）：未选中只有文字，选中 = 强调色 14% 浅底 + 强调字；颜色渐变 180ms，切换轻震。
+ * 每行的「全部 / 类型 / 年份」用 Medium 字重标出行首。
+ */
 @Composable
 private fun FilterChipText(t: String, on: Boolean, bold: Boolean = false, onClick: () -> Unit) {
-    Text(t, color = if (on) C.Accent else C.Text, fontSize = 15.sp, fontWeight = if (on || bold) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1,
-        modifier = Modifier.heightIn(min = 40.dp).clip(RoundedCornerShape(20.dp)).background(if (on) C.Accent.copy(alpha = 0.14f) else Color.Transparent)
-            .clickable(role = androidx.compose.ui.semantics.Role.RadioButton, onClick = onClick).padding(horizontal = 14.dp).wrapContentHeight(Alignment.CenterVertically))
+    val view = androidx.compose.ui.platform.LocalView.current
+    val bg by androidx.compose.animation.animateColorAsState(if (on) C.AccentSoft else Color.Transparent, Motion.state(), label = "fBg")
+    val fg by androidx.compose.animation.animateColorAsState(if (on) C.Accent else if (bold) C.Text else C.Sub, Motion.state(), label = "fFg")
+    Text(t, color = fg, style = MaterialTheme.typography.labelLarge, fontWeight = if (on || bold) FontWeight.Medium else FontWeight.Normal, maxLines = 1,
+        modifier = Modifier.heightIn(min = 40.dp).pressScale().clip(RoundedCornerShape(Radius.s + 6.dp)).background(bg)
+            .clickable(role = androidx.compose.ui.semantics.Role.RadioButton) { if (!on) Haptics.tick(view); onClick() }
+            .semantics { selected = on }.padding(horizontal = Space.m + 2.dp).wrapContentHeight(Alignment.CenterVertically))
 }
 
-/** 搜索结果海报：左上角类型角标，右下角评分，下面片名 + 「共 N 季」/ 年份。 */
+/** 搜索结果海报：左上角类型角标，右下角评分，下面片名 + 「共 N 季」/ 年份。1.6.6：与影视页海报同一套圆角、角标、按压与进入动效。 */
 @Composable
-private fun SearchPoster(m: MovieItem, onClick: () -> Unit) {
-    Column(Modifier.clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)) {
-        Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp)).background(C.Surface2)) {
+private fun SearchPoster(m: MovieItem, index: Int, onClick: () -> Unit) {
+    val sub = MovieFilter.subtitle(m)
+    Column(Modifier.enterRise(index).pressScale(Motion.PRESS_SCALE_LARGE).clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
+        .semantics(mergeDescendants = true) { contentDescription = listOfNotNull(m.title, MovieFilter.categoryOf(m), sub.takeIf { it.isNotEmpty() }, m.rating?.let { "评分 %.1f".format(it) }).joinToString("，") }) {
+        Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).skeuoPhoto(RoundedCornerShape(Radius.s)).background(C.Surface2)) {
             if (m.poster != null) NetImage(posterModel(m.poster), Modifier.fillMaxSize())
-            else Text(m.title, color = C.Sub, fontSize = 12.sp, textAlign = TextAlign.Center, maxLines = 3, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.align(Alignment.Center).padding(10.dp))
-            Text(MovieFilter.categoryOf(m), color = Color.White, fontSize = 10.sp,
-                modifier = Modifier.align(Alignment.TopStart).clip(RoundedCornerShape(topStart = 10.dp, bottomEnd = 8.dp)).background(C.Accent.copy(alpha = 0.85f)).padding(horizontal = 6.dp, vertical = 2.dp))
-            m.rating?.let { r ->
-                Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(36.dp).background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Color(0x99000000)))))
-                Text("%.1f".format(r), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp))
-            }
+            else Text(m.title, color = C.Sub, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center, maxLines = 3, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.align(Alignment.Center).padding(Space.s + 2.dp))
+            PosterBadge(MovieFilter.categoryOf(m), Modifier.align(Alignment.TopStart))
+            m.rating?.let { r -> PosterBadge("%.1f".format(r), Modifier.align(Alignment.BottomEnd), num = true) }
         }
-        Text(m.title, color = C.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 7.dp))
-        val sub = MovieFilter.subtitle(m)
-        if (sub.isNotEmpty()) Text(sub, color = C.Sub, fontSize = 12.sp, maxLines = 1)
+        Text(m.title, color = C.Text, style = MaterialTheme.typography.titleSmall, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = Space.s))
+        if (sub.isNotEmpty()) Text(sub, color = C.Sub, style = MaterialTheme.typography.labelSmall.merge(Type.num), maxLines = 1)
     }
 }
 
@@ -159,9 +167,9 @@ fun MovieActorScreen(sourceKey: String, name: String) {
     val works by remember(lib, name) { derivedStateOf { lib.version; lib.items.filter { m -> m.cast.any { it.name == name } }.sortedByDescending { it.year ?: 0 } } }
     Page(name, if (lib.ready) "库里有 ${works.size} 部作品" else "") {
         if (!lib.ready) { LibLoading(); return@Page }
-        LazyVerticalGrid(GridCells.Adaptive(104.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 40.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            items(works, key = { it.id }) { m -> PosterCard(m, lib) { Nav.push(Route.MovieDetail(sourceKey, m.id)) } }
+        LazyVerticalGrid(GridCells.Adaptive(104.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(start = Space.page, end = Space.page, top = Space.s, bottom = 40.dp),
+            horizontalArrangement = Arrangement.spacedBy(PosterSize.gap), verticalArrangement = Arrangement.spacedBy(Space.l + Space.xs)) {
+            itemsIndexed(works, key = { _, m -> m.id }) { i, m -> PosterCard(m, lib, index = i) { Nav.push(Route.MovieDetail(sourceKey, m.id)) } }
         }
     }
 }

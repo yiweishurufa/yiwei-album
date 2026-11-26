@@ -22,7 +22,15 @@ ICONS = [  # kotlin name, kubai file
     ('moreH', 'more-horizontal'), ('album', 'album'), ('similar', 'scan-face'), ('star', 'star'), ('users', 'users-round'),
     ('history', 'history'), ('archive', 'archive'), ('camera', 'camera'), ('sparkle', 'wand'), ('upDown', 'arrow-up-down'),
     ('crop', 'crop'),
+    # 1.6.6 阶段 4 / 5：影视、音乐、播放器控件
+    ('pause', 'pause'), ('skipBack', 'skip-back'), ('skipFwd', 'skip-forward'), ('shuffle', 'shuffle'), ('repeat', 'repeat'),
+    ('rewind', 'rewind'), ('fastFwd', 'fast-forward'), ('subtitles', 'subtitles'), ('cast', 'cast'), ('playlist', 'playlist'),
+    ('maximize', 'maximize'), ('minimize', 'minimize'), ('lockOpen', 'lock-open'), ('rotate', 'rotate-ccw'), ('audio', 'audio-lines'),
+    ('moon', 'moon'), ('menu', 'menu'), ('undo', 'undo'), ('redo', 'redo'), ('gauge', 'gauge'), ('volume', 'volume'),
+    ('pip', 'picture-in-picture'), ('sun', 'sun'), ('alert', 'circle-alert'),
 ]
+# 另外生成整块填实版本（xxxSolid）的图标：播放器主控件
+SOLID = {'play', 'pause', 'skipBack', 'skipFwd', 'heart'}
 GAP = 0.5 * float(STROKE) + 0.75   # kit.mjs gapOf(s)
 
 def _rings(d, closed_only):
@@ -95,20 +103,21 @@ import androidx.compose.ui.unit.dp
 
 /**
  * 1.6.0 图标（docs/DESIGN.md §6）：24 网格、1.5 线宽、圆头圆角。[duo] = 选中态「线性双色」：外形内填一层
- * [DUO_ALPHA] 的同色，再描线；用 Icon(tint = …) 着色。
+ * [DUO_ALPHA] 的同色，再描线；用 Icon(tint = …) 着色。[solid] = 外形整块填实再描线（1.6.6：只给播放 / 暂停这类
+ * 主控件用，小尺寸也认得出）。
  */
 object KI {
     const val DUO_ALPHA = 0.22f
     /** [clip]：前面的部件在它身上留出的空隙（Kubai 的 gap / occ），画成「画布减去空隙」的裁剪路径。 */
     private class Part(val kind: Char, val tint: Boolean, val butt: Boolean, val d: String, val clip: String? = null)
     private val cache = HashMap<String, ImageVector>()
-    private fun build(name: String, duo: Boolean, parts: Array<Part>): ImageVector = cache.getOrPut(name + duo) {
+    private fun build(name: String, duo: Boolean, parts: Array<Part>, solid: Boolean = false): ImageVector = cache.getOrPut(name + duo + solid) {
         val b = ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f)
         val black = SolidColor(Color.Black)
         fun clipped(p: Part, draw: () -> Unit) {
             if (p.clip == null) draw() else { b.addGroup(clipPathData = addPathNodes(p.clip)); draw(); b.clearGroup() }
         }
-        if (duo) parts.filter { it.tint }.forEach { p -> clipped(p) { b.addPath(addPathNodes(p.d), fill = black, fillAlpha = DUO_ALPHA) } }
+        if (duo || solid) parts.filter { it.tint }.forEach { p -> clipped(p) { b.addPath(addPathNodes(p.d), fill = black, fillAlpha = if (solid) 1f else DUO_ALPHA) } }
         parts.forEach { p ->
             clipped(p) {
                 if (p.kind == 's') b.addPath(addPathNodes(p.d), fill = black)
@@ -126,4 +135,5 @@ for kn, fn in ICONS:
     arr = arr.replace("Part('", "Part('")
     w('    private val p_%s = arrayOf(%s)\n' % (kn, arr))
     w('    /** Kubai «%s» */\n    fun %s(duo: Boolean = false) = build("%s", duo, p_%s)\n' % (fn, kn, kn, kn))
+    if kn in SOLID: w('    fun %sSolid() = build("%s", false, p_%s, solid = true)\n' % (kn, kn, kn))
 w('}\n')

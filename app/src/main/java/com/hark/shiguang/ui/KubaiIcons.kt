@@ -14,20 +14,21 @@ import androidx.compose.ui.unit.dp
 
 /**
  * 1.6.0 图标（docs/DESIGN.md §6）：24 网格、1.5 线宽、圆头圆角。[duo] = 选中态「线性双色」：外形内填一层
- * [DUO_ALPHA] 的同色，再描线；用 Icon(tint = …) 着色。
+ * [DUO_ALPHA] 的同色，再描线；用 Icon(tint = …) 着色。[solid] = 外形整块填实再描线（1.6.6：只给播放 / 暂停这类
+ * 主控件用，小尺寸也认得出）。
  */
 object KI {
     const val DUO_ALPHA = 0.22f
     /** [clip]：前面的部件在它身上留出的空隙（Kubai 的 gap / occ），画成「画布减去空隙」的裁剪路径。 */
     private class Part(val kind: Char, val tint: Boolean, val butt: Boolean, val d: String, val clip: String? = null)
     private val cache = HashMap<String, ImageVector>()
-    private fun build(name: String, duo: Boolean, parts: Array<Part>): ImageVector = cache.getOrPut(name + duo) {
+    private fun build(name: String, duo: Boolean, parts: Array<Part>, solid: Boolean = false): ImageVector = cache.getOrPut(name + duo + solid) {
         val b = ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f)
         val black = SolidColor(Color.Black)
         fun clipped(p: Part, draw: () -> Unit) {
             if (p.clip == null) draw() else { b.addGroup(clipPathData = addPathNodes(p.clip)); draw(); b.clearGroup() }
         }
-        if (duo) parts.filter { it.tint }.forEach { p -> clipped(p) { b.addPath(addPathNodes(p.d), fill = black, fillAlpha = DUO_ALPHA) } }
+        if (duo || solid) parts.filter { it.tint }.forEach { p -> clipped(p) { b.addPath(addPathNodes(p.d), fill = black, fillAlpha = if (solid) 1f else DUO_ALPHA) } }
         parts.forEach { p ->
             clipped(p) {
                 if (p.kind == 's') b.addPath(addPathNodes(p.d), fill = black)
@@ -85,9 +86,11 @@ object KI {
     private val p_heart = arrayOf(Part('h', true, false, "M12 20.8L4.206 13.165A4.85 4.85 0 1 1 12 7.66A4.85 4.85 0 1 1 19.794 13.165Z"))
     /** Kubai «heart» */
     fun heart(duo: Boolean = false) = build("heart", duo, p_heart)
+    fun heartSolid() = build("heart", false, p_heart, solid = true)
     private val p_play = arrayOf(Part('h', true, false, "M5.75 10.178C5.75 6.865 5.75 5.146 7.028 4.429C8.305 3.713 9.772 4.61 12.598 6.34L15.576 8.161C18.166 9.746 19.56 10.599 19.56 12C19.56 13.401 18.166 14.254 15.576 15.839L12.598 17.66C9.772 19.39 8.305 20.287 7.028 19.571C5.75 18.854 5.75 17.135 5.75 13.822Z"))
     /** Kubai «play» */
     fun play(duo: Boolean = false) = build("play", duo, p_play)
+    fun playSolid() = build("play", false, p_play, solid = true)
     private val p_more = arrayOf(Part('s', false, false, "M10.5 5A1.5 1.5 0 1 1 13.5 5A1.5 1.5 0 1 1 10.5 5Z"), Part('s', false, false, "M10.5 12A1.5 1.5 0 1 1 13.5 12A1.5 1.5 0 1 1 10.5 12Z"), Part('s', false, false, "M10.5 19A1.5 1.5 0 1 1 13.5 19A1.5 1.5 0 1 1 10.5 19Z"))
     /** Kubai «more-vertical» */
     fun more(duo: Boolean = false) = build("more", duo, p_more)
@@ -202,4 +205,79 @@ object KI {
     private val p_crop = arrayOf(Part('l', false, false, "M7 3.75V15A2 2 0 0 0 9 17H20.25"), Part('l', false, false, "M3.75 7H15A2 2 0 0 1 17 9V20.25"))
     /** Kubai «crop» */
     fun crop(duo: Boolean = false) = build("crop", duo, p_crop)
+    private val p_pause = arrayOf(Part('s', false, false, "M6.3 4.85C6.3 3.828 7.128 3 8.15 3L8.15 3C9.172 3 10 3.828 10 4.85L10 19.15C10 20.172 9.172 21 8.15 21L8.15 21C7.128 21 6.3 20.172 6.3 19.15Z"), Part('s', false, false, "M14 4.85C14 3.828 14.828 3 15.85 3L15.85 3C16.872 3 17.7 3.828 17.7 4.85L17.7 19.15C17.7 20.172 16.872 21 15.85 21L15.85 21C14.828 21 14 20.172 14 19.15Z"))
+    /** Kubai «pause» */
+    fun pause(duo: Boolean = false) = build("pause", duo, p_pause)
+    fun pauseSolid() = build("pause", false, p_pause, solid = true)
+    private val p_skipBack = arrayOf(Part('h', true, false, "M20.25 13.004C20.25 16.317 20.25 18.036 18.973 18.752C17.695 19.468 16.229 18.572 13.403 16.844L11.76 15.839C9.168 14.255 7.773 13.402 7.773 12C7.773 10.598 9.168 9.745 11.76 8.161L13.403 7.156C16.229 5.428 17.695 4.532 18.973 5.248C20.25 5.964 20.25 7.683 20.25 10.996Z"), Part('l', false, false, "M3.75 4.75L3.75 19.25"))
+    /** Kubai «skip-back» */
+    fun skipBack(duo: Boolean = false) = build("skipBack", duo, p_skipBack)
+    fun skipBackSolid() = build("skipBack", false, p_skipBack, solid = true)
+    private val p_skipFwd = arrayOf(Part('h', true, false, "M3.75 10.996C3.75 7.683 3.75 5.964 5.027 5.248C6.305 4.532 7.771 5.428 10.597 7.156L12.24 8.161C14.832 9.745 16.227 10.598 16.227 12C16.227 13.402 14.832 14.255 12.24 15.839L10.597 16.844C7.771 18.572 6.305 19.468 5.027 18.752C3.75 18.036 3.75 16.317 3.75 13.004Z"), Part('l', false, false, "M20.25 4.75L20.25 19.25"))
+    /** Kubai «skip-forward» */
+    fun skipFwd(duo: Boolean = false) = build("skipFwd", duo, p_skipFwd)
+    fun skipFwdSolid() = build("skipFwd", false, p_skipFwd, solid = true)
+    private val p_shuffle = arrayOf(Part('l', false, false, "M3.5 7L6.231 7A1.6 1.6 0 0 1 7.48 7.6L14.52 16.4A1.6 1.6 0 0 0 15.769 17L19.5 17M16.5 14L19.5 17L16.5 20", "M-2.000 -2.000L26.000 -2.000L26.000 26.000L-2.000 26.000ZM15.879 8.500L15.439 8.939L15.340 9.048L15.253 9.167L15.177 9.293L15.114 9.426L15.065 9.565L15.029 9.707L15.007 9.853L15.000 10.000L15.007 10.147L15.029 10.293L15.065 10.435L15.114 10.574L15.177 10.707L15.253 10.833L15.340 10.952L15.439 11.061L15.548 11.160L15.667 11.247L15.793 11.323L15.926 11.386L16.065 11.435L16.207 11.471L16.353 11.493L16.500 11.500L16.647 11.493L16.793 11.471L16.935 11.435L17.074 11.386L17.207 11.323L17.333 11.247L17.452 11.160L17.561 11.061L20.561 8.061L20.660 7.952L20.747 7.833L20.823 7.707L20.886 7.574L20.935 7.435L20.971 7.293L20.993 7.147L21.000 7.000L20.993 6.853L20.971 6.707L20.935 6.565L20.886 6.426L20.823 6.293L20.747 6.167L20.660 6.048L20.561 5.939L17.561 2.939L17.452 2.840L17.333 2.753L17.207 2.677L17.074 2.614L16.935 2.565L16.793 2.529L16.647 2.507L16.500 2.500L16.353 2.507L16.207 2.529L16.065 2.565L15.926 2.614L15.793 2.677L15.667 2.753L15.548 2.840L15.439 2.939L15.340 3.048L15.253 3.167L15.177 3.293L15.114 3.426L15.065 3.565L15.029 3.707L15.007 3.853L15.000 4.000L15.007 4.147L15.029 4.293L15.065 4.435L15.114 4.574L15.177 4.707L15.253 4.833L15.340 4.952L15.439 5.061L15.879 5.500L15.769 5.500L15.727 5.501L15.638 5.503L15.554 5.508L15.464 5.515L15.381 5.525L15.292 5.537L15.210 5.551L15.122 5.569L15.040 5.587L14.953 5.610L14.872 5.633L14.787 5.660L14.708 5.688L14.624 5.719L14.547 5.752L14.465 5.788L14.389 5.824L14.309 5.865L14.236 5.906L14.159 5.951L14.088 5.996L14.013 6.046L13.945 6.094L13.873 6.148L13.807 6.200L13.739 6.258L13.676 6.314L13.611 6.375L13.551 6.434L13.490 6.499L13.434 6.562L13.376 6.630L13.349 6.663L6.322 15.446L6.305 15.466L6.301 15.470L6.297 15.474L6.293 15.478L6.288 15.481L6.284 15.484L6.279 15.487L6.274 15.490L6.269 15.492L6.264 15.494L6.258 15.496L6.253 15.497L6.248 15.498L6.242 15.499L6.237 15.499L6.210 15.500L3.500 15.500L3.353 15.507L3.207 15.529L3.065 15.565L2.926 15.614L2.793 15.677L2.667 15.753L2.548 15.840L2.439 15.939L2.340 16.048L2.253 16.167L2.177 16.293L2.114 16.426L2.065 16.565L2.029 16.707L2.007 16.853L2.000 17.000L2.007 17.147L2.029 17.293L2.065 17.435L2.114 17.574L2.177 17.707L2.253 17.833L2.340 17.952L2.439 18.061L2.548 18.160L2.667 18.247L2.793 18.323L2.926 18.386L3.065 18.435L3.207 18.471L3.353 18.493L3.500 18.500L6.231 18.500L6.273 18.499L6.362 18.497L6.446 18.492L6.536 18.485L6.619 18.475L6.708 18.463L6.790 18.449L6.878 18.431L6.960 18.413L7.047 18.390L7.128 18.367L7.213 18.340L7.292 18.312L7.376 18.281L7.453 18.248L7.535 18.212L7.611 18.176L7.691 18.135L7.764 18.094L7.841 18.049L7.912 18.004L7.987 17.954L8.055 17.906L8.127 17.852L8.193 17.800L8.261 17.742L8.324 17.686L8.389 17.625L8.449 17.566L8.510 17.501L8.566 17.438L8.624 17.370L8.651 17.337L15.678 8.554L15.695 8.534L15.699 8.530L15.703 8.526L15.707 8.522L15.712 8.519L15.716 8.516L15.721 8.513L15.726 8.510L15.731 8.508L15.736 8.506L15.742 8.504L15.747 8.503L15.752 8.502L15.758 8.501L15.763 8.501L15.790 8.500Z"), Part('l', false, false, "M3.5 17L6.231 17A1.6 1.6 0 0 0 7.48 16.4L14.52 7.6A1.6 1.6 0 0 1 15.769 7L19.5 7M16.5 4L19.5 7L16.5 10"))
+    /** Kubai «shuffle» */
+    fun shuffle(duo: Boolean = false) = build("shuffle", duo, p_shuffle)
+    private val p_repeat = arrayOf(Part('l', false, false, "M4 11V10A3 3 0 0 1 7 7H20M17 4L20 7L17 10"), Part('l', false, false, "M20 13V14A3 3 0 0 1 17 17H4M7 14L4 17L7 20"))
+    /** Kubai «repeat» */
+    fun repeat(duo: Boolean = false) = build("repeat", duo, p_repeat)
+    private val p_rewind = arrayOf(Part('h', true, false, "M20.25 14.081C20.25 15.934 20.25 16.896 19.535 17.297C18.821 17.698 18 17.197 16.418 16.232L13.007 14.151C11.551 13.263 10.768 12.786 10.768 12C10.768 11.214 11.551 10.737 13.007 9.849L16.418 7.768C18 6.803 18.821 6.302 19.535 6.703C20.25 7.104 20.25 8.066 20.25 9.919Z"), Part('h', true, false, "M12.25 14.081C12.25 15.934 12.25 16.896 11.535 17.297C10.821 17.698 10 17.197 8.418 16.232L5.007 14.151C3.551 13.263 2.768 12.786 2.768 12C2.768 11.214 3.551 10.737 5.007 9.849L8.418 7.768C10 6.803 10.821 6.302 11.535 6.703C12.25 7.104 12.25 8.066 12.25 9.919Z"))
+    /** Kubai «rewind» */
+    fun rewind(duo: Boolean = false) = build("rewind", duo, p_rewind)
+    private val p_fastFwd = arrayOf(Part('h', true, false, "M3.75 9.919C3.75 8.066 3.75 7.104 4.465 6.703C5.179 6.302 6 6.803 7.582 7.768L10.993 9.849C12.449 10.737 13.232 11.214 13.232 12C13.232 12.786 12.449 13.263 10.993 14.151L7.582 16.232C6 17.197 5.179 17.698 4.465 17.297C3.75 16.896 3.75 15.934 3.75 14.081Z"), Part('h', true, false, "M11.75 9.919C11.75 8.066 11.75 7.104 12.465 6.703C13.179 6.302 14 6.803 15.582 7.768L18.993 9.849C20.449 10.737 21.232 11.214 21.232 12C21.232 12.786 20.449 13.263 18.993 14.151L15.582 16.232C14 17.197 13.179 17.698 12.465 17.297C11.75 16.896 11.75 15.934 11.75 14.081Z"))
+    /** Kubai «fast-forward» */
+    fun fastFwd(duo: Boolean = false) = build("fastFwd", duo, p_fastFwd)
+    private val p_subtitles = arrayOf(Part('h', true, false, "M2.75 10.6C2.75 8.185 2.75 6.654 3.702 5.702C4.654 4.75 6.185 4.75 8.6 4.75L15.4 4.75C17.815 4.75 19.346 4.75 20.298 5.702C21.25 6.654 21.25 8.185 21.25 10.6L21.25 13.4C21.25 15.815 21.25 17.346 20.298 18.298C19.346 19.25 17.815 19.25 15.4 19.25L8.6 19.25C6.185 19.25 4.654 19.25 3.702 18.298C2.75 17.346 2.75 15.815 2.75 13.4Z"), Part('l', false, false, "M6.75 11L10.25 11M14.75 11L17.25 11"), Part('l', false, false, "M6.75 15L15.25 15"))
+    /** Kubai «subtitles» */
+    fun subtitles(duo: Boolean = false) = build("subtitles", duo, p_subtitles)
+    private val p_cast = arrayOf(Part('l', false, false, "M2.75 8.25V7A2.25 2.25 0 0 1 5 4.75H19A2.25 2.25 0 0 1 21.25 7V17A2.25 2.25 0 0 1 19 19.25H13.75"), Part('s', false, false, "M1.85 19.25A0.9 0.9 0 1 1 3.65 19.25A0.9 0.9 0 1 1 1.85 19.25Z"), Part('l', false, false, "M2.75 14.25A5 5 0 0 1 7.75 19.25"), Part('l', false, false, "M2.75 11.25A8 8 0 0 1 10.75 19.25"))
+    /** Kubai «cast» */
+    fun cast(duo: Boolean = false) = build("cast", duo, p_cast)
+    private val p_playlist = arrayOf(Part('l', false, false, "M3.75 6L13.25 6"), Part('l', false, false, "M3.75 11L13.25 11"), Part('l', false, false, "M3.75 16L8.25 16"), Part('l', false, false, "M17.25 17.5L17.25 3.75L20 6"), Part('h', true, false, "M11.75 17.5A2.75 2.75 0 1 1 17.25 17.5A2.75 2.75 0 1 1 11.75 17.5Z"))
+    /** Kubai «playlist» */
+    fun playlist(duo: Boolean = false) = build("playlist", duo, p_playlist)
+    private val p_maximize = arrayOf(Part('l', false, false, "M9.75 3.75L3.75 3.75L3.75 9.75M3.75 3.75L10.25 10.25"), Part('l', false, false, "M14.25 20.25L20.25 20.25L20.25 14.25M20.25 20.25L13.75 13.75"))
+    /** Kubai «maximize» */
+    fun maximize(duo: Boolean = false) = build("maximize", duo, p_maximize)
+    private val p_minimize = arrayOf(Part('l', false, false, "M4 10L10 10L10 4M10 10L3.75 3.75"), Part('l', false, false, "M20 14L14 14L14 20M14 14L20.25 20.25"))
+    /** Kubai «minimize» */
+    fun minimize(duo: Boolean = false) = build("minimize", duo, p_minimize)
+    private val p_lockOpen = arrayOf(Part('l', false, false, "M7.75 10.75V7A4.25 4.25 0 0 1 16.25 7V8.3"), Part('h', true, false, "M4.75 16C4.75 14.185 4.75 12.654 5.702 11.702C6.654 10.75 8.185 10.75 10 10.75L14 10.75C15.815 10.75 17.346 10.75 18.298 11.702C19.25 12.654 19.25 14.185 19.25 16L19.25 16C19.25 17.815 19.25 19.346 18.298 20.298C17.346 21.25 15.815 21.25 14 21.25L10 21.25C8.185 21.25 6.654 21.25 5.702 20.298C4.75 19.346 4.75 17.815 4.75 16Z"), Part('l', false, false, "M12 14.3L12 17.625"))
+    /** Kubai «lock-open» */
+    fun lockOpen(duo: Boolean = false) = build("lockOpen", duo, p_lockOpen)
+    private val p_rotate = arrayOf(Part('l', false, false, "M4.28 13.072A8 8 0 1 0 7.661 5.822"), Part('l', false, false, "M10.973 6.953L7.661 5.822L8.793 2.51"))
+    /** Kubai «rotate-ccw» */
+    fun rotate(duo: Boolean = false) = build("rotate", duo, p_rotate)
+    private val p_audio = arrayOf(Part('l', false, false, "M4 8.75L4 15.25"), Part('l', false, false, "M8 5.75L8 18.25"), Part('l', false, false, "M12 3.75L12 20.25"), Part('l', false, false, "M16 7.75L16 16.25"), Part('l', false, false, "M20 9.75L20 14.25"))
+    /** Kubai «audio-lines» */
+    fun audio(duo: Boolean = false) = build("audio", duo, p_audio)
+    private val p_moon = arrayOf(Part('h', true, false, "M11.653 2.009A9.3 9.3 0 1 0 21.941 12.297A8 8 0 0 1 11.653 2.009Z"))
+    /** Kubai «moon» */
+    fun moon(duo: Boolean = false) = build("moon", duo, p_moon)
+    private val p_menu = arrayOf(Part('l', false, false, "M3.75 5L20.25 5"), Part('l', false, false, "M3.75 12L20.25 12"), Part('l', false, false, "M3.75 19L20.25 19"))
+    /** Kubai «menu» */
+    fun menu(duo: Boolean = false) = build("menu", duo, p_menu)
+    private val p_undo = arrayOf(Part('l', false, false, "M20.325 16.813A8 8 0 1 0 4.675 16.813"), Part('l', false, false, "M7.011 14.207L4.675 16.813L2.068 14.478"))
+    /** Kubai «undo» */
+    fun undo(duo: Boolean = false) = build("undo", duo, p_undo)
+    private val p_redo = arrayOf(Part('l', false, false, "M3.675 16.813A8 8 0 1 1 19.325 16.813"), Part('l', false, false, "M16.989 14.207L19.325 16.813L21.932 14.478"))
+    /** Kubai «redo» */
+    fun redo(duo: Boolean = false) = build("redo", duo, p_redo)
+    private val p_gauge = arrayOf(Part('l', false, false, "M4.423 19.306A9.25 9.25 0 1 1 19.577 19.306"), Part('l', false, false, "M12 14L7.985 9.541"), Part('s', false, false, "M10.5 14A1.5 1.5 0 1 1 13.5 14A1.5 1.5 0 1 1 10.5 14Z"))
+    /** Kubai «gauge» */
+    fun gauge(duo: Boolean = false) = build("gauge", duo, p_gauge)
+    private val p_volume = arrayOf(Part('h', true, false, "M2.75 10.193C2.75 9.903 2.75 9.054 3.277 8.527C3.804 8 4.653 8 4.943 8L4.943 8C4.977 8 5.091 8 5.188 7.966C5.285 7.932 5.374 7.86 5.4 7.839L5.738 7.568C7.188 6.405 7.888 5.843 8.569 6.17C9.25 6.496 9.25 7.394 9.25 9.253L9.25 14.747C9.25 16.606 9.25 17.504 8.569 17.83C7.888 18.157 7.188 17.595 5.738 16.432L5.4 16.161C5.374 16.14 5.285 16.068 5.188 16.034C5.091 16 4.977 16 4.943 16L4.943 16C4.653 16 3.804 16 3.277 15.473C2.75 14.946 2.75 14.097 2.75 13.807Z"), Part('l', false, false, "M12.621 9.879A3 3 0 0 1 12.621 14.121"), Part('l', false, false, "M15.273 7.227A6.75 6.75 0 0 1 15.273 16.773"), Part('l', false, false, "M17.925 4.575A10.5 10.5 0 0 1 17.925 19.425"))
+    /** Kubai «volume» */
+    fun volume(duo: Boolean = false) = build("volume", duo, p_volume)
+    private val p_pip = arrayOf(Part('h', true, false, "M2.75 10.6C2.75 8.185 2.75 6.654 3.702 5.702C4.654 4.75 6.185 4.75 8.6 4.75L15.4 4.75C17.815 4.75 19.346 4.75 20.298 5.702C21.25 6.654 21.25 8.185 21.25 10.6L21.25 13.4C21.25 15.815 21.25 17.346 20.298 18.298C19.346 19.25 17.815 19.25 15.4 19.25L8.6 19.25C6.185 19.25 4.654 19.25 3.702 18.298C2.75 17.346 2.75 15.815 2.75 13.4Z"), Part('h', true, false, "M10.75 12.1C10.75 11.543 10.75 11.189 10.97 10.97C11.189 10.75 11.543 10.75 12.1 10.75L15.9 10.75C16.457 10.75 16.811 10.75 17.03 10.97C17.25 11.189 17.25 11.543 17.25 12.1L17.25 13.9C17.25 14.457 17.25 14.811 17.03 15.03C16.811 15.25 16.457 15.25 15.9 15.25L12.1 15.25C11.543 15.25 11.189 15.25 10.97 15.03C10.75 14.811 10.75 14.457 10.75 13.9Z"))
+    /** Kubai «picture-in-picture» */
+    fun pip(duo: Boolean = false) = build("pip", duo, p_pip)
+    private val p_sun = arrayOf(Part('h', true, false, "M8 12A4 4 0 1 1 16 12A4 4 0 1 1 8 12Z"), Part('l', false, false, "M20.05 12L21.25 12M17.692 17.692L18.541 18.541M12 20.05L12 21.25M6.308 17.692L5.459 18.541M3.95 12L2.75 12M6.308 6.308L5.459 5.459M12 3.95L12 2.75M17.692 6.308L18.541 5.459"))
+    /** Kubai «sun» */
+    fun sun(duo: Boolean = false) = build("sun", duo, p_sun)
+    private val p_alert = arrayOf(Part('h', true, false, "M2.75 12A9.25 9.25 0 1 1 21.25 12A9.25 9.25 0 1 1 2.75 12Z"), Part('l', false, false, "M12 6L12 13.25"), Part('s', false, false, "M10.638 17.5A1.362 1.362 0 1 1 13.362 17.5A1.362 1.362 0 1 1 10.638 17.5Z"))
+    /** Kubai «circle-alert» */
+    fun alert(duo: Boolean = false) = build("alert", duo, p_alert)
 }
