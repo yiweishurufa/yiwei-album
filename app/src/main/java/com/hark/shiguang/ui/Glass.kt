@@ -92,16 +92,15 @@ object Glass {
     fun tintAlpha(blurred: Boolean): Float = if (blurred) 0.58f else 0.74f
 
     /** 高光边：上沿亮、下沿弱，像光落在玻璃边上。 */
-    fun rimBrush(strength: Float): Brush {
-        val dark = C.P.dark
+    fun rimBrush(strength: Float, dark: Boolean = C.P.dark): Brush {
         val top = if (dark) 0.30f else 0.95f
         val bottom = if (dark) 0.08f else 0.45f
         return Brush.verticalGradient(listOf(Color.White.copy(alpha = top * strength), Color.White.copy(alpha = 0.04f * strength), Color.White.copy(alpha = bottom * strength)))
     }
 
     /** 玻璃内上半部的柔光（「镜面反光」），只在玻璃风格下画。 */
-    fun sheenBrush(h: Float): Brush = Brush.verticalGradient(
-        0f to Color.White.copy(alpha = if (C.P.dark) 0.10f else 0.35f), 0.55f to Color.Transparent, startY = 0f, endY = h)
+    fun sheenBrush(h: Float, dark: Boolean = C.P.dark): Brush = Brush.verticalGradient(
+        0f to Color.White.copy(alpha = if (dark) 0.10f else 0.35f), 0.55f to Color.Transparent, startY = 0f, endY = h)
 
     /** 简洁风格的「玻璃」：不透明面。 */
     val flatFill: Color get() = if (C.P.dark) C.Surface2 else C.Surface
@@ -156,12 +155,14 @@ fun Modifier.glass(
     blur: Dp = Glass.BLUR,
     shadow: Dp = Glass.SHADOW,
     highlight: Float = 1f,
+    onDark: Boolean = false,
 ): Modifier = composed {
     val holder = remember { GlassHolder() }
     val on = Glass.on
-    val dark = C.P.dark
-    val baseTint = if (tint.isSpecified) tint else Glass.tint
-    val flat = Glass.flatFill
+    // onDark：大图查看器、播放器这类永远是黑底的界面，不随浅色主题变白玻璃
+    val dark = onDark || C.P.dark
+    val baseTint = if (tint.isSpecified) tint else if (onDark) Color(0xFF0D1322) else Glass.tint
+    val flat = if (onDark) Color(0xFF1B2335) else Glass.flatFill
     val line = C.Line
     val useBackdrop = on && backdrop != null && Glass.blurSupported
     (if (useBackdrop) Modifier.onGloballyPositioned { holder.pos = it.positionInRoot() } else Modifier).then(
@@ -171,8 +172,8 @@ fun Modifier.glass(
             val shadowPx = shadow.toPx()
             val layers = if (on && shadowPx > 0f) SkeuoShadow.layers(shadowPx, if (dark) 0.55f else 0.16f) else emptyList()
             val shadowOutlines = layers.map { l -> shape.createOutline(Size(size.width + 2 * l.spread, size.height + 2 * l.spread), layoutDirection, this) }
-            val rim = Glass.rimBrush(highlight)
-            val sheen = Glass.sheenBrush(size.height)
+            val rim = Glass.rimBrush(highlight, dark)
+            val sheen = Glass.sheenBrush(size.height, dark)
             val noise = if (on) Glass.noiseBrush() else null
             val stroke = Stroke(1.dp.toPx())
             val blurPx = blur.toPx()
@@ -207,9 +208,10 @@ fun GlassSurface(
     blur: Dp = Glass.BLUR,
     shadow: Dp = Glass.SHADOW,
     highlight: Float = 1f,
+    onDark: Boolean = false,
     content: @Composable BoxScope.() -> Unit,
 ) {
-    Box(modifier.glass(shape, backdrop, tint, blur, shadow, highlight).clip(shape), content = content)
+    Box(modifier.glass(shape, backdrop, tint, blur, shadow, highlight, onDark).clip(shape), content = content)
 }
 
 /**
@@ -375,7 +377,8 @@ fun Modifier.ambientGlow(): Modifier = drawBehind {
  * 玻璃圆钮（44dp，触摸区 48）：顶栏的日历 / 搜索、照片上的操作。[overPhoto] = 压在照片上：深色着色 + 白色图标，不画投影。
  */
 @Composable
-fun GlassIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, desc: String, modifier: Modifier = Modifier, overPhoto: Boolean = false, onClick: () -> Unit) {
+fun GlassIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, desc: String, modifier: Modifier = Modifier, overPhoto: Boolean = false,
+                    backdrop: GlassBackdrop? = null, tint: Color = Color.Unspecified, onClick: () -> Unit) {
     val inter = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
     val shape = androidx.compose.foundation.shape.CircleShape
     Box(
@@ -384,9 +387,62 @@ fun GlassIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, desc:
             .semantics { contentDescription = desc },
         contentAlignment = androidx.compose.ui.Alignment.Center,
     ) {
-        Box(Modifier.size(42.dp).glass(shape, null, tint = if (overPhoto) Color.Black.copy(alpha = 0.6f) else Color.Unspecified,
-            shadow = if (overPhoto) 0.dp else 8.dp, highlight = if (overPhoto) 0.7f else 1f), contentAlignment = androidx.compose.ui.Alignment.Center) {
-            androidx.compose.material3.Icon(icon, null, tint = if (overPhoto) Color.White else C.OnGlass, modifier = Modifier.size(21.dp))
+        // 有 backdrop（真模糊）时着色用默认深色玻璃；没有时压在照片上用 60% 黑
+        Box(Modifier.size(42.dp).glass(shape, backdrop, tint = if (overPhoto && backdrop == null) Color.Black.copy(alpha = 0.6f) else Color.Unspecified,
+            shadow = if (overPhoto) 0.dp else 8.dp, highlight = if (overPhoto) 0.7f else 1f, onDark = overPhoto), contentAlignment = androidx.compose.ui.Alignment.Center) {
+            androidx.compose.material3.Icon(icon, null, tint = if (tint.isSpecified) tint else if (overPhoto) Color.White else C.OnGlass, modifier = Modifier.size(21.dp))
         }
     }
+}
+
+/**
+ * 1.7.0：只画玻璃的高光边（在内容之上），给自身已经是半透明底色的容器用：对话框、底部面板、下拉菜单。
+ * 高光只在上沿明显，往下很快淡出，所以面板下边没有亮线。
+ */
+fun Modifier.glassRim(shape: Shape, strength: Float = 1f, fadeAt: Dp = 56.dp): Modifier = composed {
+    if (!Glass.on) return@composed this
+    val dark = C.P.dark
+    this.drawWithCache {
+        val outline = shape.createOutline(size, layoutDirection, this)
+        val path = Path().apply { addOutline(outline) }
+        val rim = Brush.verticalGradient(0f to Color.White.copy(alpha = (if (dark) 0.32f else 0.95f) * strength), 1f to Color.Transparent, startY = 0f, endY = fadeAt.toPx())
+        val stroke = Stroke(1.dp.toPx())
+        onDrawWithContent { drawContent(); drawPath(path, rim, style = stroke) }
+    }
+}
+
+/** 对话框 / 面板 / 菜单这类「浮层」的底色：玻璃风格下半透明（窗口背后有模糊时更透），简洁风格不透明。 */
+fun glassOverlayColor(base: Color, windowBlur: Boolean): Color =
+    if (!Glass.on) base else base.copy(alpha = if (windowBlur) 0.80f else 0.95f)
+
+/**
+ * 1.7.0：在对话框 / 底部面板所在的窗口上打开「背后模糊」（API 31+、玻璃风格；系统关闭了跨窗口模糊时自动无效）。
+ * 返回是否请求了模糊（据此决定浮层底色透明度）。
+ */
+@Composable
+fun WindowBlurBehind(radius: Dp = 30.dp): Boolean {
+    if (Build.VERSION.SDK_INT < 31 || !Glass.on) return false
+    val view = androidx.compose.ui.platform.LocalView.current
+    val px = with(androidx.compose.ui.platform.LocalDensity.current) { radius.roundToPx() }
+    val wm = remember(view) { view.context.getSystemService(android.content.Context.WINDOW_SERVICE) as? android.view.WindowManager }
+    val enabled = remember(wm) { wm?.isCrossWindowBlurEnabled == true }
+    androidx.compose.runtime.DisposableEffect(view, px, enabled) {
+        if (enabled) runCatching {
+            val win = (view.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window
+            if (win != null) {
+                win.addFlags(android.view.WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                win.attributes = win.attributes.also { it.blurBehindRadius = px }
+            } else {
+                val root = view.rootView
+                val lp = root.layoutParams as? android.view.WindowManager.LayoutParams
+                if (lp != null && root.isAttachedToWindow) {
+                    lp.flags = lp.flags or android.view.WindowManager.LayoutParams.FLAG_BLUR_BEHIND
+                    lp.blurBehindRadius = px
+                    wm?.updateViewLayout(root, lp)
+                }
+            }
+        }
+        onDispose {}
+    }
+    return enabled
 }
