@@ -51,6 +51,13 @@ object StorageUsage {
 
     data class Part(val kind: Kind, val bytes: Long)
 
+    /** 1.7.25：读屏用的占比文字。四舍五入到整数；有占用但不到 0.5% 读「不到 1%」，没有占用读「占 0%」。 */
+    fun percentLabel(bytes: Long, total: Long): String {
+        if (total <= 0L || bytes <= 0L) return "占 0%"
+        val pct = Math.round(bytes * 100.0 / total).toInt()
+        return if (pct == 0) "不到 1%" else "占 ${pct.coerceAtMost(100)}%"
+    }
+
     /** 每次在存储空间页清理后 +1，设置页「存储空间」一行的「可清理 X」据此重新统计。 */
     var version by mutableIntStateOf(0)
 
@@ -151,7 +158,7 @@ fun StorageScreen() {
             // ---- 总览：环形图 + 总量 + 一键清理（玻璃卡片）
             Card {
                 Column(Modifier.fillMaxWidth().padding(vertical = 22.dp, horizontal = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    val ringDesc = parts?.let { ps -> "一维相册共占用 ${sizeLabel(total)}，" + ps.filter { it.bytes > 0 }.joinToString("，") { "${it.kind.label} ${sizeLabel(it.bytes)}" } } ?: "正在统计"
+                    val ringDesc = parts?.let { ps -> "一维相册共占用 ${sizeLabel(total)}，" + ps.filter { it.bytes > 0 }.joinToString("，") { "${it.kind.label} ${sizeLabel(it.bytes)}，${StorageUsage.percentLabel(it.bytes, total)}" } } ?: "正在统计"
                     Box(Modifier.size(196.dp).semantics { contentDescription = ringDesc }, contentAlignment = Alignment.Center) {
                         val track = C.Text.copy(alpha = 0.08f)
                         val colors = StorageUsage.Kind.values().map { kindColor(it) }
@@ -232,7 +239,8 @@ fun StorageScreen() {
 private fun StorageRow(p: StorageUsage.Part, total: Long) {
     val color = kindColor(p.kind)
     val frac = if (total > 0) (p.bytes.toFloat() / total).coerceIn(0f, 1f) else 0f
-    val desc = "${p.kind.label}，${sizeLabel(p.bytes)}" + (if (p.kind.clearable) "，可清理" else "") + "。${p.kind.sub}"
+    // 1.7.25：读屏加上占比（「照片缓存，120 MB，占 40%，可清理」）
+    val desc = "${p.kind.label}，${sizeLabel(p.bytes)}，${StorageUsage.percentLabel(p.bytes, total)}" + (if (p.kind.clearable) "，可清理" else "") + "。${p.kind.sub}"
     Row(Modifier.fillMaxWidth().heightIn(min = Space.row).clearAndSetSemantics { contentDescription = desc }.padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(12.dp).clip(CircleShape).background(color))

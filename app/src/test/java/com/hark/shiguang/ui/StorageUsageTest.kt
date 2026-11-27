@@ -48,4 +48,13 @@ class StorageUsageTest {
             assertFalse(StorageUsage.keptInCache("thumbs"))
         } finally { dir.deleteRecursively() }
     }
+
+    @Test fun percentLabelForScreenReader() {
+        org.junit.Assert.assertEquals("占 40%", StorageUsage.percentLabel(40, 100))
+        org.junit.Assert.assertEquals("占 33%", StorageUsage.percentLabel(1, 3))
+        org.junit.Assert.assertEquals("不到 1%", StorageUsage.percentLabel(1, 1000))
+        org.junit.Assert.assertEquals("占 0%", StorageUsage.percentLabel(0, 1000))
+        org.junit.Assert.assertEquals("占 0%", StorageUsage.percentLabel(5, 0))
+        org.junit.Assert.assertEquals("占 100%", StorageUsage.percentLabel(100, 100))
+    }
 }
