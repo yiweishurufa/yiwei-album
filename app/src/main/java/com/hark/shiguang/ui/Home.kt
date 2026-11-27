@@ -620,7 +620,7 @@ private fun DavPhotosTab() {
     val ptr = rememberPullToRefreshState()
     if (ptr.isRefreshing) {
         LaunchedEffect(ptr.isRefreshing) {
-            runCatching { lib.scan() }
+            runCatching { lib.scan(reason = "下拉刷新", user = true) }
             ptr.endRefresh()
         }
     }
@@ -645,11 +645,11 @@ private fun DavPhotosTab() {
     Box(Modifier.fillMaxSize().then(if (!lib.scanning) Modifier.nestedScroll(ptr.nestedScrollConnection) else Modifier)) {
         when {
             lib.photos.isEmpty() && lib.scanning -> Column { TopSwitch(); SkeletonGrid(4, 20.dp) }
-            lib.photos.isEmpty() && lib.error != null -> Column { TopSwitch(); Box(Modifier.weight(1f)) { ErrorState(lib.error, onRetry = { scope.launch { lib.scan() } }) } }
+            lib.photos.isEmpty() && lib.error != null -> Column { TopSwitch(); Box(Modifier.weight(1f)) { ErrorState(lib.error, onRetry = { scope.launch { lib.scan(reason = "出错后重试", user = true) } }) } }
             shown.isEmpty() -> Column { TopSwitch(); PhotoModeSwitch(); PhotoFilterChips(); Box(Modifier.weight(1f)) {
                 if (filter == 2) StateMessage(LI.videos(), "没有视频", "")
                 else if (filter == 3 && stills.isNotEmpty()) StateMessage(KI.live(), "没有实况照片", "实况和动态照片分析完后会出现在这里。")
-                else StateMessage(LI.photos(), "没有找到照片", "把照片放进这个 WebDAV 后下拉刷新。", "重新扫描") { scope.launch { lib.scan(full = true) } } } }
+                else StateMessage(LI.photos(), "没有找到照片", "把照片放进这个 WebDAV 后下拉刷新。", "重新扫描") { scope.launch { lib.scan(full = true, reason = "重新扫描（全量）", user = true) } } } }
             HomeState.immersive -> {
                 ImmersiveFeed(entries, lib.scanning, onEnd = {}, onOpen = { Nav.push(Route.Viewer(shown, it)) },
                     state = feed, bottom = homeListBottom(),
@@ -663,7 +663,7 @@ private fun DavPhotosTab() {
             }
         }
         GlassRefreshIndicator(ptr, Modifier.align(Alignment.TopCenter))
-        SelectionBar(Modifier.align(Alignment.BottomCenter), onChanged = { scope.launch { lib.scan() } })
+        SelectionBar(Modifier.align(Alignment.BottomCenter), onChanged = { scope.launch { lib.scan(reason = "整理照片后刷新") } })
     }
 }
 

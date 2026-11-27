@@ -84,9 +84,9 @@ fun MusicTab() {
     LaunchedEffect(key) {
         lib.awaitReady()   // #2 / H4: the library loads on IO; decide about the quiet rescan once it is in
         // first visit after a restart: pick up new files quietly (only new / changed files are read)
-        autoScanIfStale("music.last.$key", lib.dirs.isNotEmpty(), lib.scanning) { lib.scan(quiet = true); ScanService.ensure(App.ctx) }
+        autoScanIfStale("music.last.$key", lib.dirs.isNotEmpty(), lib.scanning) { lib.scan(quiet = true, reason = "进入音乐页（距上次超过 6 小时）"); ScanService.ensure(App.ctx) }
         // 用户 2026-11-02 反馈（WAV 中文 ??）：旧版存下的乱码歌名不等过期，进来就重读这些歌（其余不动）
-        if (lib.needsRetag && !lib.scanning && lib.dirs.isNotEmpty()) { lib.needsRetag = false; Diag.log("MUSIC", "garbled tags cached, re-reading them"); lib.scan(quiet = true); ScanService.ensure(App.ctx) }
+        if (lib.needsRetag && !lib.scanning && lib.dirs.isNotEmpty()) { lib.needsRetag = false; Diag.log("MUSIC", "garbled tags cached, re-reading them"); lib.scan(quiet = true, reason = "旧版标签重读（一次性）"); ScanService.ensure(App.ctx) }
     }
     val v = lib.version
     val q = MusicUi.query.trim()
@@ -105,7 +105,7 @@ fun MusicTab() {
 
     val albumCols = adaptiveCols(2)
     // B7：下拉刷新 = 后台增量扫描（没变的文件夹不重列），有缓存时只显示一行「正在更新」
-    PullRefreshBox(enabled = lib.ready && lib.dirs.isNotEmpty() && !lib.scanning, onRefresh = { lib.scan(quiet = true); ScanService.ensure(App.ctx) }) {
+    PullRefreshBox(enabled = lib.ready && lib.dirs.isNotEmpty() && !lib.scanning, onRefresh = { lib.scan(quiet = true, manual = true, reason = "下拉刷新"); ScanService.ensure(App.ctx) }) {
     LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 170.dp)) {
         item { MediaHeader("音乐", SearchScope.None, lib.scanning, lib.dirs.isNotEmpty(), "重新扫描音乐") { lib.scan(); ScanService.ensure(App.ctx) } }
         // 1.7.10：读库时显示和歌曲行同形的骨架（以前是居中转圈）

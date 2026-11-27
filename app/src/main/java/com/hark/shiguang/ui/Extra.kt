@@ -66,7 +66,7 @@ fun VideosTab(dav: Boolean, inPhotos: Boolean = false) {
             if (vids.isEmpty()) Column { Head(); Title("视频", if (lib.scanning) "正在扫描…" else "0 个"); Box(Modifier.weight(1f)) {
                 if (lib.scanning) SkeletonGrid(cols, 0.dp)
                 // H15: a failed load/scan shows why and offers 重试, same as the photo tab
-                else if (lib.error != null) ErrorState(lib.error, onRetry = { scope.launch { lib.scan() } })
+                else if (lib.error != null) ErrorState(lib.error, onRetry = { scope.launch { lib.scan(reason = "出错后重试", user = true) } })
                 else StateMessage(LI.videos(), "没有视频", "")
             } }
             else PhotoGrid(entries, cols, lib.scanning, onEnd = {}, onOpen = { Nav.push(Route.Viewer(vids, it)) }, state = grid, bottom = 100.dp + miniPlayerPad,
@@ -84,7 +84,7 @@ fun VideosTab(dav: Boolean, inPhotos: Boolean = false) {
                     header = { Column { Head(); Title("视频", "${shown.size}${if (src.more) "+" else ""} 个") } })
             }
         }
-        SelectionBar(Modifier.align(Alignment.BottomCenter), onChanged = { if (dav) Dav.lib()?.let { scope.launch { it.scan() } } else NasVideos.reset() })
+        SelectionBar(Modifier.align(Alignment.BottomCenter), onChanged = { if (dav) Dav.lib()?.let { scope.launch { it.scan(reason = "整理视频后刷新") } } else NasVideos.reset() })
     }
 }
 

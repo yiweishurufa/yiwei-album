@@ -27,8 +27,12 @@ object Analyzer {
     private val jobs = java.util.concurrent.ConcurrentHashMap<String, Job>()
     private val geoCache = HashMap<String, String>()
 
-    /** Local analysis + faces: Wi-Fi and charging unless the user allowed otherwise. */
-    fun canScan(c: Context): Boolean = (ScanPolicy.allowCellular || Net.isWifi(c)) && (ScanPolicy.allowNoCharge || Net.isCharging(c))
+    /**
+     * Local analysis + faces: Wi-Fi and charging unless the user allowed otherwise.
+     * 1.7.21：「Wi-Fi」改看不计流量的网络（手机热点这类按流量计费的 Wi-Fi 不算）；允许不充电时，电量低或省电模式下也不自动跑。
+     */
+    fun canScan(c: Context): Boolean = (ScanPolicy.allowCellular || Net.isUnmetered(c)) &&
+        (Net.isCharging(c) || ScanPolicy.allowNoCharge && !Net.batteryLow(c))
     val running: Boolean get() = jobs.values.any { it.isActive }
 
     /**
@@ -36,47 +40,70 @@ object Analyzer {
      * 1) photo analysis (EXIF/md5/dHash), 2) 1.0.10 one-time camera backfill for photos analysed before 1.0.9,
      * 3) 1.0.10 WebDAV video durations (MediaMetadataRetriever on the stream, 2 at a time).
      */
-    fun start(c: Context, lib: DavLib, manual: Boolean) {
+    /** 1.7.21：分析读失败的照片（文件头读不到 / EXIF 解析失败）的退避记录，见 [RetryBackoff]。 */
+    fun book(lib: DavLib): RetryBook = RetryBooks.dav(lib.accountId, "analyze")
+
+    /** 还要分析、且现在可以试的照片（[manual] 不看退避）。 */
+    internal fun photoTodo(lib: DavLib, p: Photo, book: RetryBook, manual: Boolean, now: Long): Boolean =
+        !p.isVideo && lib.meta[p.cloudPath]?.done != true && book.eligible(p.cloudPath, manual, now)
+
+    fun start(c: Context, lib: DavLib, manual: Boolean, reason: String = if (manual) "手动" else "自动") {
         if (jobs[lib.accountId]?.isActive == true) return
         if (!manual && !canScan(c)) return
-        val needPhotos = lib.photos.any { !it.isVideo && lib.meta[it.cloudPath]?.done != true }
-        val needCam = !camFillDone(lib) && lib.photos.any { !it.isVideo && lib.meta[it.cloudPath]?.let { m -> m.done && !m.camChecked } == true }
-        val needDur = lib.photos.any { it.isVideo && (lib.meta[it.cloudPath]?.dur ?: 0) == 0 }
-        val needMv = lib.photos.any { motionTodo(lib, it) }
+        val book = book(lib)
+        val now = System.currentTimeMillis()
+        val needPhotos = lib.photos.any { photoTodo(lib, it, book, manual, now) }
+        val needCam = !camFillDone(lib) && lib.photos.any { camTodo(lib, it) && book.eligible("cam:" + it.cloudPath, manual, now) }
+        // 1.7.21：和 videoDurations 的 todo 用同一个条件（以前没有播放地址的视频让这里永远为真，每次都空跑一趟并拉起前台通知）
+        val needDur = lib.photos.any { durTodo(lib, it) }
+        val needMv = lib.photos.any { motionTodo(lib, it) && book.eligible("mv:" + it.cloudPath, manual, now) }
         if (!needPhotos && !needCam && !needDur && !needMv) return
         ScanService.ensure(c)
         jobs[lib.accountId] = scope.launch {
             lib.analyzing = true
             withContext(Dispatchers.Main) { lib.analyzed = lib.meta.values.count { it.done } }
+            val t0 = System.currentTimeMillis()
+            var added = 0; var failed = 0
             try {
                 val s = lib.src ?: return@launch
                 val ok = { manual || canScan(c) }
                 if (needPhotos) {
-                    val todo = lib.photos.filter { !it.isVideo && lib.meta[it.cloudPath]?.done != true }
+                    val todo = lib.photos.filter { photoTodo(lib, it, book, manual, now) }
                     val gate = kotlinx.coroutines.sync.Semaphore(if (NetEnv.anySlow) 8 else 4)
                     for (chunk in todo.chunked(24)) {
                         if (!isActive || !ok()) break
                         // B16: one photo's failure must not abort the whole chunk — collect and continue.
-                        chunk.map { p -> async { gate.acquire(); try { runCatching { analyze(c, s, p, lib) }.onFailure { Diag.log("DAV", "analyze ${p.cloudPath}: ${it.message}") } } finally { gate.release() } } }.awaitAll()
+                        val res = chunk.map { p -> async { gate.acquire(); try { runCatching { analyze(c, s, p, lib) }.onFailure { Diag.log("DAV", "analyze ${p.cloudPath}: ${it.message}") }.getOrDefault(false) } finally { gate.release() } } }.awaitAll()
+                        // 1.7.21：读不到 / 解析失败的记一次失败，按 1h / 6h / 24h 退避，第 4 次后等手动刷新
+                        chunk.zip(res).forEach { (p, done) -> if (done) { added++; book.ok(p.cloudPath) } else { failed++; book.fail(p.cloudPath) } }
+                        book.save()
                         lib.analyzed = lib.meta.values.count { it.done }
                         lib.metaVersion++
                         lib.saveMeta()
                     }
                     withContext(Dispatchers.Main) { lib.retime() }
                 }
-                if (needCam && isActive && ok()) camBackfill(s, lib, ok)
-                if (needMv && isActive && ok()) motionBackfill(s, lib, ok)
+                if (needCam && isActive && ok()) camBackfill(s, lib, ok, book, manual)
+                if (needMv && isActive && ok()) motionBackfill(s, lib, ok, book, manual)
                 if (needDur && isActive && ok()) videoDurations(lib, ok)
-            } finally { lib.analyzing = false; jobs.remove(lib.accountId) }
+            } finally {
+                book.save()
+                lib.analyzing = false; jobs.remove(lib.accountId)
+                ScanLog.log("本地分析", reason, "dav ${lib.imagesCount()} 张", System.currentTimeMillis() - t0, added, failed, book.waiting())
+            }
         }
     }
+
+    private fun camTodo(lib: DavLib, p: Photo) = !p.isVideo && lib.meta[p.cloudPath]?.let { m -> m.done && !m.camChecked } == true
+    private fun durTodo(lib: DavLib, p: Photo) = p.isVideo && (lib.meta[p.cloudPath]?.dur ?: 0) == 0 && p.video != null
 
     private fun camKey(lib: DavLib) = "dav.camfill.${lib.accountId}"
     private fun camFillDone(lib: DavLib) = Store.getStr(camKey(lib)) == "1"
 
     /** 1.0.10: Range bytes=0-131071 + ExifInterface Make/Model only; no AI / faces / hashes are redone. Done-flag persisted per account. */
-    private suspend fun camBackfill(s: WebDavSource, lib: DavLib, ok: () -> Boolean) = coroutineScope {
-        val todo = lib.photos.filter { !it.isVideo && lib.meta[it.cloudPath]?.let { m -> m.done && !m.camChecked } == true }
+    private suspend fun camBackfill(s: WebDavSource, lib: DavLib, ok: () -> Boolean, book: RetryBook, manual: Boolean) = coroutineScope {
+        val now = System.currentTimeMillis()
+        val todo = lib.photos.filter { camTodo(lib, it) && book.eligible("cam:" + it.cloudPath, manual, now) }
         val gate = kotlinx.coroutines.sync.Semaphore(3)
         var stopped = false
         for (chunk in todo.chunked(30)) {
@@ -84,9 +111,9 @@ object Analyzer {
             chunk.map { p -> async { gate.acquire(); try {
                 runCatching {
                     val m = lib.meta[p.cloudPath] ?: return@runCatching
-                    val head = s.headBytes(p.cloudPath) ?: return@runCatching // network error: retry on a later run
+                    val head = s.headBytes(p.cloudPath) ?: run { book.fail("cam:" + p.cloudPath); return@runCatching } // network error: retry later (1.7.21: with backoff)
                     runCatching { m.cam = camOf(ExifInterface(ByteArrayInputStream(head))) }
-                    m.camChecked = true
+                    m.camChecked = true; book.ok("cam:" + p.cloudPath)
                 }.onFailure { Diag.log("DAV", "camBackfill ${p.cloudPath}: ${it.message}") }
             } finally { gate.release() } } }.awaitAll()
             lib.metaVersion++
@@ -102,8 +129,9 @@ object Analyzer {
     private fun motionTodo(lib: DavLib, p: Photo): Boolean = !p.isVideo && LivePairing.motionNameHint(p.fileName) &&
         lib.meta[p.cloudPath]?.let { it.done && !it.mvChecked } == true
 
-    private suspend fun motionBackfill(s: WebDavSource, lib: DavLib, ok: () -> Boolean) = coroutineScope {
-        val todo = lib.photos.filter { motionTodo(lib, it) }
+    private suspend fun motionBackfill(s: WebDavSource, lib: DavLib, ok: () -> Boolean, book: RetryBook, manual: Boolean) = coroutineScope {
+        val now = System.currentTimeMillis()
+        val todo = lib.photos.filter { motionTodo(lib, it) && book.eligible("mv:" + it.cloudPath, manual, now) }
         val gate = kotlinx.coroutines.sync.Semaphore(3)
         for (chunk in todo.chunked(30)) {
             if (!isActive || !ok()) break
@@ -112,8 +140,8 @@ object Analyzer {
                 // only a successfully parsed head marks the photo tried.
                 runCatching {
                     val m = lib.meta[p.cloudPath] ?: return@runCatching
-                    val head = s.headBytes(p.cloudPath) ?: return@runCatching
-                    m.mv = LivePairing.motionOffset(head); m.mvChecked = true
+                    val head = s.headBytes(p.cloudPath) ?: run { book.fail("mv:" + p.cloudPath); return@runCatching }
+                    m.mv = LivePairing.motionOffset(head); m.mvChecked = true; book.ok("mv:" + p.cloudPath)
                 }.onFailure { Diag.log("DAV", "motionBackfill ${p.cloudPath}: ${it.message}") }
             } finally { gate.release() } } }.awaitAll()
             lib.metaVersion++
@@ -132,7 +160,7 @@ object Analyzer {
 
     /** 1.0.10: duration of WebDAV videos for the advanced-search duration filter. 2 at a time, 25 s cap per file, failures marked -1 and skipped. */
     private suspend fun videoDurations(lib: DavLib, ok: () -> Boolean) = coroutineScope {
-        val todo = lib.photos.filter { it.isVideo && (lib.meta[it.cloudPath]?.dur ?: 0) == 0 && it.video != null }
+        val todo = lib.photos.filter { durTodo(lib, it) }
         var n = 0
         for (chunk in todo.chunked(2)) {
             // 2026-10-22: stop while a video plays (the rest is picked up on the next analysis run, nothing is marked failed)
@@ -202,10 +230,11 @@ object Analyzer {
      * [Meta.done] is set only when the EXIF block actually succeeded; an EXIF failure sets [Meta.failed]
      * (retried on the next pass) while the already-computed md5 is still kept ([Meta.hashDone]).
      */
-    private fun analyze(c: Context, s: WebDavSource, p: Photo, lib: DavLib) {
-        runCatching {
+    /** 1.7.21：返回这张是否分析完成（false = 读不到或解析失败，由调用方记退避）。 */
+    private fun analyze(c: Context, s: WebDavSource, p: Photo, lib: DavLib): Boolean {
+        return runCatching {
             val m = lib.meta[p.cloudPath] ?: Meta()
-            val head = s.headBytes(p.cloudPath) ?: return
+            val head = s.headBytes(p.cloudPath) ?: return false
             m.headMd5 = MessageDigest.getInstance("MD5").digest(head).joinToString("") { "%02x".format(it) }.take(16)
             m.hashDone = true
             if (LivePairing.motionCandidateExt(p.fileName)) { m.mv = LivePairing.motionOffset(head); m.mvChecked = true }
@@ -228,7 +257,8 @@ object Analyzer {
             m.done = exifOk
             m.failed = !exifOk
             lib.meta[p.cloudPath] = m
-        }.onFailure { Diag.log("DAV", "analyze ${p.cloudPath}: ${it.message}") }
+            exifOk
+        }.onFailure { Diag.log("DAV", "analyze ${p.cloudPath}: ${it.message}") }.getOrDefault(false)
     }
 
     fun dHash(b: Bitmap): Long {
@@ -328,9 +358,9 @@ object ScanPolicy {
  * for every caller). Call sites keep their own paused / empty guards; only the trio itself is shared.
  */
 object ScanStarter {
-    fun startAll(c: Context, lib: DavLib, manual: Boolean) {
+    fun startAll(c: Context, lib: DavLib, manual: Boolean, reason: String = if (manual) "手动" else "自动") {
         if (!manual && !Analyzer.canScan(c)) return
-        runCatching { Analyzer.start(c, lib, manual) }
+        runCatching { Analyzer.start(c, lib, manual, reason) }
         runCatching { Faces.start(c, lib, manual) }
         runCatching { OcrRunner.start(c, lib, manual) }
         if (AiRunner.on) runCatching { AiRunner.startDav(c, lib, manual = manual) }
@@ -349,4 +379,21 @@ object Net {
         return caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
     fun isCharging(c: Context): Boolean = c.getSystemService(BatteryManager::class.java)?.isCharging ?: false
+
+    /** 1.7.21：不按流量计费的网络（普通 Wi-Fi / 有线）。手机热点等计费 Wi-Fi 不算。 */
+    fun isUnmetered(c: Context): Boolean {
+        val cm = c.getSystemService(android.net.ConnectivityManager::class.java) ?: return false
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+        return caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED) ||
+            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET)
+    }
+
+    /** 1.7.21：电量 ≤ 20% 或系统省电模式。 */
+    fun batteryLow(c: Context): Boolean {
+        val pm = c.getSystemService(android.os.PowerManager::class.java)
+        if (pm?.isPowerSaveMode == true) return true
+        val pct = c.getSystemService(BatteryManager::class.java)?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
+        return pct in 0..BATTERY_LOW_PCT
+    }
+    const val BATTERY_LOW_PCT = 20
 }

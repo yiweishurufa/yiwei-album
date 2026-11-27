@@ -66,6 +66,16 @@ class DavScanProgress {
  */
 data class DavScanResult(val cache: DavFolderCache, val complete: Boolean)
 
+/** 1.7.21：增量扫描的判断抽出来便于单测（行为不变）。 */
+object DavScanRules {
+    /**
+     * 这个文件夹能不能不发 PROPFIND、直接用上次的结果：不是全量扫描、不是抽查、服务器给了标签且和上次一样、
+     * 上次它是叶子文件夹（没有子文件夹）、旧索引里有它的条目。
+     */
+    fun canSkipLeaf(full: Boolean, spotCheck: Boolean, tag: String?, prev: DavFolderCache.Entry?, hasOldMedia: Boolean): Boolean =
+        !full && !spotCheck && tag != null && prev != null && prev.tag == tag && prev.subdirs.isEmpty() && hasOldMedia
+}
+
 /**
  * Lists [root] breadth-first, [CloudMedia.SCAN_PARALLEL] folders at a time, emitting each folder's media as soon as it
  * is known. [previous] = the old index (for reuse), [old] = folder tags of the last scan, [full] = ignore tags.
@@ -147,7 +157,7 @@ suspend fun WebDavSource.scanIncremental(
                 // check stays: a leaf that gained sub folders is never skipped.
                 val spotCheck = (dir.hashCode() and 0x7fffffff) % 20 == 0
                 if (spotCheck) Diag.log("DAV", "spot-check leaf $dir (tag unchanged, listing anyway)")
-                if (!full && !spotCheck && tag != null && prev != null && prev.tag == tag && prev.subdirs.isEmpty() && byDir.containsKey(dir)) {
+                if (prev != null && DavScanRules.canSkipLeaf(full, spotCheck, tag, prev, byDir.containsKey(dir))) {
                     // unchanged leaf: no request
                     out.dirs[dir] = prev
                     emit(byDir[dir].orEmpty())

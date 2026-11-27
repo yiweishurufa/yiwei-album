@@ -260,14 +260,25 @@ class MusicLib(val sourceKey: String) {
         }
     }
 
+    /**
+     * 1.7.21（用户 2026-11-27「一直在后台扫描、每次都重新扫描」）：读不到的歌（1.7.16 起保持未读）和联网补全出错的歌，
+     * 以前每次扫描都全部重试，网盘不通时每次都要把它们挨个请求一遍、读条永远走不完。现在按 [RetryBackoff] 退避
+     * （1h / 6h / 24h，第 4 次后等手动刷新），记录在 music/retry.json（不改 library.json 格式）。
+     * [manual] = 用户手动（下拉刷新 / 立即扫描 / 重新刮削）：不看退避、清掉旧的失败记录。
+     */
+    val retryBook: RetryBook get() = RetryBooks.of(File(dir, "retry.json"))
+
     /** [rescrape]: read every file's tags again (设置 → 重新刮削). */
-    fun scan(rescrape: Boolean = false, quiet: Boolean = false) {
+    fun scan(rescrape: Boolean = false, quiet: Boolean = false, manual: Boolean = !quiet || rescrape, reason: String = if (manual) "手动" else "自动") {
         if (job?.isActive == true) return
         ensure()
         job = scope.launch {
             awaitReady()
             withContext(Dispatchers.Main) { scanning = true; this@MusicLib.quiet = quiet; error = null; done = 0; total = 0; found = 0; phase = "正在列出音乐文件" }
             val t0 = System.currentTimeMillis()
+            val book = retryBook
+            if (manual) book.reset()
+            var newFiles = 0; var readOk = 0; var readFail = 0; var deferred = 0
             try {
                 val files = ArrayList<Pair<FsEntry, String>>()           // audio file, folder
                 val folders = HashMap<String, List<FsEntry>>()          // folder → its files (covers, lrc)
@@ -282,17 +293,23 @@ class MusicLib(val sourceKey: String) {
                 val seen = HashSet<String>()
                 val unique = files.filter { (e, _) -> seen.add(MediaIsolation.normPath(e.path)) }
                 val old = tracks.associateBy { it.path }
+                newFiles = unique.count { (e, _) -> old[e.path] == null }
                 val fresh = unique.map { (e, folder) ->
                     val o = old[e.path]
                     val lrc = sidecarLrc(e, folders[folder].orEmpty())
-                    if (o != null && !rescrape && o.size == e.size && (e.mtime == 0L || o.mtime == 0L || o.mtime == e.mtime) && o.scanned && !o.staleTags) o.copy(lrcPath = lrc ?: o.lrcPath, folder = folder)
+                    if (o != null && Music.keepCached(o, e.size, e.mtime, rescrape)) o.copy(lrcPath = lrc ?: o.lrcPath, folder = folder)
                     else guess(e, folder).copy(lrcPath = lrc)
                 }.distinctBy { it.id }.sortedWith(compareBy({ it.folder }, { it.discNo }, { it.trackNo }, { it.name }))
                 withContext(Dispatchers.Main) { tracks.clear(); tracks.addAll(fresh); version++ }
                 saveLib()
 
-                // embedded tags (only new / changed files)
-                val todo = fresh.filter { !it.scanned }
+                // embedded tags (only new / changed files); 1.7.21: files that failed recently wait (backoff)
+                book.retain(fresh.mapTo(HashSet()) { it.id } + fresh.mapTo(HashSet()) { "on:" + it.id })
+                val now = System.currentTimeMillis()
+                val unread = fresh.filter { !it.scanned }
+                val todo = unread.filter { book.eligible(it.id, manual, now) }
+                deferred = unread.size - todo.size
+                if (deferred > 0) Diag.log("MUSIC", "tags: $deferred unreadable files wait for their retry time (backoff), ${todo.size} to read now")
                 withContext(Dispatchers.Main) { total = todo.size; done = 0; phase = if (todo.isEmpty()) "" else "正在读取歌曲信息" }
                 val gate = Semaphore(3)
                 val failed = java.util.concurrent.atomic.AtomicInteger(0)
@@ -304,18 +321,22 @@ class MusicLib(val sourceKey: String) {
                             gate.withPermit {
                                 // 1.7.16：读失败（网络 / 地址）时保持未读（scanned = false），下次扫描重试；以前记成已读，永远不再刮削
                                 val n = runCatching { readTags(t, folders[t.folder].orEmpty(), coverCache) }
-                                    .getOrElse { e -> if (failed.incrementAndGet() <= 3) Diag.log("MUSIC", "tag read failed, will retry next scan: ${e.javaClass.simpleName} ${e.message?.take(80)}"); t }
+                                    .onSuccess { book.ok(t.id) }
+                                    .getOrElse { e -> book.fail(t.id); if (failed.incrementAndGet() <= 3) Diag.log("MUSIC", "tag read failed, retry after backoff (attempt ${book.attempts(t.id)}): ${e.javaClass.simpleName} ${e.message?.take(80)}"); t }
                                 batch.add(n)
                             }
                         }
                     }
                 }
                 batch.flush(true)
-                if (failed.get() > 0) Diag.log("MUSIC", "tags: ${failed.get()} of ${todo.size} files could not be read this time (kept unread, retried next scan)")
+                book.save()
+                readFail = failed.get(); readOk = todo.size - readFail
+                if (failed.get() > 0) Diag.log("MUSIC", "tags: ${failed.get()} of ${todo.size} files could not be read this time (kept unread, retried after backoff)")
 
                 // online completion: only what is missing, never overwrites tags; failures are silent
                 if (MusicPrefs.online) {
-                    val need = tracks.filter { !it.online && (!it.tagged || it.artPath == null || it.album.isBlank()) }
+                    val nowOn = System.currentTimeMillis()
+                    val need = tracks.filter { !it.online && (!it.tagged || it.artPath == null || it.album.isBlank()) && book.eligible("on:" + it.id, manual, nowOn) }
                     if (need.isNotEmpty()) {
                         withContext(Dispatchers.Main) { total = need.size; done = 0; phase = "正在联网补全封面和信息" }
                         val g2 = Semaphore(2)
@@ -326,13 +347,14 @@ class MusicLib(val sourceKey: String) {
                                 launch {
                                     g2.withPermit {
                                         // 1.7.16：联网出异常时不记为「已补全」，下次扫描再试（查无结果才记）
-                                        val n = runCatching { MusicOnline.complete(this@MusicLib, t, albumArt) }.fold({ it.copy(online = true) }, { t })
+                                        val n = runCatching { MusicOnline.complete(this@MusicLib, t, albumArt) }.fold({ book.ok("on:" + t.id); it.copy(online = true) }, { book.fail("on:" + t.id); t })
                                         b2.add(n)
                                     }
                                 }
                             }
                         }
                         b2.flush(true)
+                        book.save()
                     }
                 }
             } catch (e: CancellationException) { throw e } catch (e: Exception) {
@@ -340,6 +362,8 @@ class MusicLib(val sourceKey: String) {
                 withContext(Dispatchers.Main) { error = e.message ?: "扫描失败" }
             }
             withContext(Dispatchers.Main) { scanning = false; this@MusicLib.quiet = false; phase = "" }
+            book.save()
+            ScanLog.log("音乐", reason, "$kind ${dirs.size} 个文件夹 ${tracks.size} 首", System.currentTimeMillis() - t0, newFiles, readFail, deferred, "tagsRead=$readOk")
             pruneCaches(force = true)
         }
     }
@@ -548,6 +572,13 @@ object Music {
     /** 标签读取器版本：2 = 1.4.0（WAV 优先 id3 块、?? 乱码当作没有标签）。升高后旧的乱码缓存会重读。 */
     /** 1.7.16：这次读标签算不算「读失败」（要重试），而不是「文件没有标签」。有标签、空文件都不算失败。 */
     fun readFailed(hasTags: Boolean, size: Long, reachable: Boolean, gotBytes: Boolean): Boolean = !hasTags && size > 0 && (!reachable || !gotBytes)
+    /**
+     * 增量判断：上次读过的这首歌能不能直接沿用（不重读标签）。同一路径、大小相同、修改时间相同（任一方不知道时不比），
+     * 已读过且不是要按新版读取器重读的旧缓存。1.7.21 抽出来便于单测。
+     */
+    fun keepCached(o: Track, size: Long, mtime: Long, rescrape: Boolean): Boolean =
+        !rescrape && o.size == size && (mtime == 0L || o.mtime == 0L || o.mtime == mtime) && o.scanned && !o.staleTags
+
     const val TAG_VER = 3   // 3 = 1.7.16：读不到文件时不再记为已读；旧库里「没标签也没封面」的重读一次
     /** Extensions the scanner collects. */
     val AUDIO = setOf("mp3", "flac", "ape", "wav", "m4a", "aac", "alac", "ogg", "oga", "opus", "wma", "dsf", "dff", "aiff", "aif", "aifc", "wv", "m4b")

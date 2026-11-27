@@ -133,7 +133,7 @@ class DavLib(val accountId: String) {
         coroutineScope {
             launch { refreshFolders() }
             launch { refreshAlbums() }
-            if (needFirstScan) launch { scan() }
+            if (needFirstScan) launch { scan(reason = "首次扫描（本机还没有索引）") }
         }
     }
 
@@ -209,18 +209,23 @@ class DavLib(val accountId: String) {
      * is no folder cache yet or the last full listing is older than 7 days. Only listing happens here: EXIF/AI/faces run
      * afterwards from their own queues (Analyzer / AiRunner / Faces), so the timeline is complete as soon as listing ends.
      */
-    suspend fun scan(full: Boolean = false) {
+    /**
+     * 1.7.21：[reason] 写进诊断日志（每次扫描一行 SCANLOG：原因、范围、耗时、新增）；[user] = 用户手动刷新，
+     * 这时清掉本地分析 / 人脸 / 图中文字 / AI 的失败退避记录，让读不到的照片重新获得一次机会。
+     */
+    suspend fun scan(full: Boolean = false, reason: String = "自动", user: Boolean = false) {
         val j = synchronized(this) {
             scanJob?.takeIf { it.isActive } ?: workScope.launch {
-                try { scanWork(full) } finally { if (scanning) scanning = false }   // H7: always reset, even when cancelled
+                try { scanWork(full, reason, user) } finally { if (scanning) scanning = false }   // H7: always reset, even when cancelled
             }.also { scanJob = it }
         }
         j.join()
     }
 
-    private suspend fun scanWork(full: Boolean) {
+    private suspend fun scanWork(full: Boolean, reason: String, user: Boolean) {
         if (scanning) return
         val s = src ?: run { error = "WebDAV 账户不存在"; return }
+        if (user) withContext(Dispatchers.IO) { RetryBooks.resetDav(accountId) }
         scanning = true; error = null
         scanListed = 0; scanKnown = 1; scanFound = 0
         runCatching { ScanService.ensure(App.ctx) }
@@ -287,9 +292,18 @@ class DavLib(val accountId: String) {
             if (keep.isNotEmpty()) synchronized(all) { all.addAll(keep) }
             cache?.let { c -> unknown.forEach { u -> old.dirs[u]?.let { c.dirs[u] = it } } }
         }
+        val added = run { val had = previous.mapTo(HashSet(previous.size * 2)) { it.path }; synchronized(all) { all.count { it.path !in had } } }
         // B1: only a complete, error-free scan may overwrite the index / folder cache / timestamps. A truncated
         // scan (caps hit) or a failed scan keeps the previous index; the next scan re-lists from it. A failed
         // index write also blocks the timestamp update and is reported via [error].
+        // 1.7.21：例外——本机还没有任何索引时（第一次扫描就超出上限），以前什么都不存，于是每次打开 App 都当成
+        // 「第一次」从头全量扫一遍、又被截断，永远扫不完。现在把截断的结果先存下（总比空着好），下次走增量。
+        val firstTruncated = !complete && error == null && previous.isEmpty() && all.isNotEmpty()
+        if (firstTruncated) {
+            val ok = withContext(Dispatchers.IO) { writeIndex(all).also { w -> if (w) cache?.let { c -> runCatching { folderFile.writeText(c.json()) } } } }
+            Diag.log("DAV", "scan truncated on first pass: partial index of ${all.size} media ${if (ok) "saved" else "NOT saved"} so the next start does not rescan from zero")
+            if (ok) setPhotos(CloudPhotos.toPhotos(accountId, all))
+        }
         if (complete && error == null) {
             val written = withContext(Dispatchers.IO) {
                 val ok = writeIndex(all)
@@ -311,6 +325,8 @@ class DavLib(val accountId: String) {
             Diag.log("DAV", "scan truncated: index NOT overwritten, timestamps NOT updated")
         }
         scanning = false
+        ScanLog.log("照片列表", reason, "dav ${if (doFull) "全量" else "增量"} ${roots.size} 个根目录 ${prog.listed.get()} 个文件夹（${prog.skipped.get()} 个未变化跳过）",
+            System.currentTimeMillis() - t0, added, cache?.unknown?.size ?: 0, 0, "total=${all.size} complete=$complete" + (error?.let { " error=${it.take(60)}" } ?: ""))
         // 第 4 批：扫描完成自动触发后续整理（TODO #3「AI 随扫描自动启动、失败自动续跑」）。
         // 以前新照片扫完可能长期未分析，直到 ScanWatch 或手动点；现在 listing 一结束就接力。
         // 各 runner 自己做门控（ScanPolicy.paused / Wi-Fi·充电 / AiRunner.on），且 job 已在跑时直接返回，不会重复启动。

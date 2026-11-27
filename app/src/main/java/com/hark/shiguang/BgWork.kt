@@ -31,10 +31,14 @@ object BgWork {
     /** A worker may run ~10 minutes; stop waiting a little earlier so WorkManager never has to kill it. */
     private const val MAX_WAIT_MS = 9 * 60_000L
 
-    /** Network + charging from [ScanPolicy] (scan, faces, AI). */
+    /**
+     * Network + charging from [ScanPolicy] (scan, faces, AI).
+     * 1.7.21：另外要求电量不低（系统「电量低」时不跑），和 [Analyzer.canScan] 的省电规则一致。
+     */
     fun libraryConstraints(): Constraints = Constraints.Builder()
         .setRequiredNetworkType(if (ScanPolicy.allowCellular) NetworkType.CONNECTED else NetworkType.UNMETERED)
         .setRequiresCharging(!ScanPolicy.allowNoCharge)
+        .setRequiresBatteryNotLow(true)
         .build()
 
     /** Backup only ever followed the network rule (1.0.9), never charging — kept that way. */
@@ -92,11 +96,11 @@ class LibraryWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
         return try {
             lib.ensure()
             // the first full scan belongs to the foreground (it shows progress); here only the cheap incremental pass
-            if (lib.photos.isNotEmpty() && !lib.scanning) runCatching { lib.scan(full = false) }
+            if (lib.photos.isNotEmpty() && !lib.scanning) runCatching { lib.scan(full = false, reason = "系统定时后台整理（每 6 小时）") }
                 .onFailure { if (it is CancellationException) throw it; Diag.log("WORK", "scan failed: ${it.javaClass.simpleName}") }
             if (lib.photos.isNotEmpty() && !ScanPolicy.paused) {
                 // constraints already hold; manual=false keeps every runner's own pause / switch checks
-                ScanStarter.startAll(applicationContext, lib, manual = false)
+                ScanStarter.startAll(applicationContext, lib, manual = false, reason = "系统定时后台整理")
                 delay(3_000)
                 BgWork.waitWhile(started) { !ScanPolicy.paused && (Analyzer.running || Faces.running || AiRunner.running || OcrRunner.running) }
             }

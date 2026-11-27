@@ -430,25 +430,30 @@ object AiRunner {
             return System.currentTimeMillis() - at < 600_000
         }
         val marks = LocalMarks.of("dav-" + lib.accountId)
+        // 1.7.21：读不到的照片（网盘限流 / 文件不在了）按 [RetryBackoff] 退避并存盘，不再每次启动都重读一遍
+        val book = RetryBooks.dav(lib.accountId, "ai")
         skipped.clear()
         davJob = scope.launch {
+            val t0 = System.currentTimeMillis()
             loop(c, manual,
                 // unlabelled photos first; photos labelled on the phone (本地) are re-done once a model is available
                 todo = {
                     val llm = AiConfig.configured && AiPool.usable()
-                    lib.photos.filter { !it.isVideo && !isSkipped(it.cloudPath) && (lib.meta[it.cloudPath]?.aiCat.isNullOrEmpty() || llm && marks.has(it.cloudPath)) }
+                    val now = System.currentTimeMillis()
+                    lib.photos.filter { !it.isVideo && !isSkipped(it.cloudPath) && (lib.meta[it.cloudPath]?.aiCat.isNullOrEmpty() || llm && marks.has(it.cloudPath)) && book.eligible(it.cloudPath, manual, now) }
                         .sortedBy { marks.has(it.cloudPath) }
                 },
                 isLocal = { p -> marks.has(p.cloudPath) },
                 localLeft = { marks.size },
-                fetch = { p -> davImage(lib, p) },
+                fetch = { p -> davImage(lib, p).also { b -> if (b == null) book.fail(p.cloudPath) else book.ok(p.cloudPath) } },
                 skip = { p, why -> skipAt[p.cloudPath] = System.currentTimeMillis(); skipped[p.cloudPath] = why },
                 store = { p, l ->
                     val m = lib.meta[p.cloudPath] ?: Meta()
                     m.aiCat = l.cat; m.aiTags = l.tags; m.aiCaption = l.caption; m.aiFaces = l.faces; lib.meta[p.cloudPath] = m
                     if (l.local) marks.add(p.cloudPath) else marks.remove(p.cloudPath)
                 },
-                flush = { lib.saveMeta(); marks.save(); lib.metaVersion++ })
+                flush = { lib.saveMeta(); marks.save(); lib.metaVersion++; book.save() })
+            ScanLog.log("AI 整理", if (manual) "手动" else "自动", "dav ${lib.imagesCount()} 张", System.currentTimeMillis() - t0, done, 0, book.waiting(), "status=$status")
         }
     }
 
@@ -514,6 +519,9 @@ object AiRunner {
                         !manual && !Analyzer.canScan(c) -> ScanPolicy.waitingText()
                         else -> ""
                     }
+                    // 1.7.21：自动运行时条件不满足（没网 / 不是 Wi-Fi / 没充电）就结束，不再每 20 秒醒来空等；
+                    // 条件恢复时由 ScanWatch / 定时任务重新开始。手动「立即继续」和预算等待照旧。
+                    if (why.isNotEmpty() && !manual && !AiConfig.overBudget) { running = false; note = why; Diag.log("AI", "conditions lost: $why → stop, resumes when they are back"); return }
                     if (why.isNotEmpty()) { running = false; note = why; delay(if (AiConfig.overBudget) 120_000 else 20_000); continue }
                     val p = list[i]
                     if (!running) ScanService.ensure(c)

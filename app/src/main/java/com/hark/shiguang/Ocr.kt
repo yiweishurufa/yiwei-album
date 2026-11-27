@@ -105,7 +105,10 @@ object OcrRunner {
             if (gone.isNotEmpty()) { d.deleteOcrPaths(acc, gone); Diag.log("OCR", "removed ${gone.size} deleted photos") }
         }
         val now = System.currentTimeMillis()
+        // 1.7.21：网络读不到的照片以前不写库、每次 start 都重读；现在按 [RetryBackoff] 退避
+        val book = RetryBooks.dav(acc, "ocr")
         val todo = images.filter { p ->
+            if (!book.eligible(p.cloudPath, manual, now)) return@filter false
             val s = states[p.cloudPath]
             if (s == null) true
             else OcrText.needsOcr(s.state, s.size, s.modified, s.at, p.size, modifiedOf(p),
@@ -120,14 +123,17 @@ object OcrRunner {
         val t0 = System.currentTimeMillis()
         val gate = Semaphore(PARALLEL)
         var miss = 0
+        var addedN = 0; var failedN = 0
         val chunks = todo.chunked(CHUNK)
         var ci = 0
         while (ci < chunks.size) {
             ensureActive()
             if (!enabled || ScanPolicy.paused && !manual) break
-            // Wi-Fi / 充电条件丢了：在这里等（同 Faces），不跳过照片
-            if (!manual && !Analyzer.canScan(c)) { delay(20_000); continue }
+            // 1.7.21：Wi-Fi / 充电条件丢了就结束（以前每 20 秒醒来空等）；条件恢复时由 ScanWatch / 定时任务接着做
+            if (!manual && !Analyzer.canScan(c)) { Diag.log("OCR", "conditions lost, stop for now"); break }
             val rows = chunks[ci].map { p -> async { gate.withPermit { runCatching { one(src, p, acc) }.onFailure { Diag.log("OCR", "photo failed: ${it.javaClass.simpleName}") }.getOrNull() } } }.awaitAll()
+            chunks[ci].zip(rows).forEach { (p, r) -> if (r == null) { failedN++; book.fail(p.cloudPath) } else { addedN++; book.ok(p.cloudPath) } }
+            book.save()
             val ok = rows.filterNotNull()
             if (ok.isNotEmpty()) runCatching { d.putOcr(ok) }.onFailure { Diag.log("OCR", "db write failed: ${it.javaClass.simpleName}") }
             val missed = rows.count { it == null }
@@ -139,6 +145,7 @@ object OcrRunner {
             ci++
         }
         Diag.log("OCR", "run done: ${done}/${total}, with text ${withText}, ${(System.currentTimeMillis() - t0) / 1000}s")
+        ScanLog.log("图中文字", if (manual) "手动" else "自动", "dav ${todo.size} 张待识别", System.currentTimeMillis() - t0, addedN, failedN, book.waiting())
     }
 
     /** 识别一张；返回 null = 网络读不到（不写库，下次重试）。 */

@@ -189,7 +189,7 @@ fun SettingsScreen() {
                 if (lib != null) {
                     lib.setSelectedDirs(sel)
                     davFolderSel = sel
-                    scope.launch { lib.scan() }
+                    scope.launch { lib.scan(reason = "更改照片文件夹", user = true) }
                 }
                 showDavFolders = false
                 toast(ctx, "已保存，将只显示选中文件夹的照片")
@@ -506,10 +506,10 @@ fun BackgroundPolicyDialog(onDismiss: () -> Unit) {
     }, text = {
         Column {
             CheckRow("允许使用移动网络", if (cell) "会产生流量" else null, cell) {
-                cell = it; ScanPolicy.allowCellular = it; BackupScheduler.schedule(ctx); if (it) ScanWatch.resume(ctx)
+                cell = it; ScanPolicy.allowCellular = it; BackupScheduler.schedule(ctx); if (it) ScanWatch.resume(ctx, "后台整理设置放宽")
             }
             CheckRow("不充电时也整理", if (noCharge) "更耗电" else null, noCharge) {
-                noCharge = it; ScanPolicy.allowNoCharge = it; BackupScheduler.schedule(ctx); if (it) ScanWatch.resume(ctx)
+                noCharge = it; ScanPolicy.allowNoCharge = it; BackupScheduler.schedule(ctx); if (it) ScanWatch.resume(ctx, "后台整理设置放宽")
             }
             // 用户 2026-10-23：后台运行设置不再常驻，只在通知没开或电池优化没关时出现这一行
             if (remember { BgGuidePrompt.permissionsMissing(ctx) }) Row(Modifier.fillMaxWidth().padding(top = 8.dp).clip(RoundedCornerShape(10.dp))

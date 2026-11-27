@@ -73,6 +73,8 @@ class FaceLib(val accountId: String) {
     var error by mutableStateOf("")
     private var loaded = false
     private var lastClusterLog = ""
+    /** 1.7.21：上次自动聚类时的输入签名（见 Faces.clusterInBackground）。 */
+    @Volatile var lastClusterSig = ""
 
     fun cropFile(faceId: String) = File(dir, "$faceId.jpg")
 
@@ -242,8 +244,21 @@ object Faces {
 
     /** start() 常在主线程（页面 LaunchedEffect）被调用：聚类挪到后台，不卡界面。用户 2026-10-24 要求排查。 */
     private fun clusterInBackground(fl: FaceLib, lib: DavLib) {
-        scope.launch { runCatching { fl.cluster(lib) }.onFailure { Diag.e("FACE", it) } }
+        // 1.7.21：start() 会被页面、网络回调、扫描接力频繁调用；以前每次都整套重新聚类（人脸多时要几秒 CPU）。
+        // 现在只在人脸 / 照片数 / 三个参数变了时才重算（改名、合并、隐藏等编辑仍直接调 cluster）。
+        val sig = clusterSig(fl, lib)
+        if (sig == fl.lastClusterSig) return
+        scope.launch { runCatching { fl.cluster(lib); fl.lastClusterSig = sig }.onFailure { Diag.e("FACE", it) } }
     }
+
+    private fun clusterSig(fl: FaceLib, lib: DavLib): String =
+        "${fl.faces.values.sumOf { it.size }}/${fl.scanned.size}/${lib.photos.size}/${FaceConfig.conf}/${FaceConfig.diff}/${FaceConfig.minPhotos}"
+
+    /** 1.7.21：下载 / 解码失败的照片的退避记录（[RetryBackoff]）。fl.failed 照旧保存，格式不变。 */
+    private fun book(lib: DavLib): RetryBook = RetryBooks.dav(lib.accountId, "faces")
+
+    private fun todoOf(lib: DavLib, fl: FaceLib, book: RetryBook, manual: Boolean, now: Long): List<Photo> =
+        lib.photos.filter { p -> !p.isVideo && p.cloudPath !in fl.scanned && !skipByAi(lib, p) && book.eligible(p.cloudPath, manual, now) }
 
     /** Scans every photo not scanned yet, then clusters. [manual] ignores the Wi-Fi + charging rule. */
     fun start(c: Context, lib: DavLib, manual: Boolean) {
@@ -255,7 +270,9 @@ object Faces {
             logOnce("skip start: wifi=${Net.isWifi(c)} charging=${Net.isCharging(c)} cell=${ScanPolicy.allowCellular} noCharge=${ScanPolicy.allowNoCharge}, $left photos left")
             clusterInBackground(fl, lib); return
         }
-        if (left == 0) { fl.status = ""; logOnce("nothing new (${fl.scanned.size} scanned)"); clusterInBackground(fl, lib); return }
+        // 1.7.21：只数现在能试的（读失败、还在退避中的不算），否则失败的照片会让每次 start 都起一个空任务
+        val ready = if (left == 0) 0 else todoOf(lib, fl, book(lib), manual, System.currentTimeMillis()).size
+        if (ready == 0) { fl.status = ""; logOnce("nothing new (${fl.scanned.size} scanned, $left left: waiting for retry)"); clusterInBackground(fl, lib); return }
         if (manual) fl.error = ""
         ScanService.ensure(c)
         jobs[lib.accountId] = scope.launch {
@@ -276,11 +293,10 @@ object Faces {
     private suspend fun CoroutineScope.scanAll(c: Context, lib: DavLib, fl: FaceLib, manual: Boolean) {
         val s = lib.src ?: run { Diag.log("FACE", "no WebDAV source → stop"); return }
         var skippedByAi = 0
-        val todo = lib.photos.filter { p ->
-            if (p.isVideo || p.cloudPath in fl.scanned) return@filter false
-            if (skipByAi(lib, p)) { skippedByAi++; return@filter false }
-            true
-        }
+        val book = book(lib)
+        val t0 = System.currentTimeMillis()
+        lib.photos.forEach { p -> if (!p.isVideo && p.cloudPath !in fl.scanned && skipByAi(lib, p)) skippedByAi++ }
+        val todo = todoOf(lib, fl, book, manual, t0)
         fl.total = todo.size; fl.done = 0
         Diag.log("FACE", "start manual=$manual: ${lib.photos.size} items, ${fl.scanned.size} scanned, ${todo.size} to do, skipped $skippedByAi (AI: no face / scenery category)")
         runCatching { model(c) }.onFailure {
@@ -299,9 +315,10 @@ object Faces {
             if (!isActive) break
             // B29: Wi-Fi / charging lost mid-run → wait here (like AiRunner.loop) instead of running
             // dry through the queue; the chunk is retried after the wait, nothing is skipped.
+            // 1.7.21：自动运行时不再每 20 秒醒来空等——直接结束，条件恢复时由 ScanWatch / 定时任务重新开始（已做的都保存着）
             if (!manual && !Analyzer.canScan(c)) {
-                if (fl.status.isEmpty()) Diag.log("FACE", "waiting at ${fl.done}/${fl.total}: wifi=${Net.isWifi(c)} charging=${Net.isCharging(c)}")
-                fl.status = ScanPolicy.waitingText(); delay(20_000); continue
+                Diag.log("FACE", "conditions lost at ${fl.done}/${fl.total}: wifi=${Net.isWifi(c)} charging=${Net.isCharging(c)} → stop, resumes when they are back")
+                fl.status = ScanPolicy.waitingText(); break
             }
             fl.status = ""
             val chunk = chunks[ci]
@@ -310,8 +327,8 @@ object Faces {
                 // B9: only a completed detection attempt marks the photo scanned. Download / decode
                 // failures go to failed (+failedAt) and are retried on the next start.
                 val n = try { runCatching { scanOne(c, s, p, fl) }.onFailure { e -> if (e is CancellationException) throw e; Diag.log("FACE", "photo failed: ${e.javaClass.simpleName}: ${e.message}") }.getOrDefault(-1) } finally { gate.release() }
-                if (n >= 0) { fl.scanned.add(p.cloudPath); fl.failed.remove(p.cloudPath) }
-                else fl.failed[p.cloudPath] = System.currentTimeMillis()
+                if (n >= 0) { fl.scanned.add(p.cloudPath); fl.failed.remove(p.cloudPath); book.ok(p.cloudPath) }
+                else { fl.failed[p.cloudPath] = System.currentTimeMillis(); book.fail(p.cloudPath) }
                 n
             } }.awaitAll()
             facesTotal += got.filter { it > 0 }.sum(); failedTotal += got.count { it < 0 }; noFaceTotal += got.count { it == 0 }
@@ -320,12 +337,13 @@ object Faces {
                 Diag.log("FACE", "progress ${fl.done}/${fl.total}: $facesTotal faces, $noFaceTotal photos without face, $failedTotal failed (download/decode)")
                 // 用户 2026-10-24 要求排查：聚类是 O(簇数²) 的合并循环，人脸多时要几百毫秒到几秒，
                 // 以前切到主线程跑，整理期间每 48 张卡一次界面（照片网格滚动卡顿、严重时 ANR）。改在后台算。
-                fl.save(); withContext(Dispatchers.Default) { fl.cluster(lib) }
+                fl.save(); book.save(); withContext(Dispatchers.Default) { fl.cluster(lib) }
             }
             ci++
         }
         Diag.log("FACE", "done ${fl.done}/${fl.total}: $facesTotal faces, $noFaceTotal photos without face, $failedTotal failed")
-        fl.save()
+        fl.save(); book.save()
+        ScanLog.log("人脸识别", if (manual) "手动" else "自动", "dav ${todo.size} 张待识别", System.currentTimeMillis() - t0, fl.done - failedTotal, failedTotal, book.waiting(), "faces=$facesTotal")
         withContext(Dispatchers.Default) { fl.cluster(lib) }
     }
 
