@@ -293,6 +293,7 @@ fun ViewerScreen(photosIn: List<Photo>, start: Int, slideshowStart: Boolean = fa
 private fun MoreSheet(p: Photo, onInfo: () -> Unit, onDismiss: () -> Unit, onHidden: () -> Unit) {
     val ctx = LocalContext.current
     // 1.7.7 v2「⋯」面板：上面一行大的操作块（看 / 做），下面单独一行「隐藏」；标题是这张照片的日期（v2 字阶）。
+    // 1.7.28：面板升起时操作块与整行按顺序错开上浮淡入（enterRise，每次打开面板都播；移除动画时直接显示）。
     // 面板本身是玻璃，块不再叠玻璃，只用一层淡底（DESIGN §1 玻璃不叠玻璃）。功能与 1.6.2 相同。
     AppBottomSheet(onDismissRequest = onDismiss, containerColor = C.Surface) {
         Column(Modifier.padding(horizontal = Space.page).padding(bottom = Space.xl).navigationBarsPadding()) {
@@ -303,16 +304,16 @@ private fun MoreSheet(p: Photo, onInfo: () -> Unit, onDismiss: () -> Unit, onHid
                 color = C.Sub, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp, bottom = Space.l))
             val edit = !p.isVideo; val live = p.isLive
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.s)) {
-                SheetTile(KI.info(), "详情", Modifier.weight(1f)) { onInfo() }
+                SheetTile(KI.info(), "详情", Modifier.weight(1f).enterRise(0)) { onInfo() }
                 // 全面审查 C1：「加入相册」只留底栏那一个
-                if (!p.isCloud) SheetTile(KI.similar(), "找相似", Modifier.weight(1f)) { onDismiss(); Ops.openSimilar(p) }
-                if (edit) SheetTile(KI.sliders(), "编辑", Modifier.weight(1f)) { onDismiss(); Nav.push(com.hark.shiguang.Route.X(ExtScreen.Edit(p))) }
-                if (live) SheetTile(KI.live(), "存实况视频", Modifier.weight(1f)) { onDismiss(); Ops.downloadLiveVideo(ctx, p) }
+                if (!p.isCloud) SheetTile(KI.similar(), "找相似", Modifier.weight(1f).enterRise(1)) { onDismiss(); Ops.openSimilar(p) }
+                if (edit) SheetTile(KI.sliders(), "编辑", Modifier.weight(1f).enterRise(2)) { onDismiss(); Nav.push(com.hark.shiguang.Route.X(ExtScreen.Edit(p))) }
+                if (live) SheetTile(KI.live(), "存实况视频", Modifier.weight(1f).enterRise(3)) { onDismiss(); Ops.downloadLiveVideo(ctx, p) }
             }
             // F9（1.7.26）：复制图片到剪贴板（视频不支持）；放在第二行，上面一行已经 3–4 块，再挤就太窄
-            if (!p.isVideo) SheetLine(KI.copy(), "复制图片", Modifier.padding(top = Space.s)) { onDismiss(); Ops.copyImage(ctx, p) }
+            if (!p.isVideo) SheetLine(KI.copy(), "复制图片", Modifier.enterRise(4).padding(top = Space.s)) { onDismiss(); Ops.copyImage(ctx, p) }
             val hid = remember(p.key) { com.hark.shiguang.Hidden.has(p) }
-            SheetLine(KI.eye(), if (hid) "取消隐藏" else "隐藏", Modifier.padding(top = Space.s)) {
+            SheetLine(KI.eye(), if (hid) "取消隐藏" else "隐藏", Modifier.enterRise(5).padding(top = Space.s)) {
                 com.hark.shiguang.Hidden.hide(listOf(p), !hid); toast(ctx, if (hid) "已取消隐藏" else "已隐藏"); onHidden()
             }
         }

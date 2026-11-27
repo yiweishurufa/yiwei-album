@@ -569,31 +569,33 @@ private fun SelectionBarContent(onChanged: () -> Unit) {
             }
             TextButton(onClick = { Selection.clear() }) { Text("取消", color = C.Sub, style = MaterialTheme.typography.labelLarge) }
         }
+        // 1.7.28：多选栏升起时，操作按钮从左到右错开上浮淡入（前 6 个；每次进入多选播一次，移除动画时直接显示）
+        var k = 0
         Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = Space.xs).padding(bottom = Space.s), horizontalArrangement = Arrangement.SpaceEvenly) {
-            if (anyNas) SelAction(KI.heart(), "收藏") {
+            if (anyNas) SelAction(k++, KI.heart(), "收藏") {
                 val l = Selection.list
                 Ops.launch { runCatching { Ops.collect(l, true) }.onSuccess { toast(ctx, "已收藏 ${l.size} 项"); Selection.clear() }.onFailure { failToast(ctx, it, "失败") } }
             }
-            SelAction(KI.download(), "下载") { Ops.download(ctx, Selection.list); Selection.clear() }
-            SelAction(KI.share(), "分享") { Ops.share(ctx, Selection.list) }
-            if (anyNas) SelAction(KI.album(), "加入相册") { albumPick = true }
-            if (allCloud) SelAction(KI.album(), "加入相册") { davPick = true }
+            SelAction(k++, KI.download(), "下载") { Ops.download(ctx, Selection.list); Selection.clear() }
+            SelAction(k++, KI.share(), "分享") { Ops.share(ctx, Selection.list) }
+            if (anyNas) SelAction(k++, KI.album(), "加入相册") { albumPick = true }
+            if (allCloud) SelAction(k++, KI.album(), "加入相册") { davPick = true }
             if (inAlbum != null) {
-                if (sel.size == 1) SelAction(KI.photos(), "设为封面") {
+                if (sel.size == 1) SelAction(k++, KI.photos(), "设为封面") {
                     val p = sel.first()
                     Ops.launch { runCatching { AlbumOps.setCover(inAlbum, p) }.onSuccess { toast(ctx, "已设为封面"); Selection.clear() }.onFailure { failToast(ctx, it, "失败") } }
                 }
-                SelAction(KI.minusCircle(), "移出相册") {
+                SelAction(k++, KI.minusCircle(), "移出相册") {
                     val l = Selection.list
                     Ops.launch { runCatching { AlbumOps.remove(inAlbum, l) }.onSuccess { toast(ctx, "已移出 ${l.size} 项"); Selection.clear(); onChanged() }.onFailure { failToast(ctx, it, "失败") } }
                 }
             }
-            SelExtra.actions.forEach { a -> SelAction(a.icon, a.label, if (a.danger) C.Danger else C.Text) { a.run(Selection.list) } }
-            if (SelExtra.actions.none { it.label.contains("隐藏") }) SelAction(KI.eye(), "隐藏") {
+            SelExtra.actions.forEach { a -> SelAction(k++, a.icon, a.label, if (a.danger) C.Danger else C.Text) { a.run(Selection.list) } }
+            if (SelExtra.actions.none { it.label.contains("隐藏") }) SelAction(k++, KI.eye(), "隐藏") {
                 val l = Selection.list
                 com.hark.shiguang.Hidden.hide(l, true); toast(ctx, "已隐藏 ${l.size} 项，可在「相册 · 隐藏相册」查看"); Selection.clear(); onChanged()
             }
-            SelAction(KI.trash(), "删除", C.Danger) { confirm = true }
+            SelAction(k++, KI.trash(), "删除", C.Danger) { confirm = true }
         }
     }
     if (albumPick) AlbumPicker(onDismiss = { albumPick = false }) { a ->
@@ -622,9 +624,9 @@ private fun SelectionBarContent(onChanged: () -> Unit) {
 }
 
 @Composable
-private fun SelAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, tint: androidx.compose.ui.graphics.Color = C.Text, onClick: () -> Unit) {
+private fun SelAction(index: Int, icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, tint: androidx.compose.ui.graphics.Color = C.Text, onClick: () -> Unit) {
     // 1.6.2：图标 24dp + 标签 labelMedium；整块 ≥ 56dp 宽、按下缩 0.94（底栏项同款），读屏是「按钮：标签」
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.widthIn(min = 56.dp).pressScale(0.94f).clip(RoundedCornerShape(Radius.m))
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.enterRise(index).widthIn(min = 56.dp).pressScale(0.94f).clip(RoundedCornerShape(Radius.m))
         .clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick).padding(horizontal = Space.m, vertical = Space.s)) {
         Icon(icon, null, tint = tint, modifier = Modifier.size(24.dp))
         Text(label, color = if (tint == C.Text) C.Sub else tint, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = Space.xs))

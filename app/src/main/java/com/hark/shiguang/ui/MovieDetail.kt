@@ -132,7 +132,7 @@ fun MovieDetailScreen(r: Route.MovieDetail) {
                     // 次要操作：一排等宽的图标 + 文字按钮（以前四个文字按钮挤在播放键旁边，窄屏放不下）
                     Row(Modifier.fillMaxWidth().padding(top = Space.m)) {
                         val wished = lib.isWish(m.id)
-                        DetailAction(KI.heart(wished), if (wished) "已收藏" else "收藏", tint = if (wished) C.Accent else C.Text) {
+                        DetailAction(KI.heart(wished), if (wished) "已收藏" else "收藏", tint = if (wished) C.Accent else C.Text, popKey = wished) {
                             lib.toggleWish(m.id); toastUndo(ctx, if (wished) "已取消收藏" else "已收藏，影视页顶部可以找到") { lib.toggleWish(m.id) }
                         }
                         if (m.kind == "movie" && allVersions.size > 1) DetailAction(KI.layers(), "版本 ${allVersions.size}") { versions = true }
@@ -277,10 +277,12 @@ private object DetailSize {
 
 /** 详情页次要操作：图标在上、文字在下，平分一行；按压缩到 0.94。 */
 @Composable
-private fun RowScope.DetailAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, tint: Color = C.Text, onClick: () -> Unit) {
+private fun RowScope.DetailAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, tint: Color = C.Text, popKey: Any? = null, onClick: () -> Unit) {
+    // 1.7.28：[popKey] 变化时图标弹一下（收藏 / 取消收藏，Motion.pop，与大图收藏同一节奏）；颜色过渡 Motion.state
+    val c by androidx.compose.animation.animateColorAsState(tint, Motion.state(), label = "detailTint")
     Column(Modifier.weight(1f).heightIn(min = 56.dp).pressScale(0.94f).clip(RoundedCornerShape(Radius.m)).clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
         .semantics(mergeDescendants = true) {}.padding(vertical = Space.s), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
+        Icon(icon, null, tint = c, modifier = Modifier.size(22.dp).popOnChange(popKey))
         Text(label, color = if (tint == C.Text) C.Sub else tint, style = MaterialTheme.typography.labelMedium.copy(color = if (tint == C.Text) C.Sub else tint), maxLines = 1, modifier = Modifier.padding(top = Space.xs + 2.dp))
     }
 }
