@@ -137,7 +137,8 @@ fun SettingsScreen() {
             Div()
             // 1.7.17 功能审计：「存储空间」「清理缓存」「缩略图缓存上限」三行做的是同一件事 → 只留「存储空间」一个入口，
             // 清理和缓存上限都在页里（存储键 thumbCacheMb 不变）。右侧直接显示可清理的大小。
-            NavRow(KI.drive(), "存储空间", value = when { cacheSize == 0L -> "无缓存"; cacheSize > 0 -> "可清理 ${sizeLabel(cacheSize)}"; else -> null }) { Nav.push(Route.X(ExtScreen.Storage)) }
+            NavRow(KI.drive(), "存储空间", value = when { cacheSize == 0L -> "无缓存"; cacheSize > 0 -> "可清理 ${sizeLabel(cacheSize)}"; else -> null },
+                valueLoading = cacheSize < 0) { Nav.push(Route.X(ExtScreen.Storage)) }
             Div()
             NavRow(LI.settings(), "高级") { Nav.push(Route.AdvancedSettings) }
         }
@@ -309,7 +310,7 @@ fun InfoDot(text: String, title: String = "说明") {
  */
 @Composable
 fun NavRow(icon: ImageVector, title: String, sub: String? = null, danger: Boolean = false, value: String? = null, alert: Boolean = false,
-           info: String? = null, onClick: () -> Unit) {
+           info: String? = null, valueLoading: Boolean = false, onClick: () -> Unit) {
     // 1.6.2：读屏角色「按钮」（发现页入口行并入 NavRow 后保持原来的按钮角色）
     Row(Modifier.fillMaxWidth().heightIn(min = Space.row).clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         RowIcon(icon, danger)
@@ -321,7 +322,9 @@ fun NavRow(icon: ImageVector, title: String, sub: String? = null, danger: Boolea
             }
             if (!sub.isNullOrEmpty()) Text(sub, style = MaterialTheme.typography.bodySmall, color = if (alert) C.Danger else C.Sub, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
-        if (!value.isNullOrEmpty()) Text(value, color = C.Sub, style = MaterialTheme.typography.bodyMedium.merge(Type.num), maxLines = 1, modifier = Modifier.padding(start = 10.dp).widthIn(max = 150.dp), overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        // 1.7.23：右侧数值还在统计时显示骨架小条（以前是空着、算完突然冒出来）
+        if (valueLoading) SkeletonBar(56.dp, 12.dp, modifier = Modifier.padding(start = 10.dp))
+        else if (!value.isNullOrEmpty()) Text(value, color = C.Sub, style = MaterialTheme.typography.bodyMedium.merge(Type.num), maxLines = 1, modifier = Modifier.padding(start = 10.dp).widthIn(max = 150.dp), overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         if (!danger) Icon(KI.chevron(), null, tint = C.Faint, modifier = Modifier.padding(start = 4.dp).size(18.dp))
     }
 }

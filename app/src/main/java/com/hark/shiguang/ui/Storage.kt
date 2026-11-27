@@ -175,13 +175,16 @@ fun StorageScreen() {
                             }
                         }
                         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clearAndSetSemantics { }) {
-                            Text(if (parts == null) "…" else sizeLabel(total), color = C.Text, fontSize = 30.sp, fontWeight = FontWeight.Bold,
+                            // 1.7.23：统计中显示骨架小条（以前是「…」）
+                            if (parts == null) SkeletonBar(96.dp, 28.dp, modifier = Modifier.padding(vertical = 4.dp))
+                            else Text(sizeLabel(total), color = C.Text, fontSize = 30.sp, fontWeight = FontWeight.Bold,
                                 style = MaterialTheme.typography.headlineMedium.copy(fontFamily = C.P.display, fontFeatureSettings = Type.TNUM))
                             Text("一维相册占用", color = C.Sub, style = MaterialTheme.typography.bodySmall)
                         }
                     }
                     Spacer(Modifier.height(18.dp))
-                    Text(when { parts == null -> "正在统计…"; clearable == 0L -> "没有可清理的缓存"; else -> "可清理 ${sizeLabel(clearable)}" },
+                    if (parts == null) SkeletonBar(110.dp, 14.dp, modifier = Modifier.padding(vertical = 3.dp))
+                    else Text(if (clearable == 0L) "没有可清理的缓存" else "可清理 ${sizeLabel(clearable)}",
                         color = C.Sub, style = MaterialTheme.typography.bodyMedium.merge(Type.num))
                     Spacer(Modifier.height(12.dp))
                     GradientButton(if (clearing) "清理中…" else "清理缓存", Modifier.fillMaxWidth(), loading = clearing) {

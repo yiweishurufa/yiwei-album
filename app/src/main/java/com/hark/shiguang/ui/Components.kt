@@ -69,6 +69,15 @@ fun shimmerBrush(): Brush {
 /** 1.7.10：骨架里的「字行」底色（不扫光）：玻璃风格正文色 6%，简洁风格凹槽色。 */
 val skeletonLine: Color @Composable get() = if (Glass.on) C.Text.copy(alpha = 0.06f) else C.Surface2
 
+/**
+ * 1.7.23：一个数字 / 一小段文字还在算时占位的骨架小条（设置「存储空间」右侧、存储空间页总量）。
+ * 读屏读 [desc]；移除动画时不扫光（[shimmerBrush] 已处理）。
+ */
+@Composable
+fun SkeletonBar(width: androidx.compose.ui.unit.Dp, height: androidx.compose.ui.unit.Dp = 12.dp, desc: String = "正在统计", modifier: Modifier = Modifier) {
+    Box(modifier.size(width, height).clip(RoundedCornerShape(Radius.xs)).background(shimmerBrush()).semantics { contentDescription = desc })
+}
+
 /** 1.7.10：歌曲 / 文件这类列表行的骨架（与行同形：方形封面 + 两行字 + 右侧短条），首屏用。 */
 @Composable
 fun ListRowSkeleton(rows: Int = 8, cover: androidx.compose.ui.unit.Dp = 48.dp, coverShape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(Radius.s)) {
