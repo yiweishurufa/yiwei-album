@@ -416,15 +416,19 @@ fun MusicListScreen(r: Route.MusicList) {
                     }
                 }
             }
-            item {
+            // 1.7.25：没有歌时不显示「全部播放 / 随机播放」（以前点了只弹「还没有歌曲」）
+            if (tracks.isNotEmpty()) item {
                 Row(Modifier.padding(horizontal = Space.page, vertical = Space.m), horizontalArrangement = Arrangement.spacedBy(Space.m)) {
                     PillButton(KI.playSolid(), "全部播放", Modifier.weight(1f), primary = true) { MusicState.play(key, tracks, 0, shuffled = false) }
                     PillButton(KI.shuffle(), "随机播放", Modifier.weight(1f)) { MusicState.play(key, tracks, -1, shuffled = true) }
                 }
             }
+            // 1.7.25 空状态：标题 + 一句「怎么会出现在这里」（以前只有一行灰色大字），和其它页的空状态同一套
             if (tracks.isEmpty() && (r.kind == "fav" || r.kind == "recent")) item {
-                Text(if (r.kind == "fav") "还没有喜欢的歌" else "还没有播放记录", style = MaterialTheme.typography.titleLarge, color = C.Sub, textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = Space.xxxl, horizontal = Space.xl))
+                Box(Modifier.fillMaxWidth().heightIn(min = 320.dp)) {
+                    if (r.kind == "fav") StateMessage(KI.heart(), "还没有喜欢的歌", "在正在播放页点 ♡，或在歌曲右边的「⋯」里选「加入我喜欢」，歌就会收进这里。")
+                    else StateMessage(KI.history(), "还没有播放记录", "播放过的歌会按时间先后出现在这里，最近听的在最上面。")
+                }
             }
             itemsIndexed(tracks, key = { _, t -> t.id }) { i, t -> TrackRow(t, key, showNo = r.kind == "album", index = i) { MusicState.play(key, tracks, i) } }
         }
