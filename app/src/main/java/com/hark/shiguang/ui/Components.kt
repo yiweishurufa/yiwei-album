@@ -208,7 +208,7 @@ fun StateMessage(icon: ImageVector, title: String, sub: String, action: String? 
             Spacer(Modifier.height(Space.xl))
             GradientButton(action, Modifier.widthIn(min = 160.dp), onClick = onAction)
         }
-        if (action2 != null && onAction2 != null) TextButton(onClick = onAction2, modifier = Modifier.padding(top = 6.dp)) { Text(action2, color = C.Accent) }
+        if (action2 != null && onAction2 != null) QuietButton(action2, C.Accent, Modifier.padding(top = 6.dp), onAction2)
     }
 }
 
@@ -255,7 +255,21 @@ fun ErrorState(message: String?, onRetry: () -> Unit, onFix: ((com.hark.shiguang
             }
         }
         if (k != com.hark.shiguang.ErrorKind.NETWORK && k != com.hark.shiguang.ErrorKind.OTHER)
-            TextButton(onClick = onRetry, modifier = Modifier.padding(top = Space.xs)) { Text("重试", color = C.Sub) }
+            QuietButton("重试", C.Sub, Modifier.padding(top = Space.xs), onRetry)
+    }
+}
+
+/**
+ * 1.7.24：主按钮下面的次要文字按钮（空状态的第二个操作、错误页的「重试」）。和 v2 主按钮同一套按压：
+ * 液体形变（glassPress，移除动画时只变暗），不再是 Material 的灰色水波；整块 ≥ 48dp 高，读屏是按钮。
+ */
+@Composable
+fun QuietButton(text: String, color: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    Box(modifier.heightIn(min = 48.dp).glassPress(interaction, 0.6f).clip(CircleShape)
+        .clickable(interaction, null, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick).padding(horizontal = Space.l),
+        contentAlignment = Alignment.Center) {
+        Text(text, color = color, style = MaterialTheme.typography.labelLarge)
     }
 }
 
