@@ -43,7 +43,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.hark.shiguang.*
 import com.hark.shiguang.data.*
 import kotlinx.coroutines.delay
@@ -95,7 +94,7 @@ internal fun DiscoverTab() {
         item { BigTitle("发现", "") }
         item { SearchBar() }
         // ================= 回忆（用户 2026-10-23：回忆 / 整理 / 工具 三区）
-        item { ZoneHeader("回忆") }
+        item { ZoneHeader("回忆", rise = 1) }
         item { MemoriesRow(fnMemories) }
         val hiddenIds = FnPersonHide.version.let { FnPersonHide.ids() }
         val ps = HomeState.persons.orEmpty().filter { it.id !in hiddenIds }
@@ -163,16 +162,17 @@ private fun SearchBar() {
         Spacer(Modifier.width(10.dp))
         // 优化 18：一个框搜照片、影视、歌曲
         Text("搜照片、电影剧集、歌曲", color = C.Sub, style = MaterialTheme.typography.bodyLarge, maxLines = 1, modifier = Modifier.weight(1f))
-        if (!AiConfig.configured && HomeState.source == "dav") Text("需配置 AI", color = C.Gold, fontSize = 11.sp, modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(C.Gold.copy(alpha = 0.14f)).padding(horizontal = 6.dp, vertical = 3.dp))
+        if (!AiConfig.configured && HomeState.source == "dav") Text("需配置 AI", color = C.Gold, style = MaterialTheme.typography.labelSmall, modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(C.Gold.copy(alpha = 0.14f)).padding(horizontal = 6.dp, vertical = 3.dp))
     }
 }
 
 /** 发现页三区（回忆 / 整理 / 工具）的区标题：比 [RowHeader] 大一号。 */
 @Composable
-private fun ZoneHeader(title: String) {
-    // 1.6.2：headlineMedium（22/28 SemiBold），读屏「标题」；上 32 下 4：区与区之间明显分开
+private fun ZoneHeader(title: String, rise: Int = Motion.STAGGER_MAX) {
+    // 1.6.2：headlineMedium（26/32 Bold），读屏「标题」；上 32 下 4：区与区之间明显分开
+    // U4（1.7.27）：字阶理顺为 页面大标题 40 → 区标题 26 → 分组标题 16（人物 / 地点 / 那年今天同一款）→ 正文 14；首屏的区标题随列表错开上浮
     Text(title, color = C.Text, style = MaterialTheme.typography.headlineMedium,
-        modifier = Modifier.padding(start = Space.l, end = Space.l, top = Space.xxl, bottom = Space.xs).semantics { heading() })
+        modifier = Modifier.enterRise(rise).padding(start = Space.l, end = Space.l, top = Space.xxl, bottom = Space.xs).semantics { heading() })
 }
 
 /** 发现页里成组的入口卡片（白色卡片 + 细分隔线）。 */
@@ -220,7 +220,7 @@ internal fun DavDiscoverTab() {
         item { SearchBar() }
 
         // ================= 回忆（用户 2026-10-23：回忆 / 整理 / 工具 三区）
-        item { ZoneHeader("回忆") }
+        item { ZoneHeader("回忆", rise = 1) }
         item { MemoriesRow(stats.memories) }
         item {
             RowHeader("人物", if (fl.persons.isNotEmpty()) "${fl.persons.size} 位" else "", "识别设置", onAction = { HomeState.showFaceCfg = true },
@@ -410,7 +410,7 @@ private fun ScanStatusCard(rows: List<Triple<String, Pair<Int, Int>, Boolean>>, 
         rows.forEach { (label, pr, on) ->
             val (d, t) = pr
             Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(label, color = if (on) C.Text else C.Sub, fontSize = 13.sp, modifier = Modifier.width(64.dp))
+                Text(label, color = if (on) C.Text else C.Sub, style = MaterialTheme.typography.bodySmall, modifier = Modifier.width(64.dp))
                 Box(Modifier.weight(1f).height(3.dp).clip(RoundedCornerShape(2.dp))) {
                     Box(Modifier.fillMaxHeight().fillMaxWidth(if (t > 0) (d.toFloat() / t).coerceIn(0f, 1f) else 0f).background(if (on) C.Accent else C.Faint))
                 }
@@ -466,23 +466,23 @@ fun FaceSettingsDialog(onDismiss: () -> Unit) {
         }
     }, text = {
         Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
-            Text("至少出现几张才算一个人  ${minP.toInt()} 张", color = C.Text, fontSize = 14.sp)
+            Text("至少出现几张才算一个人  ${minP.toInt()} 张", color = C.Text, style = MaterialTheme.typography.bodyMedium)
             Slider(minP, { minP = it }, valueRange = 1f..20f, steps = 18)
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { adv = !adv }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("高级参数", color = C.Text, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                Text("高级参数", color = C.Text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                 Icon(if (adv) KI.up() else KI.down(), null, tint = C.Faint)
             }
             if (adv) {
-                Text("人脸置信度  %.2f".format(conf), color = C.Text, fontSize = 14.sp)
+                Text("人脸置信度  %.2f".format(conf), color = C.Text, style = MaterialTheme.typography.bodyMedium)
                 Slider(conf, { conf = (it * 100).toInt() / 100f }, valueRange = 0.3f..0.95f)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("人物差异阈值  %.2f".format(diff), color = C.Text, fontSize = 14.sp)
+                    Text("人物差异阈值  %.2f".format(diff), color = C.Text, style = MaterialTheme.typography.bodyMedium)
                     InfoDot("越小越严格：同一人容易被拆成几个；越大越宽松：不同人容易被并在一起。置信度越高越只认清晰的正脸，侧脸、模糊、太小的会被忽略。", "人脸参数")
                 }
                 Slider(diff, { diff = (it * 100).toInt() / 100f }, valueRange = 0.15f..0.6f)
-                Text("恢复默认（0.65 · 5 张 · 0.36）", color = C.Accent, fontSize = 13.sp, modifier = Modifier.clickable { conf = FaceConfig.DEF_CONF; minP = FaceConfig.DEF_MIN.toFloat(); diff = FaceConfig.DEF_DIFF }.padding(vertical = 8.dp))
+                Text("恢复默认（0.65 · 5 张 · 0.36）", color = C.Accent, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable { conf = FaceConfig.DEF_CONF; minP = FaceConfig.DEF_MIN.toFloat(); diff = FaceConfig.DEF_DIFF }.padding(vertical = 8.dp))
             }
-            Text("清除识别结果并重新识别", color = C.Danger, fontSize = 13.sp, modifier = Modifier.clickable { confirmClear = true }.padding(vertical = 8.dp))
+            Text("清除识别结果并重新识别", color = C.Danger, style = MaterialTheme.typography.labelLarge, modifier = Modifier.clickable { confirmClear = true }.padding(vertical = 8.dp))
         }
     }, confirmButton = {
         TextButton(onClick = {

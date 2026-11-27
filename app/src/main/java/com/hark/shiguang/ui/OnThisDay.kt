@@ -102,8 +102,9 @@ fun MemoriesRow(groups: List<MemoryGroup>) {
     AnimatedVisibility(visible.isNotEmpty(), enter = fadeIn(Motion.enter()) + expandVertically(Motion.enter())) {
         Column(Modifier.padding(bottom = Space.s)) {
             // 1.6.2：分区标题 titleMedium（DESIGN §3），日期是次要色副标题，同一基线
-            Row(Modifier.padding(start = 18.dp, end = Space.l, top = Space.m, bottom = Space.m).semantics(mergeDescendants = true) { heading() }, verticalAlignment = Alignment.Bottom) {
-                Text("那年今天", color = C.Text, style = MaterialTheme.typography.titleLarge)
+            // U4（1.7.27）：与「人物」「地点」同一款分组标题（titleMedium 16、左边距 Space.l），不再比它们大一号
+            Row(Modifier.padding(start = Space.l, end = Space.l, top = Space.m, bottom = Space.s).semantics(mergeDescendants = true) { heading() }, verticalAlignment = Alignment.Bottom) {
+                Text("那年今天", color = C.Text, style = MaterialTheme.typography.titleMedium)
                 Text(LocalDate.now().let { "${it.monthValue}月${it.dayOfMonth}日" }, color = C.Sub, style = MaterialTheme.typography.bodySmall.merge(Type.num), modifier = Modifier.padding(start = Space.s, bottom = 1.dp))
             }
             LazyRow(contentPadding = PaddingValues(horizontal = Space.l), horizontalArrangement = Arrangement.spacedBy(Space.m)) {
