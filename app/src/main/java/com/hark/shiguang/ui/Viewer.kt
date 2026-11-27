@@ -82,6 +82,14 @@ fun ViewerScreen(photosIn: List<Photo>, start: Int, slideshowStart: Boolean = fa
     val heroThumb = remember { Hero.fromThumb }
     val heroAnim = remember { Animatable(if (heroFrom != null && !Motion.reduced) 0f else 1f) }
     LaunchedEffect(Unit) { Hero.from = null; Hero.closed = false; heroAnim.animateTo(1f, Motion.zoom()) }
+    // 1.7.18 预加载：翻页组件已经带着左右各 1 张，这里再把左右第 2 张的中图提前拉进缓存，快速连翻时不先看到灰块
+    LaunchedEffect(pager.currentPage) {
+        kotlinx.coroutines.delay(300)   // 停稳再预取，快速划过的中间页不白下
+        val loader = coil.Coil.imageLoader(ctx)
+        for (d in intArrayOf(2, -2)) photos.getOrNull(pager.currentPage + d)?.takeIf { it.thumbM.isNotEmpty() }?.let {
+            loader.enqueue(ImageRequest.Builder(ctx).data(it.thumbM).build())
+        }
+    }
     LaunchedEffect(pager.currentPage) {
         photos.getOrNull(pager.currentPage)?.let { ViewerReturn.lastKey = it.key }
         // 翻页后让下面的网格把这一张滚进屏幕：下拉缩回时才有地方可落（网格只在不可见时才滚）
