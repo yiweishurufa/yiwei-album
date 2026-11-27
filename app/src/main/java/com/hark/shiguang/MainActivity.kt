@@ -382,6 +382,12 @@ class MainActivity : ComponentActivity() {
         if (android.os.Build.VERSION.SDK_INT < 28) { AppLock.locked = false; return }
         if (AppLock.prompting) return
         AppLock.prompting = true
+        showBiometricPrompt()
+    }
+
+    /** 1.7.23：拆出来加 @RequiresApi(28)（unlock() 开头已对 SDK < 28 return，lint 看不穿 runCatching 报 NewApi；行为不变）。 */
+    @androidx.annotation.RequiresApi(28)
+    private fun showBiometricPrompt() {
         runCatching {
             val b = android.hardware.biometrics.BiometricPrompt.Builder(this).setTitle("解锁一维相册").setSubtitle("验证指纹或锁屏密码")
             when {

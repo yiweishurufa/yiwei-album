@@ -136,7 +136,8 @@ private fun CropView(bmp: Bitmap, crop: RectF, aspect: Int, bright: Float, contr
     var box by remember { mutableStateOf(IntSize.Zero) }
     val cur by rememberUpdatedState(crop)
     val ratio = bmp.width.toFloat() / bmp.height
-    BoxWithConstraints(Modifier.fillMaxSize().onSizeChanged { box = it }, contentAlignment = Alignment.Center) {
+    // 1.7.23：BoxWithConstraints → Box（作用域里没用到 maxWidth / maxHeight，lint UnusedBoxWithConstraintsScope）
+    Box(Modifier.fillMaxSize().onSizeChanged { box = it }, contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize().pointerInput(bmp, aspect, editable) {
             if (!editable) return@pointerInput
             var mode = 0 // 0 move, 1..4 corners tl,tr,bl,br
