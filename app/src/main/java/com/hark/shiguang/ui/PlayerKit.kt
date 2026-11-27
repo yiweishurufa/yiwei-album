@@ -106,7 +106,7 @@ fun Modifier.popOnChange(key: Any?): Modifier = this.composed {
         if (first) { first = false; return@LaunchedEffect }
         if (Motion.reduced) return@LaunchedEffect
         s.snapTo(0.82f)
-        s.animateTo(1f, androidx.compose.animation.core.spring(dampingRatio = 0.45f, stiffness = 600f))
+        s.animateTo(1f, Motion.pop())
     }
     graphicsLayer { scaleX = s.value; scaleY = s.value }
 }

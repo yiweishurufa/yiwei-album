@@ -543,7 +543,7 @@ fun MusicNowPlayingScreen() {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         if (ly) LyricsView(lyrics, pos) { MusicState.seek(it) }
                         else Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            val scale by animateFloatAsState(if (MusicState.isPlaying) 1f else 0.9f, if (Motion.reduced) androidx.compose.animation.core.snap() else androidx.compose.animation.core.spring(dampingRatio = 0.8f, stiffness = 260f), label = "art")
+                            val scale by animateFloatAsState(if (MusicState.isPlaying) 1f else 0.9f, Motion.breathe(), label = "art")
                             MusicArt(t?.artPath, Modifier.padding(horizontal = 36.dp).fillMaxWidth().aspectRatio(1f).graphicsScale(scale), corner = Radius.l, lifted = true)
                             // one current lyric line under the cover
                             val cur = lyrics?.let { l -> currentLine(l, pos) }?.let { lyrics?.getOrNull(it)?.text }

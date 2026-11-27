@@ -271,6 +271,20 @@ object Motion {
     fun <T> liquid(): FiniteAnimationSpec<T> = if (reduced) snap() else spring(dampingRatio = 0.62f, stiffness = 380f)
     /** 1.7.0 玻璃出现：缩放 + 透明度一起（「材质到来」，不只是淡入）。 */
     fun <T> materialize(): FiniteAnimationSpec<T> = if (reduced) tween(90) else spring(dampingRatio = 0.72f, stiffness = 520f)
+    /**
+     * 1.7.26 强调弹跳（收藏心形、底栏图标选中、勾选、成功提示的勾）：bounce ≈ 0.5，约 350 ms 落定，比 [liquid] 更脆。
+     * 只用于「刚刚发生了一件事」的一次性反馈，不用于位移。移除动画时直接到位。
+     */
+    fun <T> pop(): FiniteAnimationSpec<T> = if (reduced) snap() else spring(dampingRatio = 0.5f, stiffness = 600f)
+    /** 1.7.26 手势松手后的归位（大图双击缩放、拖动回弹）：几乎不过冲，跟手后的「落定」。 */
+    fun <T> settle(): FiniteAnimationSpec<T> = if (reduced) snap() else spring(dampingRatio = 0.9f, stiffness = 500f)
+    /** 1.7.26 慢呼吸（正在播放封面随播放 / 暂停轻缩）：柔和、不抢眼。 */
+    fun <T> breathe(): FiniteAnimationSpec<T> = if (reduced) snap() else spring(dampingRatio = 0.8f, stiffness = 260f)
+    /** 1.7.26 一次性装饰动画（收藏粒子、成功勾的描线）的时长；移除动画时调用方不播。 */
+    const val BURST = 520
+    /** 按下底栏图标时缩到的比例（比卡片的 [PRESS_SCALE] 更明显：图标小、需要看得出）。 */
+    const val PRESS_SCALE_ICON = 0.86f
+
     /** 列表 / 面板内容进入时上浮的距离。 */
     val RISE = 8.dp
 
