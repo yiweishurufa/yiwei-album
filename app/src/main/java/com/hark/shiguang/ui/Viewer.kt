@@ -59,6 +59,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
+import com.hark.shiguang.ViewerZoom
 import coil.request.ImageRequest
 import com.hark.shiguang.Nav
 import androidx.compose.runtime.toMutableStateList
@@ -99,6 +100,11 @@ fun ViewerScreen(photosIn: List<Photo>, start: Int, slideshowStart: Boolean = fa
     if (photos.isEmpty()) { LaunchedEffect(Unit) { Nav.pop() }; return }
     var chrome by remember { mutableStateOf(true) }
     var zoomed by remember { mutableStateOf(false) }
+    // 1.7.18：放大看细节时顶部 / 底部按钮自动收起；缩回原大时恢复成放大前的样子（放大前是收起的就保持收起，参考 Immich 3.4）
+    var chromeBeforeZoom by remember { mutableStateOf(true) }
+    LaunchedEffect(zoomed) {
+        if (zoomed) { chromeBeforeZoom = chrome; chrome = false } else chrome = chromeBeforeZoom
+    }
     var info by remember { mutableStateOf(false) }
     var albumFor by remember { mutableStateOf<Photo?>(null) }
     var favTick by remember { mutableIntStateOf(0) }
@@ -380,8 +386,16 @@ private fun ZoomImage(p: Photo, onTap: () -> Unit, onZoom: (Boolean) -> Unit, on
     val scope = rememberCoroutineScope()
     val anim = remember { Animatable(1f) }
 
+    // 1.7.18（ViewerZoom）：照片实际显示的宽高比取自已解码的中图（已按 EXIF 旋转），没加载出来前按整个框算（以前的行为）
+    // 手势协程只在换照片时重启，所以这里用函数现读状态，不用组合时算好的值（否则手势里拿到的是第一次组合时的旧值）
+    var shownRatio by remember(p.id) { mutableFloatStateOf(0f) }
+    fun fitSize() = ViewerZoom.fit(shownRatio, size.width.toFloat(), size.height.toFloat())
+    fun maxScale(): Float = if (shownRatio > 0f) fitSize().let { ViewerZoom.maxScale(p.width, p.height, it.first, it.second) } else ViewerZoom.LEGACY_MAX
+
     fun clamp(o: Offset, s: Float): Offset {
-        val mx = (size.width * (s - 1)) / 2f; val my = (size.height * (s - 1)) / 2f
+        // 只能拖到照片边缘，不再拖进黑边
+        val f = fitSize()
+        val (mx, my) = ViewerZoom.panLimit(s, size.width.toFloat(), size.height.toFloat(), f.first, f.second)
         return Offset(o.x.coerceIn(-mx, mx), o.y.coerceIn(-my, my))
     }
 
@@ -392,7 +406,7 @@ private fun ZoomImage(p: Photo, onTap: () -> Unit, onZoom: (Boolean) -> Unit, on
                     onTap = { onTap() },
                     onDoubleTap = { pt ->
                         scope.launch {
-                            val from = scale; val to = if (scale > 1.05f) 1f else 2.6f
+                            val from = scale; val to = if (scale > 1.05f) 1f else ViewerZoom.doubleTap(maxScale())
                             val focus = Offset(pt.x - size.width / 2f, pt.y - size.height / 2f)
                             anim.snapTo(0f)
                             anim.animateTo(1f, spring(stiffness = 500f)) {
@@ -420,7 +434,7 @@ private fun ZoomImage(p: Photo, onTap: () -> Unit, onZoom: (Boolean) -> Unit, on
                         ev.changes.firstOrNull()?.let { vt.addPosition(it.uptimeMillis, it.position) }
                         if (multi || scale > 1.01f) {
                             if (dismissing) { dismissing = false; onDismissDrag(Offset.Zero, true, 0f) }
-                            scale = (scale * zoom).coerceIn(1f, 6f)
+                            scale = (scale * zoom).coerceIn(1f, maxScale())
                             offset = clamp(offset + pan, scale)
                             onZoom(scale > 1.01f)
                             ev.changes.forEach { if (it.positionChanged()) it.consume() }
@@ -437,7 +451,8 @@ private fun ZoomImage(p: Photo, onTap: () -> Unit, onZoom: (Boolean) -> Unit, on
         contentAlignment = Alignment.Center
     ) {
         val layer = Modifier.fillMaxSize().graphicsLayer { scaleX = scale; scaleY = scale; translationX = offset.x; translationY = offset.y }
-        AsyncImage(ImageRequest.Builder(ctx).data(p.thumbM).placeholderMemoryCacheKey(p.thumbS).build(), null, layer, contentScale = ContentScale.Fit)
+        AsyncImage(ImageRequest.Builder(ctx).data(p.thumbM).placeholderMemoryCacheKey(p.thumbS).build(), null, layer, contentScale = ContentScale.Fit,
+            onSuccess = { st -> val d = st.result.drawable; if (d.intrinsicWidth > 0 && d.intrinsicHeight > 0) shownRatio = d.intrinsicWidth.toFloat() / d.intrinsicHeight })
         // Fetch the original once the user lingers or zooms in.
         LaunchedEffect(p.id) { kotlinx.coroutines.delay(600); hiRes = true }
         // RAW / EXR / DPX / TIFF …: the phone cannot decode the original, stay on the NAS preview (PreviewOnly).
