@@ -176,11 +176,23 @@ class MovieLib(val sourceKey: String) {
     var quiet by mutableStateOf(false)
         private set
 
-    fun scan(rescrapeUnmatched: Boolean = false, quiet: Boolean = false) {
+    /**
+     * 1.7.23：刮削失败的退避记录（与 1.7.21 照片 / 音乐同一套 [RetryBackoff]：1h / 6h / 24h，第 4 次失败后等手动刷新）。
+     * 独立文件 movies/retry.json，不动 library.json。
+     */
+    private val book: RetryBook get() = RetryBooks.of(File(dir, "retry.json"))
+
+    /**
+     * [manual] = 用户手动（下拉刷新 / 重新扫描 / 重新匹配未匹配）：不看退避、清掉旧的失败记录。
+     * 自动扫描（进影视页距上次超过 6 小时）跳过退避中的条目。
+     */
+    fun scan(rescrapeUnmatched: Boolean = false, quiet: Boolean = false, manual: Boolean = !quiet || rescrapeUnmatched, reason: String = if (manual) "手动" else "自动") {
         if (job?.isActive == true) return
         ensure()
         job = scope.launch {
             awaitReady()
+            val t0 = System.currentTimeMillis()
+            var failed = 0; var deferred = 0
             withContext(Dispatchers.Main) { scanning = true; this@MovieLib.quiet = quiet; error = null; done = 0; total = 0; phase = "正在列出文件" }
             try {
                 val found = ArrayList<Pair<MovieDir, Walked>>()
@@ -200,14 +212,24 @@ class MovieLib(val sourceKey: String) {
                 }
                 withContext(Dispatchers.Main) { items.clear(); items.addAll(merged); version++ }
                 saveLib()
-                val todo = merged.filter { it.source.isEmpty() || (rescrapeUnmatched && !it.matched) || (!it.scraped && Tmdb.configured && it.source != "nfo") }
+                if (manual) book.reset()
+                book.retain(merged.mapTo(HashSet()) { it.id })
+                val now = System.currentTimeMillis()
+                val need = merged.filter { it.source.isEmpty() || (rescrapeUnmatched && !it.matched) || (!it.scraped && Tmdb.configured && it.source != "nfo") }
+                val todo = need.filter { book.eligible(it.id, manual, now) }
+                deferred = need.size - todo.size
                 withContext(Dispatchers.Main) { total = todo.size; done = 0; phase = if (todo.isEmpty()) "" else "正在匹配海报和简介" }
                 val gate = Semaphore(4)
                 coroutineScope {
                     todo.forEach { m ->
                         launch {
                             gate.withPermit {
-                                val n = runCatching { scrape(m, found) }.onFailure { if (error == null) error = it.message }.getOrDefault(m)
+                                val n = try { scrape(m, found).also { book.ok(m.id) } } catch (e: CancellationException) { throw e } catch (e: Exception) {
+                                    if (error == null) error = e.message
+                                    // 密钥无效是设置问题、不是这一部片的问题：不记退避（改好密钥后自动扫描就能接上）
+                                    if (!ScrapeFailure.isConfig(e)) { book.fail(m.id); synchronized(this@MovieLib) { failed++ } }
+                                    (e as? ScrapeFailure)?.partial ?: m
+                                }
                                 withContext(Dispatchers.Main) {
                                     val i = items.indexOfFirst { it.id == n.id }; if (i >= 0) items[i] = n
                                     done++; version++
@@ -218,7 +240,10 @@ class MovieLib(val sourceKey: String) {
                     }
                 }
                 saveLib()
-            } catch (e: CancellationException) { throw e } catch (e: Exception) {
+                book.save()
+                ScanLog.log("MOVIES", reason, sourceKey.substringBefore(':'), System.currentTimeMillis() - t0, todo.size - failed, failed, deferred, "items=${merged.size}")
+            } catch (e: CancellationException) { book.save(); throw e } catch (e: Exception) {
+                book.save()
                 // 优化 12：离线 / 登录过期时片库保持上次的内容（items 只在列完文件后才替换）
                 Diag.log("MEDIA", "movie scan failed: ${e.javaClass.simpleName} ${e.message?.take(120)} (keeping ${items.size} cached items)")
                 withContext(Dispatchers.Main) { error = e.message ?: "扫描失败" }
@@ -373,7 +398,13 @@ class MovieLib(val sourceKey: String) {
         }
         // 3) TMDB
         if (Tmdb.configured && m.source != "nfo" || (Tmdb.configured && m.source == "nfo" && m.tmdbId != null && (m.poster == null || m.backdrop == null))) {
-            m = runCatching { tmdbFill(m) }.getOrElse { e -> if (e.message?.contains("密钥") == true) throw e; m }.copy(scraped = true)
+            // 1.7.23：连不上 TMDB（网络 / 超时 / 5xx）时不再标记「已刮削」——以前一次断网就让这部片永远停在未匹配，
+            // 只能手动「重新匹配未匹配」。现在抛 ScrapeFailure（带上已读到的 NFO / 本地海报），由 scan 按退避重试。
+            m = try { tmdbFill(m) } catch (e: CancellationException) { throw e } catch (e: Exception) {
+                if (ScrapeFailure.isConfig(e)) throw e
+                if (e is java.io.IOException) throw ScrapeFailure(m, e)
+                m
+            }.copy(scraped = true)
         }
         if (m.source.isEmpty()) m = m.copy(source = "none")
         return m
@@ -464,4 +495,12 @@ object Movies {
     fun lib(): MovieLib? = keyOf()?.let { lib(it) }
     fun lib(key: String): MovieLib = synchronized(libs) { libs.getOrPut(key) { MovieLib(key) } }.also { it.ensure() }
     fun forget(key: String) { libs.remove(key) }
+}
+
+/** 1.7.23：一部片这次刮削没成功（连不上 TMDB 等），[partial] 是已经读到的本地信息（NFO / 海报），先显示着。 */
+class ScrapeFailure(val partial: MovieItem, cause: Throwable) : Exception(cause.message, cause) {
+    companion object {
+        /** TMDB 密钥无效 / 未配置：设置问题，不算这部片的失败。 */
+        fun isConfig(e: Throwable): Boolean = e.message?.contains("密钥") == true || (e.cause?.message?.contains("密钥") == true)
+    }
 }

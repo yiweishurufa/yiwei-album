@@ -76,7 +76,7 @@ fun MoviesTab() {
         // 用户 2026-11-01 反馈第一次进影音黑屏：记下读库用时和条数，下次凭诊断日志确认
         Diag.log("MEDIA", "movies tab ready in ${System.currentTimeMillis() - t0} ms, items=${lib.items.size} dirs=${lib.dirs.size}")
         // first visit after a restart: pick up new files quietly (only new ones are scraped)
-        autoScanIfStale("movies.last.$key", lib.dirs.isNotEmpty(), lib.scanning) { lib.scan(quiet = true); ScanService.ensure(App.ctx) }
+        autoScanIfStale("movies.last.$key", lib.dirs.isNotEmpty(), lib.scanning) { lib.scan(quiet = true, reason = "进入影视页（距上次超过 6 小时）"); ScanService.ensure(App.ctx) }
     }
     val v = lib.version
     val kind = if (MoviesState.seg == 0) "movie" else "tv"
@@ -91,7 +91,7 @@ fun MoviesTab() {
     AmbientFromGrid(grid, posterOf, (cont.firstOrNull()?.first ?: wish.firstOrNull())?.poster)
     // 第 4 批：平板/折叠屏——Adaptive 替代 Fixed(3)：手机上仍约 3 列（110dp 下限），平板自动变多列；通栏行用 maxLineSpan。
     // B7：下拉刷新 = 后台增量扫描（和右上角刷新一样只扫新文件），有缓存时只显示一行「正在更新」
-    PullRefreshBox(enabled = lib.ready && lib.dirs.isNotEmpty() && !lib.scanning, onRefresh = { lib.scan(quiet = true); ScanService.ensure(App.ctx) }) {
+    PullRefreshBox(enabled = lib.ready && lib.dirs.isNotEmpty() && !lib.scanning, onRefresh = { lib.scan(quiet = true, manual = true, reason = "下拉刷新"); ScanService.ensure(App.ctx) }) {
     LazyVerticalGrid(GridCells.Adaptive(110.dp), state = grid, modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = Space.page, end = Space.page, bottom = 120.dp + miniPlayerPad),
         horizontalArrangement = Arrangement.spacedBy(PosterSize.gap), verticalArrangement = Arrangement.spacedBy(Space.l + Space.xs)) {
