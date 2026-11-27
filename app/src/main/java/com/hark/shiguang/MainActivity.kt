@@ -235,6 +235,17 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch { runCatching { com.hark.shiguang.data.Endpoint.autoSelect() } }
         BackupScheduler.schedule(this)
         BgRun.maybeAskNotifications(this) // 1.0.1: Android 13+ notification permission for the scan / AI progress notification
+        // 1.7.18：冷启动首帧时间进诊断日志（StartTrace）。onDraw 里不能移除自己，post 出去再移除
+        if (savedInstanceState == null) {
+            val dv = window.decorView
+            dv.viewTreeObserver.addOnDrawListener(object : android.view.ViewTreeObserver.OnDrawListener {
+                override fun onDraw() {
+                    StartTrace.firstFrame(android.os.SystemClock.elapsedRealtime())
+                    val self = this
+                    dv.post { runCatching { dv.viewTreeObserver.removeOnDrawListener(self) } }
+                }
+            })
+        }
         setContent {
             ShiGuangTheme {
                 val dark = C.P.dark

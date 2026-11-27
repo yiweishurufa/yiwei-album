@@ -15,7 +15,9 @@ import com.hark.shiguang.data.FnClient
 class App : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
+        StartTrace.mark("Application")
         Store.init(this)
+        StartTrace.mark("读取设置")
         ScanPolicy.migrate()
         Diag.init(this)
         if (Store.insecure) Diag.log("SEC", "encrypted prefs unavailable, using plain prefs (${Store.insecureReason})")   // H18
@@ -26,10 +28,12 @@ class App : Application(), ImageLoaderFactory {
         runCatching { TlsTrust.migrate() }   // H19: keep already-working https accounts trusted after the upgrade
         ctx = this
         ScanWatch.init(this)
-        TmdbNet.start(this)   // 1.0.1: TMDB 直连 / 自动代理
         NetEnv.start(this)    // 1.0.2: VPN 下国内网盘/飞牛自动绕过直连
+        // 1.0.1: TMDB 直连 / 自动代理。1.7.18：只有影视用得到，放到后台线程（建 OkHttp 客户端、读缓存的检测结果、注册网络回调），不占冷启动主线程
+        Thread { runCatching { TmdbNet.start(this) } }.apply { priority = Thread.MIN_PRIORITY }.start()
         // keep caches bounded without touching anything the UI needs right away
         Thread { runCatching { CacheTrim.run(this) } }.apply { priority = Thread.MIN_PRIORITY }.start()
+        StartTrace.mark("初始化")
     }
     companion object { lateinit var ctx: App }
 
@@ -136,6 +140,30 @@ object Store {
      * when an account is logged out / removed; do not rely on [clear] to wipe them.
      */
     fun clear() = sp.edit().remove("pass").remove("token").apply()
+}
+
+/**
+ * 1.7.18：冷启动各段耗时（进程启动 → Application → 读取设置 → 初始化 → 首帧），首帧画出后写一行 [START] 进诊断日志。
+ * 真机反馈「打开慢」时，导出诊断日志就能看到慢在哪一段。只记第一次（Activity 重建不再记）。
+ */
+object StartTrace {
+    private val marks = ArrayList<Pair<String, Long>>(6)
+    @Volatile private var done = false
+    @Synchronized fun mark(name: String, at: Long = android.os.SystemClock.elapsedRealtime()) { if (!done) marks += name to at }
+    /** 首帧画出时调用一次：补上「首帧」并写日志。 */
+    fun firstFrame(at: Long) {
+        if (done) return
+        mark("首帧", at); done = true
+        val start = runCatching { android.os.Process.getStartElapsedRealtime() }.getOrDefault(marks.firstOrNull()?.second ?: at)
+        Diag.log("START", summary(start, synchronized(this) { marks.toList() }))
+    }
+    /** 「Application +35ms · 读取设置 +80ms · … · 首帧 +300ms · 共 640ms」：每段是距上一段的毫秒数，最后是距进程启动的总耗时。 */
+    fun summary(processStart: Long, marks: List<Pair<String, Long>>): String {
+        if (marks.isEmpty()) return "无数据"
+        var prev = processStart
+        val parts = marks.map { (n, t) -> val d = (t - prev).coerceAtLeast(0); prev = t; "$n +${d}ms" }
+        return parts.joinToString(" · ") + " · 共 ${(marks.last().second - processStart).coerceAtLeast(0)}ms"
+    }
 }
 
 /** Extra request headers for images/videos from non-NAS sources (cloud drives). */
