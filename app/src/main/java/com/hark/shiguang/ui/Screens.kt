@@ -101,9 +101,58 @@ class TimelineSource {
     private var offsetInMonth = 0
     private var indexLoaded = false
     var done by mutableStateOf(false)
+    /**
+     * 1.7.24：现在显示的是上次保存的内容（还没拉到新的，或者拉失败了）。[offline] = 这次联网失败，首页显示离线提示。
+     * 缓存状态下不翻页（done = true），恢复联网后 [refresh] 整体换成新的。
+     */
+    var cached by mutableStateOf(false)
+        private set
+    var offline by mutableStateOf(false)
+        private set
 
+    /**
+     * 1.7.24 缓存优先：首次打开先显示上次的时间线（[TimelineCache]），后台照常拉新的；新的拉到了再整体换上，
+     * 拉不到就保留现在显示的（缓存或上次加载的）并标记离线。以前每次刷新先清空，断网就只剩「加载失败」，
+     * 下拉刷新时网格也会先闪成骨架。
+     */
     suspend fun refresh() {
-        photos.clear(); mi = 0; offsetInMonth = 0; indexLoaded = false; done = false; error = null; next()
+        if (loading) return
+        loading = true
+        try { refreshInner() } finally { loading = false }
+    }
+
+    private suspend fun refreshInner() {
+        val acct = com.hark.shiguang.NasAccounts.currentId
+        if (photos.isEmpty() && acct.isNotEmpty()) {
+            val snap = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.hark.shiguang.TimelineCache.load(acct) }
+            if (snap != null && snap.photos.isNotEmpty() && photos.isEmpty()) {
+                photos.addAll(snap.photos); days = snap.days; stats = snap.stats
+                months = snap.days.groupBy { "%04d:%02d".format(it.year, it.month) }.map { (k, v) -> k to v.sumOf { it.count } }.sortedByDescending { it.first }
+                total = snap.days.sumOf { it.count }
+                cached = true; done = true
+            }
+        }
+        val fresh = TimelineSource()
+        fresh.next()
+        if (fresh.error == null || photos.isEmpty()) {
+            adopt(fresh)
+            if (fresh.error == null && acct.isNotEmpty() && acct == com.hark.shiguang.NasAccounts.currentId) {
+                val snap = com.hark.shiguang.TimelineCache.Snapshot(days, stats, photos.take(com.hark.shiguang.TimelineCache.MAX), System.currentTimeMillis())
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.hark.shiguang.TimelineCache.save(acct, snap) }
+            }
+        } else {
+            // 拉新失败、手上有内容（缓存或上次加载的）：留着，标记离线，不翻页（翻页会和缓存重复）
+            offline = true; done = true; error = null
+            Diag.log("HOME", "timeline refresh failed, showing ${if (cached) "cached" else "previous"} ${photos.size} photos: ${fresh.error?.take(120)}")
+        }
+    }
+
+    /** 把另一份（刚联网加载的）状态整体换上来。 */
+    private fun adopt(o: TimelineSource) {
+        photos.clear(); photos.addAll(o.photos)
+        days = o.days; months = o.months; total = o.total; stats = o.stats
+        mi = o.mi; offsetInMonth = o.offsetInMonth; indexLoaded = o.indexLoaded; done = o.done; error = o.error
+        cached = false; offline = false
     }
 
     /** Keeps paging until a photo whose day starts with [prefix] ("YYYY" or "YYYY:MM") is loaded. */

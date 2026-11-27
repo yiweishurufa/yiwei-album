@@ -47,6 +47,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hark.shiguang.*
@@ -550,8 +551,12 @@ private fun PhotosTab() {
     val (mt, yt) = monthTitle(day)
     val (pc, vc) = tl.stats
     val sub = listOf(yt, if (filter == 2) (if (vc > 0) "${n(vc)} 个视频" else "") else if (pc > 0) "${n(pc)} 张照片" else "").filter { it.isNotEmpty() }.joinToString(" · ")
+    // 1.7.24：断网时先显示上次的内容；变成离线时提示一次
+    fun retry() { scope.launch { runCatching { Endpoint.autoSelect() }; tl.refresh() } }
+    val ctx = LocalContext.current
+    LaunchedEffect(tl, tl.offline) { if (tl.offline) toast(ctx, "连不上飞牛，先显示上次的内容") }
     // B7：飞牛照片页下拉刷新（重新拉时间线）
-    PullRefreshBox(enabled = !tl.loading, onRefresh = { scope.launch { runCatching { Endpoint.autoSelect() }; tl.refresh() } }) {
+    PullRefreshBox(enabled = !tl.loading, onRefresh = { retry() }) {
         val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
         when {
             tl.photos.isEmpty() && tl.loading -> Column { TopSwitch(); SkeletonGrid(4, 20.dp) }
@@ -575,7 +580,7 @@ private fun PhotosTab() {
             HomeState.immersive -> {
                 ImmersiveFeed(entries, tl.loading, onEnd = { scope.launch { tl.next() } }, onOpen = { Nav.push(Route.Viewer(shown, it)) },
                     state = feed, bottom = homeListBottom(),
-                    header = { PhotoHeader(memories, shown, mt, sub, { heroScroll(feed.firstVisibleItemIndex, feed.firstVisibleItemScrollOffset) }) })
+                    header = { PhotoHeader(memories, shown, mt, sub, { heroScroll(feed.firstVisibleItemIndex, feed.firstVisibleItemScrollOffset) }) { OfflineNote(tl) { retry() } } })
                 ChromeTitle(if (scrolled) "$mt · $yt".trim(' ', '·') else null)
             }
             else -> {
@@ -583,6 +588,7 @@ private fun PhotosTab() {
                     entries, cols, tl.loading, onEnd = { scope.launch { tl.next() } },
                     onOpen = { Nav.push(Route.Viewer(shown, it)) }, state = grid, top = 0.dp, bottom = homeListBottom(),
                     header = { PhotoHeader(memories, shown, mt, sub, { heroScroll(grid.firstVisibleItemIndex, grid.firstVisibleItemScrollOffset) }) {
+                        OfflineNote(tl) { retry() }
                         if (shown.isEmpty()) Text(if (tl.loading || !tl.done) "正在查找…" else if (filter == 2) "没有视频" else "没有实况照片",
                             style = MaterialTheme.typography.bodySmall, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(vertical = 60.dp))
                     } },
@@ -679,6 +685,26 @@ private fun DavPhotosTab() {
         }
         GlassRefreshIndicator(ptr, Modifier.align(Alignment.TopCenter))
         SelectionBar(Modifier.align(Alignment.BottomCenter), onChanged = { scope.launch { lib.scan(reason = "整理照片后刷新") } })
+    }
+}
+
+/**
+ * 1.7.24：首页显示的是上次保存的内容时的一行提示。联网失败（离线）时带「重试」；还在后台拉新的时只说「正在更新」。
+ * 读屏：一整行读出来，「重试」是按钮。
+ */
+@Composable
+private fun OfflineNote(tl: TimelineSource, onRetry: () -> Unit) {
+    val show = tl.offline || (tl.cached && tl.loading)
+    androidx.compose.animation.AnimatedVisibility(show, enter = androidx.compose.animation.fadeIn(Motion.enter()) + androidx.compose.animation.expandVertically(Motion.enter()),
+        exit = androidx.compose.animation.fadeOut(Motion.exit()) + androidx.compose.animation.shrinkVertically(Motion.exit())) {
+        Row(Modifier.padding(horizontal = Space.page, vertical = Space.xs).fillMaxWidth().clip(RoundedCornerShape(Radius.m))
+            .background(C.Text.copy(alpha = 0.06f)).padding(start = Space.m, end = Space.xs).heightIn(min = 44.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Icon(KI.info(), null, tint = C.Sub, modifier = Modifier.size(18.dp))
+            Text(if (tl.offline) "离线 · 显示的是上次的内容" else "正在更新…", color = C.Sub, style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f).padding(start = Space.s).semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite })
+            if (tl.offline) HeaderTextButton("重试", C.Accent, onRetry)
+        }
     }
 }
 

@@ -176,6 +176,8 @@ object Ops {
         // 全面审查 B5：顺带删掉这个账号在本机的索引、人脸、影视海报、音乐封面
         com.hark.shiguang.Movies.forget("fn:$target"); com.hark.shiguang.Music.forget("fn:$target")
         if (clearDisk) launch { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { java.io.File(App.ctx.filesDir, "fn/$target").deleteRecursively() } } }
+        // 1.7.24：账号移除后首页离线缓存（文件名、地点）也不再留着
+        else launch { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.hark.shiguang.TimelineCache.clear(target) } }
         HomeState.clear()
         if (com.hark.shiguang.NasAccounts.current == null) {
             Store.clear()
