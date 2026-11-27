@@ -65,8 +65,22 @@ object Selection {
     fun set(p: Photo, on: Boolean) { val k = key(p); if (on) items[k] = p else items.remove(k) }
     fun has(p: Photo) = items.containsKey(key(p))
     fun clear() { items.clear(); active = false }
-    fun start(p: Photo) { active = true; items[key(p)] = p }
+    fun start(p: Photo) { enter(); items[key(p)] = p }
+    /** 进入多选（还没选中任何一项，例如搜索页的「选择」按钮）。 */
+    fun enter() { if (!active) startedAt = android.os.SystemClock.uptimeMillis(); active = true }
     val list: List<Photo> get() = items.values.toList()
+    /** 1.7.26：进入多选的时刻。刚进入的 [Motion.BURST] 毫秒内出现的勾选圈弹入；之后滚进屏幕的格子直接显示（不在滚动时一格格弹）。 */
+    var startedAt = 0L
+        private set
+    /**
+     * U5（1.7.27）「全选本页」：当前页面网格里已经加载的全部照片。由 [PhotoGrid] 在组合时登记、离开时撤销，
+     * 多选栏据此显示「全选 / 全不选」。null = 这一页没有登记（例如搜索页自己有全选按钮）。
+     */
+    var page by mutableStateOf<(() -> List<Photo>)?>(null)
+    fun selectAll(on: Boolean) {
+        val all = page?.invoke().orEmpty()
+        if (on) all.forEach { items[key(it)] = it } else { all.forEach { items.remove(key(it)) }; if (items.isEmpty()) active = false }
+    }
 }
 
 /** Remembers on-screen bounds of thumbnails so the viewer can grow out of them. */
@@ -129,8 +143,14 @@ fun SelectableThumb(p: Photo, corner: Dp, onOpen: () -> Unit, small: Boolean = f
         }
         if (Selection.active) {
             val ringBg by androidx.compose.animation.animateColorAsState(if (sel) C.Accent else Color(0x33000000), Motion.state(), label = "ring")
+            // 1.7.26：刚进入多选时，屏幕上的勾选圈从 0.4 弹到原大（Motion.pop），之后新滚进来的格子不再弹
+            val ring = remember {
+                val fresh = !Motion.reduced && android.os.SystemClock.uptimeMillis() - Selection.startedAt < Motion.BURST
+                androidx.compose.animation.core.Animatable(if (fresh) 0.4f else 1f)
+            }
+            LaunchedEffect(Unit) { if (ring.value < 1f) ring.animateTo(1f, Motion.pop()) }
             Box(
-                Modifier.align(Alignment.TopEnd).padding(6.dp).size(22.dp).clip(CircleShape)
+                Modifier.align(Alignment.TopEnd).padding(6.dp).size(22.dp).graphicsLayer { scaleX = ring.value; scaleY = ring.value; alpha = ring.value.coerceIn(0f, 1f) }.clip(CircleShape)
                     .background(ringBg)
                     .border(1.5.dp, Color.White, CircleShape),
                 contentAlignment = Alignment.Center
@@ -162,7 +182,17 @@ fun PhotoGrid(
     onPinch: ((zoomIn: Boolean) -> Unit)? = null,
     scrubber: Boolean = true,
     onHeaderClick: ((Entry.Header) -> Unit)? = null,
+    pageSelectAll: Boolean = true,
 ) {
+    // U5：把这一页已加载的照片登记给多选栏的「全选」（同一时刻只认最后登记的那个网格；离开时只撤销自己的）
+    if (pageSelectAll) {
+        val cur by androidx.compose.runtime.rememberUpdatedState(entries)
+        val provider = remember { { cur.mapNotNull { (it as? Entry.Cell)?.photo } } }
+        DisposableEffect(provider) {
+            Selection.page = provider
+            onDispose { if (Selection.page === provider) Selection.page = null }
+        }
+    }
     val gap = if (columns >= 6) 1.dp else C.Gap
     val corner = if (columns >= 6) 0.dp else if (columns >= 5) minOf(C.Corner, 3.dp) else C.Corner
     val haptic = LocalHapticFeedback.current

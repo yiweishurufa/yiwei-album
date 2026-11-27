@@ -559,6 +559,14 @@ private fun SelectionBarContent(onChanged: () -> Unit) {
                 }
                 Text(" 项", color = C.Text, style = MaterialTheme.typography.titleMedium)
             }
+            // U5（1.7.27）全选本页：页面登记了网格时出现；全部选中后变「全不选」。按日期全选仍在每天的标题旁
+            val page = Selection.page
+            if (page != null) {
+                val allOn = remember(sel.size, page) { page().let { all -> all.isNotEmpty() && all.all { Selection.has(it) } } }
+                TextButton(onClick = { Selection.selectAll(!allOn) }) {
+                    Text(if (allOn) "全不选" else "全选", color = C.Accent, style = MaterialTheme.typography.labelLarge)
+                }
+            }
             TextButton(onClick = { Selection.clear() }) { Text("取消", color = C.Sub, style = MaterialTheme.typography.labelLarge) }
         }
         Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = Space.xs).padding(bottom = Space.s), horizontalArrangement = Arrangement.SpaceEvenly) {

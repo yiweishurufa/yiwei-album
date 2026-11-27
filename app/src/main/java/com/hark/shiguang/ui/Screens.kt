@@ -670,14 +670,14 @@ fun SearchScreen() {
                 res.isEmpty() -> StateMessage(KI.search(), "没有找到相关照片", SearchState.note.ifEmpty { "换个说法试试，比如「蓝天」「孩子在笑」。" })
                 // 1.7.24：搜索结果可以多选（长按一张或点「选择」），底部多选栏和首页一样：加入相册、下载、分享、删除…
                 else -> PhotoGrid(remember(res, SearchState.ocrPaths) { searchEntries(res, SearchState.ocrPaths) }, adaptiveCols(4), false, onEnd = {}, onOpen = { Nav.push(Route.Viewer(res, it)) }, top = 4.dp,
-                    bottom = if (Selection.active) 160.dp else 40.dp,
+                    bottom = if (Selection.active) 160.dp else 40.dp, pageSelectAll = false,   // 搜索页标题行自己有「全选」
                     header = { Column(Modifier.padding(start = 12.dp, end = 4.dp, bottom = 8.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("找到 ${num(res.size)} 项", color = C.Sub, style = MaterialTheme.typography.bodySmall.merge(Type.num), modifier = Modifier.weight(1f))
                             val allOn = Selection.active && res.all { Selection.has(it) }
                             HeaderTextButton(when { !Selection.active -> "选择"; allOn -> "全不选"; else -> "全选" }, C.Accent) {
                                 when {
-                                    !Selection.active -> Selection.active = true
+                                    !Selection.active -> Selection.enter()
                                     allOn -> Selection.clear()
                                     else -> res.forEach { Selection.set(it, true) }
                                 }
