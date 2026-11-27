@@ -31,7 +31,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -71,12 +70,17 @@ object Selection {
 
 /** Remembers on-screen bounds of thumbnails so the viewer can grow out of them. */
 object Hero {
-    val bounds = HashMap<String, Rect>()
+    /**
+     * 1.7.18：只存缩略图的 LayoutCoordinates 引用（滚动时每帧每格都会回调，存引用几乎不花钱），
+     * 真正要用的时候（点开 / 缩回）才算屏幕位置。以前每帧每格都 boundsInRoot() + 新建 Rect。
+     */
+    val coords = HashMap<String, androidx.compose.ui.layout.LayoutCoordinates>()
+    fun bounds(key: String): Rect? = coords[key]?.takeIf { it.isAttached }?.boundsInRoot()
     var from by mutableStateOf<Rect?>(null)
     var fromThumb by mutableStateOf<String?>(null)
     /** 大图已经自己缩回到缩略图位置（共享元素关闭）：这次出栈不再做页面级的淡出缩放。 */
     var closed = false
-    fun open(p: Photo) { from = bounds[p.key]; fromThumb = p.thumbS; closed = false }
+    fun open(p: Photo) { from = bounds(p.key); fromThumb = p.thumbS; closed = false }
 }
 
 // ============================================================ entries
@@ -107,14 +111,16 @@ fun buildEntriesBy(photos: List<Photo>, level: Level, grouped: Boolean): List<En
 
 @Composable
 fun SelectableThumb(p: Photo, corner: Dp, onOpen: () -> Unit, small: Boolean = false) {
-    val sel = Selection.active && Selection.has(p)
-    val s by animateFloatAsState(if (sel) 0.92f else 1f, Motion.state(), label = "sel")
+    // 1.7.18：选择集合任何一项变化都会通知所有读过它的格子；derivedStateOf 让只有「自己的选中状态真的变了」的格子重组（拖选时不再整屏重组）
+    val sel by remember(p.key) { derivedStateOf { Selection.active && Selection.has(p) } }
+    val s = animateFloatAsState(if (sel) 0.92f else 1f, Motion.state(), label = "sel")
     // 滚出屏幕 / 页面离开时把位置删掉：大图缩回时只落到真正在屏幕上的那一格
-    DisposableEffect(p.key) { onDispose { Hero.bounds.remove(p.key) } }
+    DisposableEffect(p.key) { onDispose { Hero.coords.remove(p.key) } }
     Box(
-        Modifier.aspectRatio(1f).onGloballyPositioned { Hero.bounds[p.key] = it.boundsInRoot() }
+        Modifier.aspectRatio(1f).onGloballyPositioned { Hero.coords[p.key] = it }
     ) {
-        Box(Modifier.fillMaxSize().scale(s)) {
+        // 选中缩放在绘制阶段读（graphicsLayer），动画每一帧不再触发重组
+        Box(Modifier.fillMaxSize().graphicsLayer { scaleX = s.value; scaleY = s.value }) {
             Thumb(p, if (sel) corner + 6.dp else corner, small = small) {
                 if (Selection.swallowTap) { Selection.swallowTap = false; return@Thumb }
                 if (Selection.active) Selection.toggle(p) else { Hero.open(p); onOpen() }

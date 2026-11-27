@@ -11,7 +11,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -57,9 +56,9 @@ fun ImmersiveFeed(
                         p.isLive -> "实况"
                         else -> null
                     }
-                    DisposableEffect(p.key) { onDispose { Hero.bounds.remove(p.key) } }
+                    DisposableEffect(p.key) { onDispose { Hero.coords.remove(p.key) } }
                     Box(Modifier.padding(horizontal = Space.s).fillMaxWidth().aspectRatio(ratio)
-                        .onGloballyPositioned { Hero.bounds[p.key] = it.boundsInRoot() }
+                        .onGloballyPositioned { Hero.coords[p.key] = it }
                         .clip(RoundedCornerShape(Radius.m)).background(C.Surface2)
                         .clickable(role = androidx.compose.ui.semantics.Role.Button, onClickLabel = "查看") { Hero.open(p); onOpen(e.index) }
                         .semantics { contentDescription = (if (p.isVideo) "视频" else if (p.isLive) "实况照片" else "照片") + (if (p.isVideo && p.duration > 0) "，时长 ${p.duration / 60} 分 ${p.duration % 60} 秒" else "") }) {

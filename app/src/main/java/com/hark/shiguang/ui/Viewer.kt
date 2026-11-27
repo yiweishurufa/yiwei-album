@@ -120,7 +120,7 @@ fun ViewerScreen(photosIn: List<Photo>, start: Int, slideshowStart: Boolean = fa
     fun requestClose() {
         if (closing) return
         val ph = photos.getOrNull(pager.currentPage)
-        val target = ph?.let { Hero.bounds[it.key] }?.takeIf { r -> r.width > 0f && r.bottom > 0f && r.top < H && r.right > 0f && r.left < W }
+        val target = ph?.let { Hero.bounds(it.key) }?.takeIf { r -> r.width > 0f && r.bottom > 0f && r.top < H && r.right > 0f && r.left < W }
         if (ph == null || target == null || Motion.reduced || ph.isVideo || zoomed) { Nav.pop(); return }
         val fit = fitRect(ph)
         val c = fit.center + drag.value

@@ -95,7 +95,8 @@ fun NetImage(url: String?, modifier: Modifier = Modifier, scale: ContentScale = 
     var failed by remember(url) { mutableStateOf(false) }
     Box(modifier.background(if (failed) C.Surface2 else C.Surface), contentAlignment = Alignment.Center) {
         coil.compose.AsyncImage(
-            model = ImageRequest.Builder(ctx).data(url).crossfade(crossfade).build(),
+            // 1.7.18：请求对象跟着 url 记住，滚动 / 选择引起的重组不再每次新建
+            model = remember(url, crossfade) { ImageRequest.Builder(ctx).data(url).crossfade(crossfade).build() },
             contentDescription = null, contentScale = scale, modifier = Modifier.matchParentSize(),
             onState = { failed = it is coil.compose.AsyncImagePainter.State.Error },
         )
