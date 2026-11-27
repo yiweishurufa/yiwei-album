@@ -17,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.liveRegion
@@ -99,6 +100,7 @@ fun SnackHost(bottom: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier
                 .clickable(onClickLabel = "关闭提示") { Snack.dismiss(m) }
                 .semantics { liveRegion = LiveRegionMode.Polite }
                 .heightIn(min = 48.dp).padding(start = Space.l, end = if (m.action != null) Space.xs else Space.l), verticalAlignment = Alignment.CenterVertically) {
+                if (SnackKind.isSuccess(m.text)) key(m.id) { SuccessCheck(fg) }
                 Text(m.text, color = fg, style = MaterialTheme.typography.bodyMedium.copy(color = fg), maxLines = 2, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false).padding(vertical = Space.m))
                 if (m.action != null) {
@@ -111,5 +113,40 @@ fun SnackHost(bottom: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier
                 }
             }
         }
+    }
+}
+
+/** 1.7.27：哪些提示算「做成了」（前面画一个勾）：以「已」开头、且不含失败 / 无法 / 未 这类字。纯函数，有单测。 */
+internal object SnackKind {
+    private val NEG = listOf("失败", "无法", "不能", "未", "错误")
+    fun isSuccess(text: String): Boolean = text.startsWith("已") && NEG.none { text.contains(it) }
+}
+
+/**
+ * 1.7.27 成功提示前的小勾：一笔画出来（约 0.36 秒，先短边后长边），画完轻弹一下。颜色与提示文字相同（反色胶囊上对比度足够）。
+ * 移除动画时直接显示完整的勾。读屏不读（文字已经说明）。
+ */
+@Composable
+private fun SuccessCheck(color: androidx.compose.ui.graphics.Color) {
+    val t = remember { androidx.compose.animation.core.Animatable(if (Motion.reduced) 1f else 0f) }
+    val pop = remember { androidx.compose.animation.core.Animatable(1f) }
+    LaunchedEffect(Unit) {
+        if (t.value >= 1f) return@LaunchedEffect
+        t.animateTo(1f, androidx.compose.animation.core.tween(360, delayMillis = 80, easing = Motion.EaseOut))
+        pop.snapTo(1.18f); pop.animateTo(1f, Motion.pop())
+    }
+    androidx.compose.foundation.Canvas(Modifier.padding(end = Space.s).size(18.dp).graphicsLayer { scaleX = pop.value; scaleY = pop.value }) {
+        val w = size.width; val h = size.height
+        val a = androidx.compose.ui.geometry.Offset(w * 0.16f, h * 0.54f)
+        val b = androidx.compose.ui.geometry.Offset(w * 0.40f, h * 0.76f)
+        val c = androidx.compose.ui.geometry.Offset(w * 0.86f, h * 0.26f)
+        val l1 = (b - a).getDistance(); val l2 = (c - b).getDistance()
+        val done = t.value * (l1 + l2)
+        val stroke = 2.2.dp.toPx()
+        val cap = androidx.compose.ui.graphics.StrokeCap.Round
+        if (done <= 0f) return@Canvas
+        val f1 = (done / l1).coerceAtMost(1f)
+        drawLine(color, a, a + (b - a) * f1, stroke, cap)
+        if (done > l1) drawLine(color, b, b + (c - b) * ((done - l1) / l2).coerceIn(0f, 1f), stroke, cap)
     }
 }

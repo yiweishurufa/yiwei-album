@@ -25,6 +25,8 @@ import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.composed
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -200,15 +202,37 @@ fun SkeletonGrid(columns: Int, top: Dp) {
 fun StateMessage(icon: ImageVector, title: String, sub: String, action: String? = null, action2: String? = null, onAction2: (() -> Unit)? = null, onAction: (() -> Unit)? = null) {
     // 1.6.0 空状态：不再是「彩色圆底 + 图标」的模板，只留一个安静的大线性图标 + 标题 + 一句话 + 一个主操作（unslop §3、craft-floor）
     Column(Modifier.fillMaxSize().padding(horizontal = 40.dp, vertical = Space.xxl), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Icon(icon, null, tint = C.Faint, modifier = Modifier.size(44.dp))
+        Icon(icon, null, tint = C.Faint, modifier = Modifier.size(44.dp).statePop())
         Spacer(Modifier.height(Space.l))
-        Text(title, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
-        if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodyMedium, color = C.Sub, textAlign = TextAlign.Center, modifier = Modifier.padding(top = Space.s).widthIn(max = 300.dp))
-        if (action != null && onAction != null) {
-            Spacer(Modifier.height(Space.xl))
-            GradientButton(action, Modifier.widthIn(min = 160.dp), onClick = onAction)
+        Column(Modifier.enterRise(1), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(title, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
+            if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodyMedium, color = C.Sub, textAlign = TextAlign.Center, modifier = Modifier.padding(top = Space.s).widthIn(max = 300.dp))
         }
-        if (action2 != null && onAction2 != null) QuietButton(action2, C.Accent, Modifier.padding(top = 6.dp), onAction2)
+        Column(Modifier.enterRise(2), horizontalAlignment = Alignment.CenterHorizontally) {
+            if (action != null && onAction != null) {
+                Spacer(Modifier.height(Space.xl))
+                GradientButton(action, Modifier.widthIn(min = 160.dp), onClick = onAction)
+            }
+            if (action2 != null && onAction2 != null) QuietButton(action2, C.Accent, Modifier.padding(top = 6.dp), onAction2)
+        }
+    }
+}
+
+/**
+ * 1.7.27 空状态 / 错误页的图标入场：从 0.6 倍、低一点的位置带一点回弹（Motion.pop）升到原位并淡入，只在第一次出现时播一次
+ * （同一页来回重组、旋转屏幕都不再播）。标题和按钮随后用 [enterRise] 错开上浮。移除动画时直接显示。
+ */
+fun Modifier.statePop(): Modifier = this.composed {
+    if (Motion.reduced) return@composed this
+    var played by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    if (played) return@composed this
+    val t = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(Unit) { t.animateTo(1f, Motion.pop()); played = true }
+    val rise = with(androidx.compose.ui.platform.LocalDensity.current) { 10.dp.toPx() }
+    graphicsLayer {
+        val v = t.value
+        val sc = 0.6f + 0.4f * v; scaleX = sc; scaleY = sc
+        alpha = v.coerceIn(0f, 1f); translationY = (1f - v) * rise
     }
 }
 
@@ -235,7 +259,7 @@ fun ErrorState(message: String?, onRetry: () -> Unit, onFix: ((com.hark.shiguang
     }
     Column(Modifier.fillMaxSize().padding(horizontal = 40.dp, vertical = Space.xxl), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         // 网络 / 其它错误用中性色（多半能重试）；密码、证书、空间这类要用户处理的用错误色
-        Icon(icon, null, tint = if (k == com.hark.shiguang.ErrorKind.OTHER || k == com.hark.shiguang.ErrorKind.NETWORK) C.Faint else C.Danger, modifier = Modifier.size(44.dp))
+        Icon(icon, null, tint = if (k == com.hark.shiguang.ErrorKind.OTHER || k == com.hark.shiguang.ErrorKind.NETWORK) C.Faint else C.Danger, modifier = Modifier.size(44.dp).statePop())
         Spacer(Modifier.height(Space.l))
         Text(k.title, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
         Text(k.hint, style = MaterialTheme.typography.bodyMedium, color = C.Sub, textAlign = TextAlign.Center, modifier = Modifier.padding(top = Space.s).widthIn(max = 300.dp))
