@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.animation.fadeIn
@@ -422,6 +423,27 @@ private fun Scrubber(entries: List<Entry>, state: LazyGridState, headerOffset: I
 
 data class YearCard(val year: Int, val count: Int, val cover: Photo?)
 
+/** 1.7.23：从已加载的照片按年分组（WebDAV「年」视图用；飞牛按服务器的月统计算）。照片按时间倒序，取每年第一张当封面。 */
+internal fun yearCardsOf(photos: List<Photo>): List<YearCard> {
+    val out = LinkedHashMap<Int, YearCard>()
+    photos.forEach { p ->
+        val y = p.day.take(4).toIntOrNull() ?: return@forEach
+        val c = out[y]
+        out[y] = if (c == null) YearCard(y, 1, p) else c.copy(count = c.count + 1, cover = c.cover ?: p)
+    }
+    return out.values.sortedByDescending { it.year }
+}
+
+/**
+ * 1.7.23：在「月」层级的条目里，[year] 年第一个月的位置（指向月份标题，让标题露出来；找不到返回 -1）。
+ * 以前飞牛用「全部照片」重算下标，没扣掉隐藏 / 隔离的照片，有隐藏照片时会落到别的月份。
+ */
+internal fun firstIndexOfYear(entries: List<Entry>, year: Int): Int {
+    val i = entries.indexOfFirst { it is Entry.Cell && it.photo.day.take(4) == "$year" }
+    if (i < 0) return -1
+    return if (i > 0 && entries[i - 1] is Entry.Header) i - 1 else i
+}
+
 @Composable
 fun YearGrid(cards: List<YearCard>, top: Dp, onPick: (Int) -> Unit, onPinch: (Boolean) -> Unit) {
     androidx.compose.foundation.lazy.LazyColumn(
@@ -443,13 +465,15 @@ fun YearGrid(cards: List<YearCard>, top: Dp, onPick: (Int) -> Unit, onPinch: (Bo
     ) {
         items(cards.size, key = { cards[it].year }) { i ->
             val c = cards[i]
+            // 1.7.23：整卡是按钮（以前用 detectTapGestures，读屏点不到、没有按压反馈）；读屏读「2024 年，1234 项，按钮」
             Box(
                 Modifier.fillMaxWidth().aspectRatio(1.9f).clip(RoundedCornerShape(C.Card)).background(C.Surface2)
-                    .pointerInput(c.year) { detectTapGestures { onPick(c.year) } }
+                    .clickable(role = androidx.compose.ui.semantics.Role.Button, onClickLabel = "查看这一年") { onPick(c.year) }
+                    .semantics(mergeDescendants = true) { contentDescription = "${c.year} 年，${c.count} 项" }
             ) {
                 if (c.cover != null) NetImage(c.cover.thumbM, Modifier.fillMaxSize())
                 Box(Modifier.matchParentSize().background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to Color(0xB3000000))))
-                Column(Modifier.align(Alignment.BottomStart).padding(18.dp)) {
+                Column(Modifier.align(Alignment.BottomStart).padding(18.dp).clearAndSetSemantics { }) {
                     Text("${c.year}", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.SemiBold, fontFamily = C.P.display)
                     Text("${c.count} 项", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
                 }

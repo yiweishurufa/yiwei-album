@@ -565,7 +565,8 @@ private fun PhotosTab() {
                     setLevel(Level.MONTH)
                     scope.launch {
                         tl.ensureLoaded("%04d".format(y))
-                        val idx = buildEntriesBy(tl.photos.filter { HomeState.accepts(it, filter) }, Level.MONTH, true).indexOfFirst { it is Entry.Cell && it.photo.day.startsWith("$y") }
+                        // 1.7.23：按网格实际显示的照片（已去掉隐藏 / 隔离的）算位置，落在该年第一个月的标题上（+1 是顶部大图）
+                        val idx = firstIndexOfYear(buildEntriesBy(shown, Level.MONTH, true), y)
                         if (idx >= 0) grid.scrollToItem(idx + 1)
                     }
                 }, onPinch = ::pinch)
@@ -626,8 +627,10 @@ private fun DavPhotosTab() {
     }
     LaunchedEffect(lib) { lib.ensure(); if (!ScanPolicy.paused) { Analyzer.start(ctx, lib, false); if (AiRunner.on) AiRunner.startDav(ctx, lib) } }
     val grid = rememberMemGrid("dav-photos-" + lib.accountId)
+    // 1.7.23：WebDAV 也能从「月」再捏合到「年」，点年份卡片直达那一年（与飞牛一致）；打开 App 时不停在「年」
     var level by remember { mutableStateOf(Level.values()[Store.timelineLevel.coerceIn(1, 4)]) }
-    fun pinch(zoomIn: Boolean) { val i = level.ordinal + if (zoomIn) 1 else -1; if (i in 1..4) { level = Level.values()[i]; Store.timelineLevel = i } }
+    fun setLevel(l: Level) { level = l; Store.timelineLevel = l.ordinal }
+    fun pinch(zoomIn: Boolean) { val i = level.ordinal + if (zoomIn) 1 else -1; if (i in 0..4) setLevel(Level.values()[i]) }
     val stills by remember(lib) { derivedStateOf { MediaIsolation.version; Hidden.visible(MediaIsolation.davVisible(lib.accountId, lib.photos.filter { !it.isVideo })) } }
     val filter = HomeState.photoFilter
     val shown by remember(lib, filter) { derivedStateOf { if (filter == 1) stills else { MediaIsolation.version; Hidden.visible(MediaIsolation.davVisible(lib.accountId, lib.photos.filter { HomeState.accepts(it, filter) })) } } }
@@ -650,6 +653,18 @@ private fun DavPhotosTab() {
                 if (filter == 2) StateMessage(LI.videos(), "没有视频", "")
                 else if (filter == 3 && stills.isNotEmpty()) StateMessage(KI.live(), "没有实况照片", "实况和动态照片分析完后会出现在这里。")
                 else StateMessage(LI.photos(), "没有找到照片", "把照片放进这个 WebDAV 后下拉刷新。", "重新扫描") { scope.launch { lib.scan(full = true, reason = "重新扫描（全量）", user = true) } } } }
+            level == Level.YEAR -> {
+                val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+                val cards = remember(shown) { yearCardsOf(shown) }
+                YearGrid(cards, statusTop + 60.dp, onPick = { y ->
+                    setLevel(Level.MONTH)
+                    scope.launch {
+                        val idx = firstIndexOfYear(buildEntriesBy(shown, Level.MONTH, true), y)
+                        if (idx >= 0) grid.scrollToItem(idx + 1)
+                    }
+                }, onPinch = ::pinch)
+                ChromeTitle("按年")
+            }
             HomeState.immersive -> {
                 ImmersiveFeed(entries, lib.scanning, onEnd = {}, onOpen = { Nav.push(Route.Viewer(shown, it)) },
                     state = feed, bottom = homeListBottom(),
