@@ -60,6 +60,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.hark.shiguang.ViewerZoom
+import com.hark.shiguang.CameraName
 import coil.request.ImageRequest
 import com.hark.shiguang.Nav
 import androidx.compose.runtime.toMutableStateList
@@ -564,7 +565,7 @@ private fun InfoSheet(p: Photo, onDismiss: () -> Unit) {
                 modifier = Modifier.padding(top = 2.dp))
             Text(p.fileName, style = MaterialTheme.typography.bodySmall, color = C.Sub, modifier = Modifier.padding(top = 2.dp))
             Spacer(Modifier.height(Space.l))
-            val camera = listOf(p.make, p.model).filter { it.isNotBlank() }.joinToString(" ").trim()
+            val camera = CameraName.of(p.make, p.model)   // 1.7.23：「Xiaomi Xiaomi 13」→「Xiaomi 13」
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(Radius.l)).background(sheetFill).padding(Space.l)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(36.dp).clip(CircleShape).background(C.Accent.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {

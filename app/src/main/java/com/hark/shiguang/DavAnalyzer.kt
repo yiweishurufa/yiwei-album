@@ -152,7 +152,7 @@ object Analyzer {
 
     private fun camOf(ex: ExifInterface): String {
         val make = ex.getAttribute(ExifInterface.TAG_MAKE)?.trim().orEmpty(); val model = ex.getAttribute(ExifInterface.TAG_MODEL)?.trim().orEmpty()
-        return if (model.startsWith(make, true)) model else "$make $model".trim()
+        return CameraName.of(make, model)  // 1.7.23：去重厂商名 / 公司后缀
     }
 
     /** H8: retrievers that hit the timeout and are still stuck in native code (they only hold their own thread). */

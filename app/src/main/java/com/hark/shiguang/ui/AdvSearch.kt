@@ -20,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hark.shiguang.Dav
+import com.hark.shiguang.CameraName
 import com.hark.shiguang.Hidden
 import com.hark.shiguang.data.Photo
 import com.hark.shiguang.data.Repo
@@ -44,7 +45,7 @@ object AdvFilter {
 
     fun cameraOf(p: Photo): String =
         if (p.isCloud) Dav.lib(p.source).meta[p.cloudPath]?.cam.orEmpty()
-        else (if (p.model.startsWith(p.make, true)) p.model else "${p.make} ${p.model}").trim()
+        else CameraName.of(p.make, p.model)
 
     fun isScreenshot(p: Photo): Boolean {
         val n = p.fileName.lowercase(); val path = p.path.lowercase()
