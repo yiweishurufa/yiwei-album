@@ -156,7 +156,7 @@ suspend fun WebDavSource.scanIncremental(
                 // that silently changes files without changing the folder tag is caught. The subdir-count
                 // check stays: a leaf that gained sub folders is never skipped.
                 val spotCheck = (dir.hashCode() and 0x7fffffff) % 20 == 0
-                if (spotCheck) Diag.log("DAV", "spot-check leaf $dir (tag unchanged, listing anyway)")
+                if (spotCheck && prev != null && prev.tag == tag) Diag.log("DAV", "spot-check leaf $dir (tag unchanged, listing anyway)")
                 if (prev != null && DavScanRules.canSkipLeaf(full, spotCheck, tag, prev, byDir.containsKey(dir))) {
                     // unchanged leaf: no request
                     out.dirs[dir] = prev
