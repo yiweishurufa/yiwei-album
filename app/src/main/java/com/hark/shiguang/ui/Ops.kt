@@ -235,6 +235,32 @@ object Ops {
         }
     }
 
+    /**
+     * F9（1.7.26）大图「⋯ → 复制」：把这张照片的屏幕清晰度版本（大图页正在显示的中图，多半已在缓存里，不用再下原图）
+     * 存成 JPEG 放进剪贴板（content:// 地址，系统会授权给粘贴的 App）。Android 13+ 系统会自己弹出剪贴板预览，
+     * 所以只在 12 及以下给一句「已复制」。视频不支持（按钮不显示）。
+     */
+    fun copyImage(ctx: Context, p: Photo) {
+        if (p.isVideo) return
+        launch {
+            runCatching {
+                val f = withContext(Dispatchers.IO) {
+                    val req = coil.request.ImageRequest.Builder(ctx).data(p.thumbM.ifEmpty { p.original }).allowHardware(false).build()
+                    val r = coil.Coil.imageLoader(ctx).execute(req)
+                    val bmp = ((r as? coil.request.SuccessResult)?.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap
+                        ?: error("图片还没加载出来")
+                    val dir = File(ctx.cacheDir, "clip").apply { deleteRecursively(); mkdirs() }
+                    val base = p.fileName.substringBeforeLast('.').ifEmpty { "${p.id}" }.replace('/', '_')
+                    File(dir, "$base.jpg").also { out -> out.outputStream().use { o -> bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 92, o) } }
+                }
+                val uri = FileProvider.getUriForFile(ctx, ctx.packageName + ".files", f)
+                val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                cm.setPrimaryClip(android.content.ClipData.newUri(ctx.contentResolver, p.fileName.ifEmpty { "照片" }, uri))
+                if (android.os.Build.VERSION.SDK_INT < 33) toast(ctx, "已复制图片，可以到聊天里粘贴")
+            }.onFailure { Diag.e("COPY", it); failToast(ctx, it, "复制失败") }
+        }
+    }
+
     private suspend fun fetchTo(p: Photo, dir: File): File {
         val (url, headers) = if (p.isCloud) {
             val src = CloudPhotos.source(p.source) ?: error("网盘账户已移除")

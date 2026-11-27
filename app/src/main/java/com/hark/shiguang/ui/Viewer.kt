@@ -8,7 +8,6 @@ import androidx.compose.animation.core.VectorConverter
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.heading
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
@@ -249,8 +248,10 @@ fun ViewerScreen(photosIn: List<Photo>, start: Int, slideshowStart: Boolean = fa
                 GlassSurface(Modifier.widthIn(max = 420.dp).fillMaxWidth(), shape = CircleShape, backdrop = backdrop, shadow = 0.dp, onDark = true) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = Space.s, vertical = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                         if (p != null) {
-                            if (!p.isCloud) key(favTick, p.id) {
-                                BarAction(if (p.collected) KI.heartSolid() else KI.heart(), if (p.collected) "取消收藏" else "收藏", if (p.collected) C.Accent else Color.White) {
+                            if (!p.isCloud) key(p.id) {
+                                // 读 favTick 让这里在切换收藏后重组（p.collected 是普通字段）；1.7.26 起不再用 key(favTick) 重建，心形的弹跳动画才不会被打断
+                                val on = favTick.let { p.collected }
+                                FavAction(on) {
                                     val target = !p.collected
                                     p.collected = target; favTick++
                                     scope.launch { runCatching { Repo.setCollect(p.id, target) }.onFailure { p.collected = !target; favTick++ } }
@@ -308,6 +309,8 @@ private fun MoreSheet(p: Photo, onInfo: () -> Unit, onDismiss: () -> Unit, onHid
                 if (edit) SheetTile(KI.sliders(), "编辑", Modifier.weight(1f)) { onDismiss(); Nav.push(com.hark.shiguang.Route.X(ExtScreen.Edit(p))) }
                 if (live) SheetTile(KI.live(), "存实况视频", Modifier.weight(1f)) { onDismiss(); Ops.downloadLiveVideo(ctx, p) }
             }
+            // F9（1.7.26）：复制图片到剪贴板（视频不支持）；放在第二行，上面一行已经 3–4 块，再挤就太窄
+            if (!p.isVideo) SheetLine(KI.copy(), "复制图片", Modifier.padding(top = Space.s)) { onDismiss(); Ops.copyImage(ctx, p) }
             val hid = remember(p.key) { com.hark.shiguang.Hidden.has(p) }
             SheetLine(KI.eye(), if (hid) "取消隐藏" else "隐藏", Modifier.padding(top = Space.s)) {
                 com.hark.shiguang.Hidden.hide(listOf(p), !hid); toast(ctx, if (hid) "已取消隐藏" else "已隐藏"); onHidden()
@@ -361,6 +364,45 @@ fun AddToAlbumFlow(p: Photo, onDone: () -> Unit) {
 
 /** 大图上的按钮规格（照片上的半透明黑圆钮）。 */
 
+/**
+ * 1.7.26 收藏心形：点亮时心形先缩一下再弹大回位（Motion.pop），周围迸出一圈 8 颗强调色小圆点（约 0.5 秒，绘制阶段画，不重组），并轻震一下；
+ * 取消收藏只换图标颜色。移除动画时只换图标和颜色。读屏仍是「收藏 / 取消收藏」按钮。
+ */
+@Composable
+private fun FavAction(on: Boolean, onClick: () -> Unit) {
+    val view = androidx.compose.ui.platform.LocalView.current
+    val pop = remember { Animatable(1f) }
+    val burst = remember { Animatable(0f) }
+    var last by remember { mutableStateOf(on) }
+    LaunchedEffect(on) {
+        if (on == last) return@LaunchedEffect
+        last = on
+        if (!on || Motion.reduced) return@LaunchedEffect
+        Haptics.confirm(view)
+        launch { burst.snapTo(0f); burst.animateTo(1f, androidx.compose.animation.core.tween(Motion.BURST, easing = Motion.EaseOut)); burst.snapTo(0f) }
+        pop.snapTo(0.7f); pop.animateTo(1f, Motion.pop())
+    }
+    val accent = C.Accent
+    Box(contentAlignment = Alignment.Center) {
+        androidx.compose.foundation.Canvas(Modifier.size(Space.touch)) {
+            val t = burst.value
+            if (t <= 0f || t >= 1f) return@Canvas
+            val r0 = 12.dp.toPx(); val r1 = 22.dp.toPx()
+            val rad = r0 + (r1 - r0) * t
+            val dot = 2.6.dp.toPx() * (1f - t * 0.7f)
+            val a = (if (t < 0.6f) 1f else 1f - (t - 0.6f) / 0.4f).coerceIn(0f, 1f)
+            for (k in 0 until 8) {
+                val ang = Math.toRadians(k * 45.0 - 90.0 + 22.5 * (k % 2))
+                val rr = if (k % 2 == 0) rad else rad * 0.82f
+                drawCircle(accent.copy(alpha = a), dot, Offset(center.x + (kotlin.math.cos(ang) * rr).toFloat(), center.y + (kotlin.math.sin(ang) * rr).toFloat()))
+            }
+        }
+        Box(Modifier.graphicsLayer { scaleX = pop.value; scaleY = pop.value }) {
+            BarAction(if (on) KI.heartSolid() else KI.heart(), if (on) "取消收藏" else "收藏", if (on) C.Accent else Color.White, onClick)
+        }
+    }
+}
+
 @Composable
 private fun BarAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, tint: Color, onClick: () -> Unit) {
     val c by androidx.compose.animation.animateColorAsState(tint, Motion.state(), label = "barTint")
@@ -410,7 +452,7 @@ private fun ZoomImage(p: Photo, onTap: () -> Unit, onZoom: (Boolean) -> Unit, on
                             val from = scale; val to = if (scale > 1.05f) 1f else ViewerZoom.doubleTap(maxScale())
                             val focus = Offset(pt.x - size.width / 2f, pt.y - size.height / 2f)
                             anim.snapTo(0f)
-                            anim.animateTo(1f, spring(stiffness = 500f)) {
+                            anim.animateTo(1f, Motion.settle()) {
                                 scale = from + (to - from) * value
                                 offset = if (to == 1f) offset * (1 - value) else clamp(-focus * (scale - 1), scale)
                             }
