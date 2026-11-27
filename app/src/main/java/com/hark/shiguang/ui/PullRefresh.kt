@@ -21,6 +21,9 @@ import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,6 +57,13 @@ fun PullRefreshBox(enabled: Boolean, onRefresh: () -> Unit, content: @Composable
     if (ptr.isRefreshing) {
         LaunchedEffect(Unit) { refresh(); delay(700); ptr.endRefresh() }
     }
+    // 1.7.26 F8：点当前底栏 Tab 时页面已经在顶部 → 当作下拉刷新（等一帧，让同一页的 ScrollToTopOnTab 先报告要不要滚动）
+    val tick = ScrollTop.tick
+    LaunchedEffect(tick) {
+        if (tick == 0) return@LaunchedEffect
+        androidx.compose.runtime.withFrameNanos { }
+        if (ScrollTop.moved != tick && canRefresh && !ptr.isRefreshing) ptr.startRefresh()
+    }
     Box(Modifier.fillMaxSize().nestedScroll(ptr.nestedScrollConnection)) {
         content()
         GlassRefreshIndicator(ptr, Modifier.align(Alignment.TopCenter))
@@ -76,7 +86,23 @@ fun GlassRefreshIndicator(state: PullToRefreshState, modifier: Modifier = Modifi
         val inf = rememberInfiniteTransition(label = "ptrSpin")
         inf.animateFloat(0f, 360f, infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Restart), label = "ptrSpinA").value
     } else 0f
-    val visible = refreshing || state.verticalOffset > 0.5f
+    // 1.7.26：拉过阈值的一瞬间轻震一下（像 iOS「再松手就刷新」）；刷新结束时圆片轻弹放大再缩小淡出，而不是直接被收走
+    val view = androidx.compose.ui.platform.LocalView.current
+    val armedNow = !refreshing && state.progress >= 1f
+    LaunchedEffect(armedNow) { if (armedNow) Haptics.tick(view) }
+    val done = remember { androidx.compose.animation.core.Animatable(0f) }
+    var wasRefreshing by remember { mutableStateOf(false) }
+    LaunchedEffect(refreshing) {
+        if (refreshing) { done.snapTo(0f); wasRefreshing = true; return@LaunchedEffect }
+        if (!wasRefreshing) return@LaunchedEffect
+        wasRefreshing = false
+        if (Motion.reduced) return@LaunchedEffect
+        done.snapTo(0.001f)
+        done.animateTo(1f, tween(Motion.BURST - 140, easing = Motion.EaseOut))
+        done.snapTo(0f)
+    }
+    val finishing by remember { androidx.compose.runtime.derivedStateOf { done.value > 0f } }
+    val visible = refreshing || (!finishing && state.verticalOffset > 0.5f)
     val accent = C.Accent
     val track = C.Text.copy(alpha = 0.12f)
     Box(
@@ -84,6 +110,15 @@ fun GlassRefreshIndicator(state: PullToRefreshState, modifier: Modifier = Modifi
             .graphicsLayer {
                 val p = state.progress.coerceIn(0f, 1.5f)
                 // 落点：状态栏下方 8dp + 下拉距离；收起时向上退出屏幕
+                val d = done.value
+                if (d > 0f) {
+                    // 收尾：停在刷新时的位置，先弹到 1.12 再缩到 0.6、同时淡出（约 380 ms）
+                    translationY = statusTop + gapPx
+                    val s = RefreshFinish.scale(d)
+                    scaleX = s; scaleY = s
+                    alpha = RefreshFinish.alpha(d)
+                    return@graphicsLayer
+                }
                 translationY = statusTop + gapPx + state.verticalOffset - size.height
                 alpha = if (refreshing) 1f else (p * 1.8f).coerceIn(0f, 1f)
                 if (!Motion.reduced && !refreshing) { val s = 0.7f + 0.3f * p.coerceAtMost(1f); scaleX = s; scaleY = s }
@@ -97,7 +132,7 @@ fun GlassRefreshIndicator(state: PullToRefreshState, modifier: Modifier = Modifi
         GlassSurface(Modifier.size(44.dp), shape = CircleShape, shadow = 8.dp) {
             Canvas(Modifier.size(44.dp)) {
                 val p = state.progress.coerceIn(0f, 1f)
-                val armed = refreshing || state.progress >= 1f
+                val armed = refreshing || finishing || state.progress >= 1f
                 val w = (if (armed) 2.6.dp else 2.dp).toPx()
                 val r = 11.dp.toPx()
                 val tl = Offset(center.x - r, center.y - r)
@@ -105,6 +140,7 @@ fun GlassRefreshIndicator(state: PullToRefreshState, modifier: Modifier = Modifi
                 drawArc(track, 0f, 360f, false, tl, sz, style = Stroke(w))
                 val sweep = when {
                     // 刷新中：弧长在 100°–220° 之间呼吸，同时整体旋转
+                    finishing -> 360f   // 收尾时弧合成一整圈：「好了」
                     refreshing -> if (Motion.reduced) 270f else 160f + 60f * kotlin.math.sin(Math.toRadians(spin * 2.0)).toFloat()
                     else -> 300f * p
                 }
@@ -113,4 +149,11 @@ fun GlassRefreshIndicator(state: PullToRefreshState, modifier: Modifier = Modifi
             }
         }
     }
+}
+
+/** 1.7.26 下拉刷新收尾曲线（[d] 0→1）：前 35% 从 1 弹到 1.12，之后缩到 0.6 并淡出。纯函数，有单测。 */
+internal object RefreshFinish {
+    private const val PEAK = 0.35f
+    fun scale(d: Float): Float { val x = d.coerceIn(0f, 1f); return if (x < PEAK) 1f + 0.12f * (x / PEAK) else 1.12f - 0.52f * ((x - PEAK) / (1f - PEAK)) }
+    fun alpha(d: Float): Float { val x = d.coerceIn(0f, 1f); return if (x < PEAK) 1f else 1f - (x - PEAK) / (1f - PEAK) }
 }

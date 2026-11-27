@@ -11,6 +11,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -82,18 +83,29 @@ fun rememberMemList(key: String): LazyListState {
     return s
 }
 
-/** Double tap on the current bottom tab bumps [tick]; the visible grid scrolls to the top. */
+/**
+ * 点当前底栏 Tab：[tick] +1，当前页的列表 / 网格回到顶部（1.7.26 起单击即可，以前要双击）。
+ * F8（1.7.26，iOS / Google 相册同款）：如果这一页本来就在顶部，就改为刷新——列表里谁需要滚动就把 [moved] 记成这次的 tick，
+ * 下一帧 [PullRefreshBox] 看到这次没人滚动，就像下拉一样触发刷新（只有带下拉刷新的页面会刷新）。
+ */
 object ScrollTop {
     var tick by mutableIntStateOf(0)
-    var lastTab = -1
-    var lastAt = 0L
+    /** 最近一次「需要滚动」的 tick；等于当前 tick 说明这次是回顶部，不是刷新。 */
+    @Volatile var moved = 0
 }
 
-/** Scrolls a list/grid to the top whenever the current tab is double-tapped. */
+/** Scrolls a list/grid to the top whenever the current tab is tapped again (or refreshes when already there, see [ScrollTop]). */
 @Composable
 fun ScrollToTopOnTab(grid: LazyGridState? = null, list: LazyListState? = null) {
     val t = ScrollTop.tick
-    LaunchedEffect(t) { if (t > 0) { grid?.animateScrollToItem(0); list?.animateScrollToItem(0) } }
+    LaunchedEffect(t) {
+        if (t == 0) return@LaunchedEffect
+        val g = grid?.let { it.firstVisibleItemIndex > 0 || it.firstVisibleItemScrollOffset > 0 } == true
+        val l = list?.let { it.firstVisibleItemIndex > 0 || it.firstVisibleItemScrollOffset > 0 } == true
+        if (g || l) ScrollTop.moved = t
+        if (g) grid?.animateScrollToItem(0)
+        if (l) list?.animateScrollToItem(0)
+    }
 }
 
 /** The viewer reports the last photo looked at; grids scroll to it on return. */
@@ -219,10 +231,8 @@ internal fun homeTabKey(tab: Int, videosInPhotos: Boolean, source: String): Stri
     "tab$tab" + (if (tab == 0 && videosInPhotos) "v" else "") + "-" + source
 
 private fun onTabTap(i: Int, sel: Boolean) {
-    val now = System.currentTimeMillis()
-    // double tap on the tab you are on: back to the top
-    if (sel && ScrollTop.lastTab == i && now - ScrollTop.lastAt < 450) ScrollTop.tick++
-    ScrollTop.lastTab = i; ScrollTop.lastAt = now
+    // 1.7.26：点你正在看的 Tab → 回到顶部；已经在顶部 → 刷新（见 ScrollTop）
+    if (sel) ScrollTop.tick++
     HomeState.tab = if (i == 0 && HomeState.tab == 2) 2 else i
 }
 
@@ -269,14 +279,24 @@ private fun BottomBar(modifier: Modifier, backdrop: GlassBackdrop) {
                         val sel = k == selIdx
                         val lift by animateFloatAsState(if (sel) 1f else 0f, Motion.liquid(), label = "tabLift")
                         val icon by androidx.compose.animation.animateColorAsState(if (sel) C.Accent else C.OnGlassSub, Motion.state(), label = "tabIcon")
+                        // 1.7.26：按下图标微缩（跟手），选中的一瞬间图标轻弹一下（Motion.pop，只在「变成选中」时播，第一次组合不播）
+                        val ix = remember { MutableInteractionSource() }
+                        val pressed by ix.collectIsPressedAsState()
+                        val press by animateFloatAsState(if (pressed) Motion.PRESS_SCALE_ICON else 1f, if (pressed) Motion.pressIn() else Motion.pressOut(), label = "tabPress")
+                        val pop = remember { androidx.compose.animation.core.Animatable(1f) }
+                        var wasSel by remember { mutableStateOf(sel) }
+                        LaunchedEffect(sel) {
+                            if (sel && !wasSel && !Motion.reduced) { pop.snapTo(0.8f); pop.animateTo(1f, Motion.pop()) }
+                            wasSel = sel
+                        }
                         Box(Modifier.weight(1f).fillMaxHeight().clip(CircleShape)
-                            .clickable(remember { MutableInteractionSource() }, null, role = androidx.compose.ui.semantics.Role.Tab) { if (!sel) Haptics.tick(view); onTabTap(t.index, sel) }
+                            .clickable(ix, null, role = androidx.compose.ui.semantics.Role.Tab) { if (!sel) Haptics.tick(view); onTabTap(t.index, sel) }
                             .semantics { selected = sel }, contentAlignment = Alignment.Center) {
                             val up = with(androidx.compose.ui.platform.LocalDensity.current) { 7.dp.toPx() }
                             if (Glass.on) Box(Modifier.size(44.dp).graphicsLayer { translationY = -up * lift; alpha = lift.coerceIn(0f, 1f) }
                                 .background(Brush.radialGradient(listOf(C.Accent.copy(alpha = if (C.P.dark) 0.55f else 0.35f), C.Accent.copy(alpha = 0f)))))
                             Icon(if (sel) t.filled() else t.icon(false), null, tint = icon,
-                                modifier = Modifier.size(25.dp).graphicsLayer { translationY = -up * lift; val sc = 1f + 0.08f * lift; scaleX = sc; scaleY = sc })
+                                modifier = Modifier.size(25.dp).graphicsLayer { translationY = -up * lift; val sc = (1f + 0.08f * lift) * press * pop.value; scaleX = sc; scaleY = sc })
                             Text(t.title, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = C.OnGlass, maxLines = 1,
                                 modifier = Modifier.graphicsLayer { alpha = lift.coerceIn(0f, 1f); translationY = up * 2.3f + (1f - lift) * up })
                         }
