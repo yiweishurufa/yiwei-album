@@ -616,27 +616,28 @@ fun SearchScreen() {
         val p = SearchState.pending
         if (p != null) { SearchState.pending = null; run(p) } else if (SearchState.results == null) fr.requestFocus()
     }
+    // 1.7.24：多选只属于这一页，离开时清掉（不把搜索结果里的选择带回首页）
+    DisposableEffect(Unit) { onDispose { if (Selection.active) Selection.clear() } }
     Column(Modifier.fillMaxSize().appBackground().statusBarsPadding()) {
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Row(
-                Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(16.dp)).background(C.Surface2).padding(horizontal = 14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(KI.search(), null, tint = C.Sub, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(10.dp))
-                Box(Modifier.weight(1f)) {
-                    if (SearchState.query.isEmpty()) Text("用一句话描述你要找的照片", color = C.Faint, fontSize = 15.sp)
+        // 1.7.24 v2：与影视搜索 / 全局搜索同款——44dp 返回圆钮 + 内凹搜索槽（高 48）+ 有字时出现的清除圆钮（以前是灰底条 + 右侧「取消」文字）
+        Row(Modifier.fillMaxWidth().padding(start = Space.s + 2.dp, end = Space.page, top = Space.s, bottom = Space.s), verticalAlignment = Alignment.CenterVertically) {
+            RoundIcon(KI.back(), size = 44.dp, desc = "返回") { Nav.pop() }
+            Row(Modifier.padding(start = Space.m).weight(1f).height(48.dp).skeuoInset(RoundedCornerShape(Radius.m)).padding(start = Space.m), verticalAlignment = Alignment.CenterVertically) {
+                Icon(KI.search(), null, tint = C.Sub, modifier = Modifier.size(18.dp))
+                Box(Modifier.weight(1f).padding(start = Space.s), contentAlignment = Alignment.CenterStart) {
+                    if (SearchState.query.isEmpty()) Text("用一句话描述你要找的照片", color = C.Sub, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     BasicTextField(
                         SearchState.query, { SearchState.query = it; if (it.isBlank() && !AdvFilter.active) SearchState.reset() }, singleLine = true,
-                        textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp, color = C.Text), cursorBrush = SolidColor(C.Accent),
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = C.Text), cursorBrush = SolidColor(C.Accent),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { run(SearchState.query) }),
-                        modifier = Modifier.fillMaxWidth().focusRequester(fr)
+                        modifier = Modifier.fillMaxWidth().focusRequester(fr).semantics { contentDescription = "用一句话描述你要找的照片" }
                     )
                 }
-                if (SearchState.query.isNotEmpty()) Icon(KI.clear(), "清除搜索", tint = C.Faint, modifier = Modifier.size(18.dp).clickable { SearchState.query = ""; SearchState.reset(); fr.requestFocus() })
+                AnimatedVisibility(SearchState.query.isNotEmpty(), enter = fadeIn(Motion.state()) + androidx.compose.animation.scaleIn(Motion.move(), 0.6f),
+                    exit = fadeOut(Motion.exit()) + androidx.compose.animation.scaleOut(Motion.exit(), 0.6f)) {
+                    IconButton(onClick = { SearchState.query = ""; SearchState.reset(); fr.requestFocus() }) { Icon(KI.close(), "清除搜索", tint = C.Sub, modifier = Modifier.size(18.dp)) }
+                }
             }
-            Spacer(Modifier.width(12.dp))
-            Text("取消", color = C.Text, fontSize = 15.sp, modifier = Modifier.clickable { Nav.pop() })
         }
         var filterSheet by remember { mutableStateOf(false) }
         FilterChipsRow(onOpen = { filterSheet = true }, onClear = { AdvFilter.reset(); run(SearchState.query) })
@@ -647,38 +648,45 @@ fun SearchScreen() {
                 SearchState.loading -> SkeletonGrid(4, 0.dp)
                 // 1.7.17：搜索失败（多半是网络 / AI 接口）给「重试」，按原词再搜一次
                 SearchState.error != null -> ErrorState(SearchState.error, onRetry = { run(SearchState.query) })
-                res == null -> Column(Modifier.padding(18.dp)) {
+                // 1.7.24 v2：最近搜索是一排胶囊 +「清空」（与影视搜索 / 全局搜索一致），分区标题走 ContentHeader
+                res == null -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 40.dp)) {
                     if (history.isNotEmpty()) {
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text("最近搜索", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                            Text("清空", color = C.Sub, fontSize = 13.sp, modifier = Modifier.clickable { com.hark.shiguang.SearchHistory.clear(); history = emptyList() }.padding(6.dp))
+                        ContentHeader("最近搜索", extra = "清空" to { com.hark.shiguang.SearchHistory.clear(); history = emptyList() })
+                        LazyRow(contentPadding = PaddingValues(horizontal = Space.page), horizontalArrangement = Arrangement.spacedBy(Space.s)) {
+                            items(history) { h -> ChoiceChip(h, false, role = androidx.compose.ui.semantics.Role.Button) { run(h) } }
                         }
-                        history.forEach { h ->
-                            Row(Modifier.fillMaxWidth().clickable { run(h) }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(KI.search(), null, tint = C.Faint, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(12.dp)); Text(h, fontSize = 15.sp)
-                            }
-                        }
-                        Spacer(Modifier.height(14.dp))
                     }
-                    Text("试试这样搜", style = MaterialTheme.typography.titleSmall)
-                    Spacer(Modifier.height(12.dp))
+                    ContentHeader("试试这样搜")
                     listOf("海边的日落", "在吃火锅", "穿红衣服的小孩", "下雪的街道", "猫在睡觉", "生日蛋糕").forEach { s ->
-                        Row(Modifier.fillMaxWidth().clickable { run(s) }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.fillMaxWidth().heightIn(min = Space.row).clickable(role = androidx.compose.ui.semantics.Role.Button) { run(s) }.padding(horizontal = Space.page),
+                            verticalAlignment = Alignment.CenterVertically) {
                             Icon(KI.discover(), null, tint = C.Gold, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(12.dp)); Text(s, fontSize = 15.sp)
+                            Text(s, color = C.Text, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = Space.m))
                         }
                     }
-                    Spacer(Modifier.height(10.dp))
-                    Text(if (HomeState.source == "dav") "WebDAV 照片按 AI 整理出的标签和描述来搜，整理越多越准。" + (if (com.hark.shiguang.OcrRunner.enabled) "也能直接搜照片里的文字，比如店名、票据上的字。" else "") else "需要在飞牛相册中开启 AI 智能识别，才能用自然语言搜索。", style = MaterialTheme.typography.bodySmall)
+                    Text(if (HomeState.source == "dav") "WebDAV 照片按 AI 整理出的标签和描述来搜，整理越多越准。" + (if (com.hark.shiguang.OcrRunner.enabled) "也能直接搜照片里的文字，比如店名、票据上的字。" else "") else "需要在飞牛相册中开启 AI 智能识别，才能用自然语言搜索。",
+                        color = C.Sub, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = Space.page, vertical = Space.m))
                 }
                 res.isEmpty() -> StateMessage(KI.search(), "没有找到相关照片", SearchState.note.ifEmpty { "换个说法试试，比如「蓝天」「孩子在笑」。" })
-                else -> PhotoGrid(remember(res, SearchState.ocrPaths) { searchEntries(res, SearchState.ocrPaths) }, adaptiveCols(4), false, onEnd = {}, onOpen = { Nav.push(Route.Viewer(res, it)) }, top = 4.dp, bottom = 40.dp,
-                    header = { Column(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp)) {
-                        Text("找到 ${num(res.size)} 项", style = MaterialTheme.typography.bodySmall)
-                        if (SearchState.note.isNotEmpty()) Text(SearchState.note, color = C.Gold, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
+                // 1.7.24：搜索结果可以多选（长按一张或点「选择」），底部多选栏和首页一样：加入相册、下载、分享、删除…
+                else -> PhotoGrid(remember(res, SearchState.ocrPaths) { searchEntries(res, SearchState.ocrPaths) }, adaptiveCols(4), false, onEnd = {}, onOpen = { Nav.push(Route.Viewer(res, it)) }, top = 4.dp,
+                    bottom = if (Selection.active) 160.dp else 40.dp,
+                    header = { Column(Modifier.padding(start = 12.dp, end = 4.dp, bottom = 8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("找到 ${num(res.size)} 项", color = C.Sub, style = MaterialTheme.typography.bodySmall.merge(Type.num), modifier = Modifier.weight(1f))
+                            val allOn = Selection.active && res.all { Selection.has(it) }
+                            HeaderTextButton(when { !Selection.active -> "选择"; allOn -> "全不选"; else -> "全选" }, C.Accent) {
+                                when {
+                                    !Selection.active -> Selection.active = true
+                                    allOn -> Selection.clear()
+                                    else -> res.forEach { Selection.set(it, true) }
+                                }
+                            }
+                        }
+                        if (SearchState.note.isNotEmpty()) Text(SearchState.note, color = C.Gold, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 2.dp, end = 8.dp))
                     } })
             }
+            SelectionBar(Modifier.align(Alignment.BottomCenter), onChanged = { run(SearchState.query) })
         }
     }
 }
