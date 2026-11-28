@@ -55,6 +55,9 @@ import kotlin.math.roundToInt
 
 // ============================================================ selection & hero
 
+/** 1.7.30：当前组合所在的页面（Nav 栈条目 key；首页 = [Selection.HOME_PAGE]），由 MainActivity 提供。 */
+val LocalPageKey = androidx.compose.runtime.staticCompositionLocalOf { Selection.HOME_PAGE }
+
 object Selection {
     val items = mutableStateMapOf<String, Photo>()
     var active by mutableStateOf(false)
@@ -76,7 +79,19 @@ object Selection {
      * U5（1.7.27）「全选本页」：当前页面网格里已经加载的全部照片。由 [PhotoGrid] 在组合时登记、离开时撤销，
      * 多选栏据此显示「全选 / 全不选」。null = 这一页没有登记（例如搜索页自己有全选按钮）。
      */
-    var page by mutableStateOf<(() -> List<Photo>)?>(null)
+    /**
+     * 1.7.30：登记带「属于哪一页」（[LocalPageKey]），多选栏只认最上面那一页自己的网格。以前首页网格一直在下面登记着：
+     * 在搜索页、大文件页、相册列表页这类没有登记网格的页面里多选时，多选栏的「全选」选的是首页已加载的照片；
+     * 上层页面离开时又把登记清成 null，回到首页后「全选」消失。
+     */
+    val page: (() -> List<Photo>)? get() {
+        val top = if (com.hark.shiguang.Nav.stack.size <= 1) HOME_PAGE else com.hark.shiguang.Nav.topKey()
+        return pages.lastOrNull { it.first == top }?.second
+    }
+    const val HOME_PAGE = "home"
+    private val pages = androidx.compose.runtime.mutableStateListOf<Pair<String, () -> List<Photo>>>()
+    fun register(owner: String, p: () -> List<Photo>) { pages.removeAll { it.second === p }; pages.add(owner to p) }
+    fun unregister(p: () -> List<Photo>) { pages.removeAll { it.second === p } }
     fun selectAll(on: Boolean) {
         val all = page?.invoke().orEmpty()
         if (on) all.forEach { items[key(it)] = it } else { all.forEach { items.remove(key(it)) }; if (items.isEmpty()) active = false }
@@ -188,9 +203,10 @@ fun PhotoGrid(
     if (pageSelectAll) {
         val cur by androidx.compose.runtime.rememberUpdatedState(entries)
         val provider = remember { { cur.mapNotNull { (it as? Entry.Cell)?.photo } } }
-        DisposableEffect(provider) {
-            Selection.page = provider
-            onDispose { if (Selection.page === provider) Selection.page = null }
+        val owner = LocalPageKey.current
+        DisposableEffect(provider, owner) {
+            Selection.register(owner, provider)
+            onDispose { Selection.unregister(provider) }
         }
     }
     val gap = if (columns >= 6) 1.dp else C.Gap

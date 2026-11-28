@@ -311,6 +311,7 @@ class MainActivity : ComponentActivity() {
                     val r = e.route
                     if (r == Route.Home) return@AnimatedContent
                     pageStates.SaveableStateProvider(e.key) {
+                    androidx.compose.runtime.CompositionLocalProvider(com.hark.shiguang.ui.LocalPageKey provides e.key) {
                     // 1.6.2：直接压在首页上的大图用透明底（ViewerScreen 自己画随下拉变淡的黑底），下拉时能看见下面的网格
                     val overHome = remember(e.key) { r is Route.Viewer && Nav.stack.size == 2 && Nav.stack.firstOrNull() == Route.Home }
                     Surface(color = if (overHome) Color.Transparent else if (r is Route.Viewer || r is Route.MoviePlay || (r is Route.X && r.screen.dark)) Color.Black else C.Bg, modifier = Modifier.fillMaxSize()) {
@@ -350,6 +351,7 @@ class MainActivity : ComponentActivity() {
                             is Route.X -> ExtHost(r.screen)
                             Route.Home -> {}
                         }
+                    }
                     }
                     }
                 }
