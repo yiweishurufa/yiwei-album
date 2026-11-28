@@ -97,7 +97,7 @@ fun MusicTab() {
     // version cancels the older computation, so a scan's ~1/s updates never queue up on the main thread.
     val view by produceState<MusicView?>(null, all, q, MusicUi.sub, MusicUi.sort) {
         val sub = MusicUi.sub; val sort = MusicUi.sort
-        value = withContext(Dispatchers.Default) { buildMusicView(all, q, sub, sort) }
+        value = withContext(Dispatchers.Default) { buildMusicView(all, q, sub, sort, lib::artistPhoto) }
     }
     val shown = view?.shown ?: emptyList()
     val albums = view?.albums ?: emptyList()
@@ -108,7 +108,8 @@ fun MusicTab() {
     val albumCols = adaptiveCols(2)
     // B7：下拉刷新 = 后台增量扫描（没变的文件夹不重列），有缓存时只显示一行「正在更新」
     PullRefreshBox(enabled = lib.ready && lib.dirs.isNotEmpty() && !lib.scanning, onRefresh = { lib.scan(quiet = true, manual = true, reason = "下拉刷新"); ScanService.ensure(App.ctx) }) {
-    LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 170.dp)) {
+    // 1.7.33：底部留白和照片页同一套（底栏 + 系统导航条 + 迷你播放条），以前固定 170dp，三键导航 + 迷你播放条时最后一行露不全
+    LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = homeListBottom())) {
         item { MediaHeader("音乐", SearchScope.None, lib.scanning, lib.dirs.isNotEmpty(), "重新扫描音乐") { lib.scan(); ScanService.ensure(App.ctx) } }
         // 1.7.10：读库时显示和歌曲行同形的骨架（以前是居中转圈）
         if (!lib.ready) { item { ListRowSkeleton(9, 48.dp) }; return@LazyColumn }
@@ -141,8 +142,15 @@ fun MusicTab() {
         if (q.isEmpty()) item { MarkCards(lib) }
         item {
             Row(Modifier.padding(start = Space.page, end = Space.s, top = Space.s, bottom = Space.xs), verticalAlignment = Alignment.CenterVertically) {
-                Segmented(listOf("歌曲 ${shown.size.takeIf { it > 0 } ?: ""}".trim(), "专辑", "歌手", "文件夹"), MusicUi.sub) { MusicUi.sub = it; Store.putStr("music.sub", "$it") }
-                Spacer(Modifier.weight(1f))
+                // 1.7.33：分段里不再带数量（「歌曲 123」在大字号下放不下，空格后面的数字被折到第二行看不见，「歌曲」两个字也偏到左边），
+                // 数量挪到下面一行
+                Segmented(listOf("歌曲", "专辑", "歌手", "文件夹"), MusicUi.sub) { MusicUi.sub = it; Store.putStr("music.sub", "$it") }
+            }
+        }
+        if (shown.isNotEmpty()) item {
+            Row(Modifier.padding(start = Space.page + Space.xs, end = Space.s).heightIn(min = 40.dp), verticalAlignment = Alignment.CenterVertically) {
+                val n = when (MusicUi.sub) { 1 -> "${albums.size} 张专辑"; 2 -> "${artists.size} 位歌手"; 3 -> "${folders.size} 个文件夹"; else -> "${shown.size} 首" }
+                Text(n, color = C.Sub, style = MaterialTheme.typography.labelMedium.merge(Type.num), modifier = Modifier.weight(1f))
                 if (MusicUi.sub == 0) MusicSortMenu()
             }
         }
@@ -170,7 +178,7 @@ fun MusicTab() {
                     repeat(albumCols - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
-            2 -> items(artists, key = { "a" + it.key }) { g -> GroupRow(g, round = true) { Nav.push(Route.MusicList("artist", g.key, g.title)) } }
+            2 -> items(artists, key = { "a" + it.key }) { g -> GroupRow(g, round = true) { Nav.push(Route.MusicList("artist", g.title, g.title)) } }
             else -> items(folders, key = { "f" + it.key }) { g -> GroupRow(g) { Nav.push(Route.MusicList("folder", g.key, g.title)) } }
         }
     }
@@ -182,22 +190,33 @@ data class MusicGroup(val kind: String, val key: String, val title: String, val 
 /** H10: what the 音乐 page shows, computed off the main thread. Groups are built only for the open sub-page. */
 class MusicView(val shown: List<Track>, val albums: List<MusicGroup>, val artists: List<MusicGroup>, val folders: List<MusicGroup>)
 
-private fun buildMusicView(all: List<Track>, q: String, sub: Int, sort: Int = 0): MusicView {
+private fun buildMusicView(all: List<Track>, q: String, sub: Int, sort: Int = 0, artistPhoto: (String) -> String? = { null }): MusicView {
     val col = java.text.Collator.getInstance(java.util.Locale.CHINA)   // own instance: Collator is not thread-safe
+    // 1.7.33：先按整个曲库算规范歌手名（「01张杰」…→「张杰」、「08素颜」对调），下面的显示 / 分组都用它
+    runCatching { MusicNames.update(all) }
     fun <T> sortByKey(l: List<T>, s: (T) -> String): List<T> = l.map { col.getCollationKey(s(it)) to it }.sortedBy { it.first }.map { it.second }
-    val base = if (q.isEmpty()) all else all.filter { t -> listOf(t.displayTitle, t.title, t.artist, t.album, t.albumArtist, t.name).any { it.contains(q, true) } }
+    /** 1.7.33：名字排序：汉字按拼音、字母按字母；开头的符号不算（「.K」排在 K）；只有数字 / 符号的排后面；未知歌手 / 未知专辑最后。 */
+    fun <T> sortByName(l: List<T>, s: (T) -> String): List<T> =
+        l.map { Triple(MusicArtist.sortRank(s(it)), col.getCollationKey(MusicArtist.sortText(s(it))), it) }
+            .sortedWith(compareBy<Triple<Int, java.text.CollationKey, T>> { it.first }.thenBy { it.second }).map { it.third }
+    val base = if (q.isEmpty()) all else all.filter { t -> listOf(t.displayTitle, t.title, t.artist, t.displayArtist, t.album, t.albumArtist, t.name).any { it.contains(q, true) } }
     val byTitle = sortByKey(base) { it.displayTitle }
     val shown = when (sort) {
         1 -> byTitle.sortedByDescending { it.mtime }
-        2 -> sortByKey(byTitle) { it.displayArtist }
+        2 -> sortByName(byTitle) { it.displayArtist }
         3 -> byTitle.sortedByDescending { it.durationMs }
         else -> byTitle
     }
-    val albums = if (sub != 1) emptyList() else sortByKey(shown.groupBy { it.albumKey }.map { (k, l) -> MusicGroup("album", k, l.first().displayAlbum, l.first().albumArtist.ifBlank { l.first().displayArtist }, l.firstNotNullOfOrNull { it.artPath }, l.size) }) { it.title }
+    val albums = if (sub != 1) emptyList() else sortByName(shown.groupBy { it.albumKey }.map { (k, l) ->
+        // 同一张专辑里各曲的写法可能不同（「(2002)时光·漫步」「时光·漫步」）：显示出现最多的那个
+        val name = l.groupingBy { it.displayAlbum }.eachCount().maxByOrNull { it.value }!!.key
+        MusicGroup("album", k, name, l.first().displayAlbumArtist, l.firstNotNullOfOrNull { it.artPath }, l.size)
+    }) { it.title }
     val artists = if (sub != 2) emptyList() else {
-        val m = LinkedHashMap<String, MutableList<Track>>()
-        shown.forEach { t -> t.artists.forEach { a -> m.getOrPut(a) { ArrayList() }.add(t) } }
-        sortByKey(m.map { (a, l) -> MusicGroup("artist", a, a, "", l.firstNotNullOfOrNull { it.artPath }, l.size) }) { it.title }
+        // 1.7.33：按规范键合并（大小写 / 空格 / 装饰符不同算同一位），头像优先用歌手照片，没有再用他某首歌的封面
+        val m = LinkedHashMap<String, Pair<String, MutableList<Track>>>()
+        shown.forEach { t -> t.artists.forEach { a -> m.getOrPut(MusicArtist.key(a)) { a to ArrayList() }.second.add(t) } }
+        sortByName(m.map { (k, p) -> MusicGroup("artist", k, p.first, "", artistPhoto(p.first) ?: p.second.firstNotNullOfOrNull { it.artPath }, p.second.size) }) { it.title }
     }
     val folders = if (sub != 3) emptyList() else sortByKey(shown.groupBy { it.folder }.map { (f, l) -> MusicGroup("folder", f, f.trimEnd('/').substringAfterLast('/').removePrefix("fm:").ifEmpty { f }, f.removePrefix("fm:"), l.firstNotNullOfOrNull { it.artPath }, l.size) }) { it.title }
     return MusicView(shown, albums, artists, folders)
@@ -214,7 +233,8 @@ private fun MarkCards(lib: MusicLib) {
 
 @Composable
 private fun MarkCard(icon: ImageVector, title: String, count: Int, modifier: Modifier, onClick: () -> Unit) {
-    val countText = if (count > 0) fmtCount(count) else "还没有"
+    // 1.7.33：以前没有时显示「还没有」（半句话），改成和另一张卡一样的「0 首」
+    val countText = fmtCount(count)
     Row(modifier.heightIn(min = 60.dp).pressScale(Motion.PRESS_SCALE_LARGE).skeuoCard(RoundedCornerShape(Radius.l)).clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
         .semantics(mergeDescendants = true) { contentDescription = "$title，$countText" }.padding(horizontal = Space.l),
         verticalAlignment = Alignment.CenterVertically) {
@@ -288,7 +308,7 @@ private fun TrackRow(t: Track, sourceKey: String, showNo: Boolean = false, index
     if (manual) MusicManualSearch(t, sourceKey) { manual = false }
     Box {
         // 1.6.6：正在播放的这首 = 封面上压一层三根跳动小柱（只在真在播时动）+ 标题强调色；时长等宽数字次要色
-        val sub = listOf(t.displayArtist, t.album).filter { it.isNotBlank() }.joinToString(" · ")
+        val sub = listOf(t.displayArtist, t.cleanAlbum).filter { it.isNotBlank() }.joinToString(" · ")
         Row(Modifier.fillMaxWidth().enterRise(index).combinedClickable(onClick = onClick, onLongClick = { menu = true }, onLongClickLabel = "更多操作")
             .semantics(mergeDescendants = true) {
                 contentDescription = listOfNotNull(t.displayTitle, sub.takeIf { it.isNotEmpty() }, if (fav) "已喜欢" else null, if (playing) "正在播放" else null,
@@ -346,7 +366,7 @@ private fun TrackRow(t: Track, sourceKey: String, showNo: Boolean = false, index
                 }
             })
             DropdownMenuItem(text = { Text("手动搜索封面和歌词", color = C.Text) }, onClick = { menu = false; manual = true })
-            if (t.album.isNotBlank()) DropdownMenuItem(text = { Text("查看专辑", color = C.Text) }, onClick = { menu = false; Nav.push(Route.MusicList("album", t.albumKey, t.displayAlbum)) })
+            if (t.cleanAlbum.isNotBlank()) DropdownMenuItem(text = { Text("查看专辑", color = C.Text) }, onClick = { menu = false; Nav.push(Route.MusicList("album", t.albumKey, t.displayAlbum)) })
             DropdownMenuItem(text = { Text("查看歌手", color = C.Text) }, onClick = { menu = false; Nav.push(Route.MusicList("artist", t.artists.first(), t.artists.first())) })
             DropdownMenuItem(text = { Column { Text("文件信息", color = C.Text); if (t.displayTitle != t.title && t.title.isNotBlank()) Text("原标题：${t.title}", color = C.Sub, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis); Text("${t.ext.uppercase()} · ${t.codec} · ${"%.1f".format(t.size / 1048576.0)} MB", color = C.Sub, fontSize = 11.sp)
                 Text(t.path.removePrefix("fm:"), color = C.Sub, fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis) } }, onClick = { menu = false })
@@ -372,12 +392,26 @@ private fun GroupRow(g: MusicGroup, round: Boolean = false, onClick: () -> Unit)
     Row(Modifier.fillMaxWidth().clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick).semantics(mergeDescendants = true) { contentDescription = "${g.title}，$sub" }
         .heightIn(min = Space.row + Space.xs).padding(horizontal = Space.page, vertical = Space.xs + 2.dp), verticalAlignment = Alignment.CenterVertically) {
         if (g.kind == "folder") Box(Modifier.size(48.dp).clip(RoundedCornerShape(Radius.s)).background(C.Surface2), contentAlignment = Alignment.Center) { Icon(KI.folder(), null, tint = C.Sub, modifier = Modifier.size(22.dp)) }
+        else if (g.kind == "artist" && g.art == null) ArtistAvatar(g.title, 48.dp)
         else MusicArt(g.art, Modifier.size(48.dp), corner = if (round) 24.dp else Radius.s)
         Column(Modifier.weight(1f).padding(start = Space.m)) {
             Text(g.title, color = C.Text, style = MaterialTheme.typography.bodyLarge, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(sub, color = C.Sub, style = MaterialTheme.typography.bodySmall.merge(Type.num), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Icon(KI.chevron(), null, tint = C.Faint, modifier = Modifier.size(18.dp))
+    }
+}
+
+/**
+ * 1.7.33：没有照片的歌手统一占位：圆形中性底 + 名字的第一个字（开头的符号跳过，「.K」显示 K）；未知歌手用人像图标。
+ * 以前是和歌曲一样的音符方块，歌手页里有照片的、没照片的混在一起很乱。只是装饰，读屏读整行（行上已合并语义）。
+ */
+@Composable
+private fun ArtistAvatar(name: String, size: androidx.compose.ui.unit.Dp) {
+    Box(Modifier.size(size).clip(CircleShape).background(C.Surface2), contentAlignment = Alignment.Center) {
+        val ch = MusicArtist.sortText(name).takeIf { name != MusicArtist.UNKNOWN }?.let { t -> t.codePointAt(0).let { String(Character.toChars(it)) } }?.uppercase()
+        if (ch.isNullOrBlank()) Icon(KI.person(), null, tint = C.Faint, modifier = Modifier.size(size * 0.46f))
+        else Text(ch, color = C.Sub, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
     }
 }
 
@@ -394,11 +428,13 @@ fun MusicListScreen(r: Route.MusicList) {
         when (r.kind) {
             "fav", "recent" -> { val byId = lib.tracks.associateBy { it.id }; marks.orEmpty().mapNotNull { byId[it] } }
             "album" -> lib.tracks.filter { it.albumKey == r.key }.sortedWith(compareBy({ it.discNo }, { it.trackNo }, { it.name }))
-            "artist" -> lib.tracks.filter { r.key in it.artists }.sortedWith(Comparator<Track> { a, b -> collator.compare(a.album, b.album) }.thenBy { it.discNo }.thenBy { it.trackNo })
+            // 1.7.33：按规范键比（「01张杰」「张杰」「张 杰」都算张杰）
+            "artist" -> MusicArtist.key(r.key).let { k -> lib.tracks.filter { t -> t.artists.any { MusicArtist.key(it) == k } } }.sortedWith(Comparator<Track> { a, b -> collator.compare(a.album, b.album) }.thenBy { it.discNo }.thenBy { it.trackNo })
             else -> lib.tracks.filter { it.folder == r.key }.sortedWith(compareBy({ it.discNo }, { it.trackNo }, { it.name }))
         }
     }
-    val art = tracks.firstNotNullOfOrNull { it.artPath }
+    // 1.7.33：歌手页头像优先用歌手照片
+    val art = (if (r.kind == "artist") lib.artistPhoto(r.title) else null) ?: tracks.firstNotNullOfOrNull { it.artPath }
     val first = tracks.firstOrNull()
     Column(Modifier.fillMaxSize().appBackground()) {
         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 110.dp)) {
@@ -416,11 +452,12 @@ fun MusicListScreen(r: Route.MusicList) {
                     if (r.kind == "fav" || r.kind == "recent" || r.kind == "folder") Box(Modifier.size(116.dp).skeuoCard(RoundedCornerShape(Radius.l), color = C.Surface2), contentAlignment = Alignment.Center) {
                         Icon(when (r.kind) { "fav" -> KI.heart(); "recent" -> KI.history(); else -> KI.folder() }, null, tint = C.Sub, modifier = Modifier.size(40.dp))
                     }
+                    else if (r.kind == "artist" && art == null) ArtistAvatar(r.title, 116.dp)
                     else MusicArt(art, Modifier.size(116.dp), corner = if (r.kind == "artist") 58.dp else Radius.l, lifted = true)
                     Column(Modifier.padding(start = Space.l).weight(1f)) {
                         Text(r.title, style = MaterialTheme.typography.headlineMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.semantics { heading() })
                         val sub = when (r.kind) {
-                            "album" -> listOfNotNull(first?.albumArtist?.ifBlank { first.displayArtist }, first?.year?.takeIf { it > 0 }?.toString()).joinToString(" · ")
+                            "album" -> listOfNotNull(first?.displayAlbumArtist, first?.year?.takeIf { it > 0 }?.toString()).joinToString(" · ")
                             "folder" -> r.key.removePrefix("fm:")
                             "fav" -> "在正在播放页点 ♡，或长按歌曲加入"
                             "recent" -> "最近听过的 ${MusicMarks.RECENT_MAX} 首以内"
@@ -472,7 +509,7 @@ fun MiniPlayer(modifier: Modifier = Modifier, backdrop: GlassBackdrop? = null) {
     AmbientFrom(t?.artPath?.let { "file://$it" })
     val press = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
     val shape = RoundedCornerShape(Radius.l)
-    Column(modifier.padding(horizontal = 14.dp).fillMaxWidth().glassPress(press, 0.5f).glass(shape, backdrop, shadow = 14.dp).clip(shape)
+    Column(modifier.padding(horizontal = 14.dp).fillMaxWidth().glassPress(press, 0.5f).glass(shape, backdrop, shadow = 14.dp, solid = true).clip(shape)
         .clickable(press, null, onClickLabel = "打开正在播放") { Nav.push(Route.MusicNowPlaying) }
         .semantics(mergeDescendants = false) { contentDescription = "正在播放：$title" + (t?.displayArtist?.takeIf { it.isNotBlank() }?.let { "，$it" } ?: "") }) {
         Row(Modifier.padding(start = Space.s, end = Space.xs, top = Space.s, bottom = Space.s - 2.dp), verticalAlignment = Alignment.CenterVertically) {

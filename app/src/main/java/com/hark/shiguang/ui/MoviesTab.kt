@@ -93,7 +93,7 @@ fun MoviesTab() {
     // B7：下拉刷新 = 后台增量扫描（和右上角刷新一样只扫新文件），有缓存时只显示一行「正在更新」
     PullRefreshBox(enabled = lib.ready && lib.dirs.isNotEmpty() && !lib.scanning, onRefresh = { lib.scan(quiet = true, manual = true, reason = "下拉刷新"); ScanService.ensure(App.ctx) }) {
     LazyVerticalGrid(GridCells.Adaptive(110.dp), state = grid, modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = Space.page, end = Space.page, bottom = 120.dp + miniPlayerPad),
+        contentPadding = PaddingValues(start = Space.page, end = Space.page, bottom = homeListBottom() + 30.dp),
         horizontalArrangement = Arrangement.spacedBy(PosterSize.gap), verticalArrangement = Arrangement.spacedBy(Space.l + Space.xs)) {
         item(span = { GridItemSpan(maxLineSpan) }) {
             Box(Modifier.bleed(Space.page)) { MediaHeader("影视", SearchScope.Media, lib.scanning, lib.dirs.isNotEmpty(), "重新扫描影视") { lib.scan(); ScanService.ensure(App.ctx) } }
@@ -204,7 +204,9 @@ fun Segmented(items: List<String>, sel: Int, onPick: (Int) -> Unit) {
             val fg by androidx.compose.animation.animateColorAsState(if (on) C.Accent else C.Sub, Motion.state(), label = "segFg")
             Box(Modifier.weight(1f).clip(CircleShape).clickable(role = androidx.compose.ui.semantics.Role.Tab) { if (!on) Haptics.tick(view); onPick(i) }
                 .semantics { selected = on }.heightIn(min = 36.dp).padding(horizontal = 18.dp, vertical = 7.dp), contentAlignment = Alignment.Center) {
-                Text(t, color = fg, style = MaterialTheme.typography.labelLarge, fontWeight = if (on) FontWeight.Bold else FontWeight.Medium, maxLines = 1)
+                // 1.7.33：放不下时显示省略号（以前会在空格处折行，第二行被裁掉，「歌曲 123」只剩「歌曲」且偏左）
+                Text(t, color = fg, style = MaterialTheme.typography.labelLarge, fontWeight = if (on) FontWeight.Bold else FontWeight.Medium, maxLines = 1,
+                    softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             }
         }
     }

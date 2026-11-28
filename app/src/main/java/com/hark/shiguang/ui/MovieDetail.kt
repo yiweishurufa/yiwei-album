@@ -612,8 +612,8 @@ fun MediaSettingsScreen() {
                         "不会改写文件里已有的信息，封面和歌词只存在本机。翻唱歌曲不会用原唱的专辑封面。") { online = it; MusicPrefs.online = it }
                 Div()
                 // 1.7.32：歌名规范显示（只改显示，不改文件）
-                ToggleRow(LI.music(), "自动规范歌名", on = cleanNames,
-                    info = "显示歌名时去掉音轨号（如「07-」）、文件名里的「歌手 - 」和 [FLAC]、320k、无损、官方版之类的杂项；Live、伴奏、Remix 等版本说明会保留。只改显示，不改文件。") {
+                ToggleRow(LI.music(), "自动规范歌名和歌手", on = cleanNames,
+                    info = "显示歌名时去掉音轨号（如「07-」）、文件名里的「歌手 - 」和 [FLAC]、320k、无损、官方版之类的杂项；Live、伴奏、Remix 等版本说明会保留。歌手和专辑名去掉编号、年份和首尾符号（「01张杰」→「张杰」），「未知艺术家」统一显示为未知歌手并排在最后。只改显示，不改文件。") {
                     cleanNames = it; MusicPrefs.cleanNames = it
                 }
             }

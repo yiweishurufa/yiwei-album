@@ -123,7 +123,7 @@ fun GlobalSearchScreen() {
                             MusicArt(t.artPath, Modifier.size(44.dp))
                             Column(Modifier.padding(start = Space.m).weight(1f)) {
                                 Text(t.displayTitle, color = C.Text, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text(listOf(t.displayArtist, t.album).filter { it.isNotBlank() }.joinToString(" · "), color = C.Sub, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(listOf(t.displayArtist, t.cleanAlbum).filter { it.isNotBlank() }.joinToString(" · "), color = C.Sub, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                             Icon(KI.music(), null, tint = C.Faint, modifier = Modifier.size(18.dp))
                         }

@@ -140,14 +140,19 @@ object MusicOnline {
         return j.optString("syncedLyrics").takeIf { it.isNotBlank() && it != "null" } ?: j.optString("plainLyrics").takeIf { it.isNotBlank() && it != "null" }
     }
 
-    /** 歌手照片（网易云歌手搜索，名字必须完全一致）；没有 = null。 */
+    /**
+     * 歌手照片（网易云歌手搜索）；没有 = null。名字完全一致的优先；只是去标点后一致时（「柒蕊zero」↔ 网易云「-柒蕊zero-」）
+     * 要求我们名字里的符号对方也有——「.K」不能拿到另一位歌手「K」的照片。
+     */
     fun artistPhoto(name: String): String? {
-        if (name.isBlank() || name == "未知歌手") return null
+        if (name.isBlank() || MusicArtist.isUnknown(name)) return null
         val url = "https://music.163.com/api/cloudsearch/pc".toHttpUrl().newBuilder().addQueryParameter("s", name).addQueryParameter("type", "100")
-            .addQueryParameter("limit", "5").addQueryParameter("offset", "0").build().toString()
+            .addQueryParameter("limit", "10").addQueryParameter("offset", "0").build().toString()
         val body = get(url, "https://music.163.com/") ?: return null
-        val a = runCatching { JSONObject(body).optJSONObject("result")?.optJSONArray("artists") }.getOrNull().objs()
-            .firstOrNull { MusicName.key(it.optString("name")) == MusicName.key(name) } ?: return null
+        val l = runCatching { JSONObject(body).optJSONObject("result")?.optJSONArray("artists") }.getOrNull().objs()
+        val marks = name.filter { !it.isLetterOrDigit() && !it.isWhitespace() }
+        val a = l.firstOrNull { MusicName.normalizeWidth(it.optString("name")).equals(name, ignoreCase = true) }
+            ?: l.firstOrNull { c -> val n = c.optString("name"); MusicName.key(n) == MusicName.key(name) && marks.all { it in n } } ?: return null
         val pic = a.optString("picUrl").takeIf { it.isNotBlank() && it != "null" }
             ?: a.optString("img1v1Url").takeIf { it.isNotBlank() && it != "null" } ?: return null
         return pic.replace("http://", "https://") + "?param=600y600"
@@ -186,6 +191,10 @@ object MusicOnline {
         if (hit != null) {
             val c = hit.cand
             if (n.artist.isBlank() && n.parsedArtist.isBlank()) n = n.copy(artist = c.artists.joinToString("/"))
+            // 1.7.33：标签里是「未知艺术家 / (未知Artist)」这类占位：高分匹配（不知道歌手时要求歌名完全一致、时长差 ≤2 秒）的歌手记到
+            // onlineArtist，只用于显示，标签原值不动
+            else if (MusicArtist.isUnknown(n.artist) && MusicArtist.isUnknown(n.albumArtist) && n.parsedArtist.isBlank() && c.artists.isNotEmpty())
+                n = n.copy(onlineArtist = c.artists.joinToString("/"))
             if (n.album.isBlank() && c.album.isNotBlank()) n = n.copy(album = c.album)
             if (n.year == 0 && c.year in 1900..2100) n = n.copy(year = c.year)
             if (n.durationMs == 0L && c.durationMs > 0) n = n.copy(durationMs = c.durationMs)
@@ -200,14 +209,17 @@ object MusicOnline {
         }
         // 没有可信的同歌手封面（翻唱、只查到原唱、专辑对不上）：用歌手照片，没有就保持占位
         if (n.artPath == null) {
-            val who = MusicName.splitArtists(n.displayArtist).firstOrNull().orEmpty()
-            if (who.isNotBlank() && who != "未知歌手") {
+            val who = n.nameFix.primary
+            if (who.isNotBlank() && !MusicArtist.isUnknown(who)) {
                 val f = artistArt[who] ?: (artistPhoto(who)?.let { save(lib, it, urlArt) } ?: "").also { artistArt[who] = it }
                 if (f.isNotEmpty()) n = n.copy(artPath = f)
             }
         }
         return n
     }
+
+    /** 下载 [url] 存进封面目录，返回文件路径（"" = 没有）；网络错误抛 IOException。 */
+    fun saveUrl(lib: MusicLib, url: String): String = bytes(url)?.let { lib.saveArt(it) } ?: ""
 
     private fun save(lib: MusicLib, url: String, urlArt: MutableMap<String, String>): String =
         urlArt[url] ?: (bytes(url)?.let { lib.saveArt(it) } ?: "").also { urlArt[url] = it }
