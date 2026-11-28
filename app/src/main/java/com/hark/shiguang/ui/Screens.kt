@@ -80,7 +80,11 @@ class PhotoSource(val pageSize: Int = 120, val grouped: Boolean = true, private 
             val seen = photos.mapTo(HashSet()) { it.id }
             photos.addAll(l.filter { seen.add(it.id) })
             more = m && l.isNotEmpty()
-        } catch (t: Throwable) { error = t.message ?: "加载失败"; more = false }
+        } catch (t: Throwable) {
+            // 1.7.30：页面离开（协程取消）不是加载失败：复位 loading 后照常取消，不留「Job was cancelled」错误页、也不停止翻页
+            if (t is kotlinx.coroutines.CancellationException) { loading = false; throw t }
+            error = t.message ?: "加载失败"; more = false
+        }
         loading = false
     }
     suspend fun refresh() { photos.clear(); more = true; next() }
@@ -208,7 +212,10 @@ class TimelineSource {
                 offsetInMonth += l.size
                 if (l.isEmpty() || offsetInMonth >= count) { mi++; offsetInMonth = 0 }
             }
-        } catch (t: Throwable) { error = t.message ?: "加载失败" }
+        } catch (t: Throwable) {
+            if (t is kotlinx.coroutines.CancellationException) { loading = false; throw t }   // 1.7.30：同 PhotoSource.next
+            error = t.message ?: "加载失败"
+        }
         loading = false
     }
 }

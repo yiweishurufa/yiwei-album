@@ -366,6 +366,10 @@ class MusicLib(val sourceKey: String) {
             ScanLog.log("音乐", reason, "$kind ${dirs.size} 个文件夹 ${tracks.size} 首", System.currentTimeMillis() - t0, newFiles, readFail, deferred, "tagsRead=$readOk")
             pruneCaches(force = true)
         }
+        // 1.7.30：扫描被取消（清除缓存、账号移除）时上面那行复位不会执行，scanning 一直是 true：下拉刷新失效、页内一直显示「正在扫描」。
+        // 只在异常结束、且没有新的扫描接上时复位。
+        val j = job
+        j?.invokeOnCompletion { e -> if (e != null) android.os.Handler(android.os.Looper.getMainLooper()).post { if (job === j || job?.isActive != true) { scanning = false; this@MusicLib.quiet = false; phase = "" } } }
     }
 
     /** Collects scanned tracks and applies them to [tracks] about once a second (one recomposition per batch, not per song). */
