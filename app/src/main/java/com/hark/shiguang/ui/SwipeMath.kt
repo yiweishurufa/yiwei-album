@@ -59,3 +59,21 @@ internal object SwipeMath {
         return if (dir > 0) index < size - 1 else index > 0
     }
 }
+
+/**
+ * 1.7.36 迷你播放条 ⇄ 正在播放 的容器展开（纯计算）。p = 0 迷你条，p = 1 全屏。
+ * 封面从迷你条里的小封面（[from]）长到大封面位置（[to]）：用缩放（原点左上）+ 平移表达，布局不变。
+ */
+internal object ExpandMath {
+    fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
+
+    /** 返回（平移 x, 平移 y, 缩放）。矩形用 left, top, width 表达（封面是正方形）。 */
+    fun art(fromL: Float, fromT: Float, fromW: Float, toL: Float, toT: Float, toW: Float, p: Float): Triple<Float, Float, Float> {
+        if (toW <= 0f || fromW <= 0f) return Triple(0f, 0f, 1f)
+        val q = p.coerceIn(0f, 1.2f)   // 弹簧可以略过冲
+        return Triple(lerp(fromL - toL, 0f, q), lerp(fromT - toT, 0f, q), lerp(fromW / toW, 1f, q))
+    }
+
+    /** 页面上的其它内容（按钮、歌名）在展开过一半以后才淡入，收起时先淡出。 */
+    fun contentAlpha(p: Float): Float = ((p - 0.55f) / 0.45f).coerceIn(0f, 1f)
+}

@@ -51,3 +51,23 @@ class SwipeMathTest {
         assertFalse(SwipeMath.canGo(1, 0, 1, repeatAll = true, shuffle = true))
     }
 }
+
+/** 1.7.36 迷你条展开：封面起止位置、内容淡入时机。 */
+class ExpandMathTest {
+    @Test fun `开始时封面在迷你条的位置，结束时回到原位`() {
+        val (x0, y0, s0) = ExpandMath.art(20f, 1800f, 100f, 80f, 300f, 900f, 0f)
+        assertEquals(-60f, x0, 0.001f); assertEquals(1500f, y0, 0.001f); assertEquals(100f / 900f, s0, 0.001f)
+        val (x1, y1, s1) = ExpandMath.art(20f, 1800f, 100f, 80f, 300f, 900f, 1f)
+        assertEquals(0f, x1, 0.001f); assertEquals(0f, y1, 0.001f); assertEquals(1f, s1, 0.001f)
+    }
+
+    @Test fun `没有量到尺寸时不变形`() {
+        assertEquals(Triple(0f, 0f, 1f), ExpandMath.art(0f, 0f, 0f, 0f, 0f, 900f, 0.3f))
+    }
+
+    @Test fun `内容过半才淡入`() {
+        assertEquals(0f, ExpandMath.contentAlpha(0.5f), 0f)
+        assertEquals(1f, ExpandMath.contentAlpha(1f), 0f)
+        assertTrue(ExpandMath.contentAlpha(0.8f) in 0.4f..0.7f)
+    }
+}

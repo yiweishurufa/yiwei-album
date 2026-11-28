@@ -3,6 +3,7 @@ package com.hark.shiguang.ui
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.snap
@@ -288,6 +289,12 @@ object Motion {
     fun <T> settle(): FiniteAnimationSpec<T> = if (reduced) snap() else spring(dampingRatio = 0.9f, stiffness = 500f)
     /** 1.7.26 慢呼吸（正在播放封面随播放 / 暂停轻缩）：柔和、不抢眼。 */
     fun <T> breathe(): FiniteAnimationSpec<T> = if (reduced) snap() else spring(dampingRatio = 0.8f, stiffness = 260f)
+    /** 1.7.36 迷你播放条 → 正在播放「容器展开」：bounce 很小，约 420 ms 落定。 */
+    fun <T> expand(): FiniteAnimationSpec<T> = if (reduced) tween(90) else spring(dampingRatio = 0.86f, stiffness = 380f)
+    /** M3 Emphasized accelerate：收起 / 退出。 */
+    val EmphasizedAccelerate = CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)
+    /** 1.7.36 正在播放 → 迷你播放条「收起」：300 ms 加速退出。 */
+    fun <T> collapse(): FiniteAnimationSpec<T> = tween(if (reduced) 90 else 300, easing = if (reduced) LinearEasing else EmphasizedAccelerate)
     /** 1.7.26 一次性装饰动画（收藏粒子、成功勾的描线）的时长；移除动画时调用方不播。 */
     const val BURST = 520
     /** 按下底栏图标时缩到的比例（比卡片的 [PRESS_SCALE] 更明显：图标小、需要看得出）。 */
