@@ -134,7 +134,7 @@ fun GlobalSearchScreen() {
                     item { ContentHeader("照片", "文件名 / 地点 · ${r.photos.size}${if (r.photos.size >= 60) "+" else ""} 张") }
                     item {
                         LazyRow(contentPadding = PaddingValues(horizontal = Space.page), horizontalArrangement = Arrangement.spacedBy(Space.xs + 2.dp)) {
-                            itemsIndexed(r.photos, key = { _, p -> "p" + p.key }) { i, p -> Box(Modifier.size(96.dp)) { Thumb(p, Radius.s, small = true) { record(q); Nav.push(Route.Viewer(r.photos, i)) } } }
+                            itemsIndexed(r.photos, key = { i, p -> "p${p.key}_$i" }) { i, p -> Box(Modifier.size(96.dp)) { Thumb(p, Radius.s, small = true) { record(q); Nav.push(Route.Viewer(r.photos, i)) } } }
                         }
                     }
                 }

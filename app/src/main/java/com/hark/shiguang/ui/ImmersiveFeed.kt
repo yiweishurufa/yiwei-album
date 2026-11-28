@@ -42,7 +42,7 @@ fun ImmersiveFeed(
     // 视频时长 / 实况角标用小号图标 + Allo 数字；点开时从卡片位置展开（与网格同一套 Hero 共享元素转场）
     LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = PaddingValues(bottom = bottom), verticalArrangement = Arrangement.spacedBy(Space.s)) {
         item(key = "header") { header() }
-        itemsIndexed(entries, key = { _, e -> when (e) { is Entry.Header -> "h" + e.key; is Entry.Cell -> "c" + e.photo.key } }) { _, e ->
+        itemsIndexed(entries, key = { _, e -> when (e) { is Entry.Header -> "h" + e.key; is Entry.Cell -> "c${e.photo.key}_${e.index}" } }) { _, e ->
             when (e) {
                 is Entry.Header -> Row(Modifier.padding(start = Space.l, end = Space.l, top = Space.l).semantics(mergeDescendants = true) { heading() }, verticalAlignment = Alignment.Bottom) {
                     Text(e.title, color = C.Text, style = MaterialTheme.typography.titleMedium.copy(fontFamily = C.P.display, fontWeight = FontWeight.SemiBold, fontFeatureSettings = Type.TNUM))
