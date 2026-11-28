@@ -249,7 +249,9 @@ object Ops {
         launch {
             runCatching {
                 val f = withContext(Dispatchers.IO) {
-                    val req = coil.request.ImageRequest.Builder(ctx).data(p.thumbM.ifEmpty { p.original }).allowHardware(false).build()
+                    val req = coil.request.ImageRequest.Builder(ctx).data(p.thumbM.ifEmpty { p.original }).allowHardware(false)
+                        // 1.7.30：没有中图时会退到原图——几十兆像素的原图整张解码进内存会 OOM，限制到 2560 像素（够聊天里看）
+                        .size(2560).build()
                     val r = coil.Coil.imageLoader(ctx).execute(req)
                     val bmp = ((r as? coil.request.SuccessResult)?.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap
                         ?: error("图片还没加载出来")

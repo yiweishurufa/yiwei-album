@@ -59,7 +59,8 @@ object TimelineCache {
     /** 当前连接的地址前缀去掉（内网 / 外网切换后照样能用）。 */
     fun relOf(url: String, base: String): String = if (base.isNotEmpty() && url.startsWith(base)) url.removePrefix(base) else url
 
-    fun save(accountId: String, s: Snapshot) {
+    /** 1.7.30：加锁。两次刷新几乎同时结束时会共用同一个 .tmp 文件，交错写入可能留下半截 JSON（下次读到就当没缓存）。 */
+    @Synchronized fun save(accountId: String, s: Snapshot) {
         if (accountId.isEmpty() || s.photos.isEmpty()) return
         val base = com.hark.shiguang.data.FnClient.baseUrl
         runCatching {
