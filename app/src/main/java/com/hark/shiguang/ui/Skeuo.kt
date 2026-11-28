@@ -49,14 +49,12 @@ import androidx.compose.ui.unit.dp
  * 阴影改成中性黑、小而柔（craft-floor：阴影要有偏移和柔和模糊）；深色主题的层级主要靠面的明度台阶 + 发丝线。
  *
  * 页面不手写阴影，只用这里的 Modifier（Card / NavRow / ToggleRow / 按钮 / 圆形按钮 / 底栏 / 顶栏胶囊 / 分段 / 输入框）。
- * 设置 → 外观 →「界面风格」可切到简洁：纯色面 + 发丝线，没有阴影。
+ * 1.7.29：「简洁」风格已删除，这里的外观总是生效。
  *
  * 性能：阴影只用 Modifier.shadow（RenderNode 硬件阴影）；API 26/27 不认阴影颜色，改画几层半透明轮廓（[skeuoShadow]）；
  * 照片网格不加阴影。
  */
 object Skeuo {
-    /** 设置 → 外观 → 界面风格：true = 质感（默认），false = 简洁。 */
-    val on: Boolean get() = ThemeState.skeuo
     private val dark: Boolean get() = C.P.dark
 
     /** 环境阴影（大而淡）与主光阴影（近而实），中性黑。 */
@@ -130,22 +128,19 @@ fun Modifier.appBackground(): Modifier = background(C.Bg).ambientGlow()
 
 /**
  * 凸起卡片：外阴影（ambient + spot 两层）+ 上亮下暗的表面 + 顶部 1px 高光描边。
- * 简洁风格时退回原来的「圆角 + 纯色」，所以可以无条件替换 clip(shape).background(C.Surface)。
+ * 可以无条件替换 clip(shape).background(C.Surface)。
  */
 fun Modifier.skeuoCard(shape: Shape = RoundedCornerShape(C.Card), elevation: Dp = Elevation.card, color: Color = C.Surface): Modifier =
-    if (!Skeuo.on) clip(shape).background(color)
-    // 1.7.0：玻璃风格下卡片是磨砂玻璃（卡片色 74% + 细噪点 + 上沿高光边），环境光晕从底下透上来；投影很浅
-    else glass(shape, backdrop = null, tint = color, shadow = elevation * 2, highlight = 0.7f).clip(shape)
+    // 1.7.0：卡片是磨砂玻璃（卡片色 74% + 细噪点 + 上沿高光边），环境光晕从底下透上来；投影很浅
+    glass(shape, backdrop = null, tint = color, shadow = elevation * 2, highlight = 0.7f).clip(shape)
 
 /** 有照片封面的卡片（人物 / 地点 / 回忆 / 旅行）：只加一层轻阴影，不改表面，照片保持干净。 */
 fun Modifier.skeuoPhoto(shape: Shape = RoundedCornerShape(C.Card)): Modifier =
-    if (!Skeuo.on) clip(shape).background(C.Surface)
-    else skeuoShadow(Elevation.photo, shape).clip(shape).background(C.Surface)
+    skeuoShadow(Elevation.photo, shape).clip(shape).background(C.Surface)
 
 /** 内凹槽：开关轨道、输入框、搜索框、分段控件底。上沿暗、下沿亮。 */
 fun Modifier.skeuoInset(shape: Shape = RoundedCornerShape(Radius.m), color: Color = C.Surface2): Modifier =
-    if (!Skeuo.on) clip(shape).background(color)
-    else clip(shape).background(Skeuo.insetBrush(color))
+    clip(shape).background(Skeuo.insetBrush(color))
         .border(0.8.dp, Brush.verticalGradient(listOf(Skeuo.edge, Color.Transparent, Skeuo.highlight.copy(alpha = Skeuo.highlight.alpha * 0.6f))), shape)
 
 /**
@@ -153,41 +148,38 @@ fun Modifier.skeuoInset(shape: Shape = RoundedCornerShape(Radius.m), color: Colo
  * （阴影 [Elevation.pressed]，渐变反转、上沿暗边）。需要动画请用 [skeuoPressable]。
  */
 fun Modifier.skeuoPressed(pressed: Boolean, shape: Shape, base: Color, elevation: Dp = if (pressed) Elevation.pressed else Elevation.raised): Modifier =
-    if (!Skeuo.on) clip(shape).background(base)
-    else skeuoShadow(elevation, shape)
+    skeuoShadow(elevation, shape)
         .clip(shape).background(Skeuo.raisedBrush(base, pressed))
         .border(0.8.dp, Brush.verticalGradient(if (pressed) listOf(Skeuo.edge, Color.Transparent) else listOf(Color.White.copy(alpha = if (C.P.dark) 0.16f else 0.55f), Color.Transparent)), shape)
 
 /**
- * 跟随 [interaction] 的按压状态：整体缩到 [Motion.PRESS_SCALE]（按下快、松手稍慢）；质感风格下阴影 3dp → 1dp、表面压暗。
- * 简洁风格同样缩放，只是没有阴影。
+ * 跟随 [interaction] 的按压状态：整体缩到 [Motion.PRESS_SCALE]（按下快、松手稍慢）；阴影 3dp → 1dp、表面压暗。
+ * [flat] = 不画阴影，只缩放 + 压暗（照片上的半透明底等）。
  */
 @Composable
 fun Modifier.skeuoPressable(interaction: MutableInteractionSource, shape: Shape, base: Color, scale: Float = Motion.PRESS_SCALE, flat: Boolean = false): Modifier {
     val pressed by interaction.collectIsPressedAsState()
     val s by animateFloatAsState(if (pressed) scale else 1f, if (pressed) Motion.pressIn() else Motion.pressOut(), label = "pressScale")
     val scaled = graphicsLayer { scaleX = s; scaleY = s }
-    if (!Skeuo.on || flat) return scaled.clip(shape).background(if (pressed) lerp(base, if (C.P.dark) Color.White else Color.Black, 0.06f) else base)
+    if (flat) return scaled.clip(shape).background(if (pressed) lerp(base, if (C.P.dark) Color.White else Color.Black, 0.06f) else base)
     val elev by animateDpAsState(if (pressed) Elevation.pressed else Elevation.raised, Motion.pressIn(), label = "skeuoElev")
     return scaled.skeuoPressed(pressed, shape, base, elev)
 }
 
 /**
  * 底部导航 / 底栏：和页面同色的不透明底 + 顶部一条发丝线（unslop：导航安静，不发光）。
- * 质感风格在发丝线上方再加一道很淡的投影，让它像压在纸面上。
+ * 发丝线上方再加一道很淡的投影，让它像压在纸面上。
  */
 fun Modifier.skeuoBar(): Modifier = drawBehind {
-    if (Skeuo.on) {
-        val h = 8.dp.toPx()
-        drawRect(Brush.verticalGradient(listOf(Color.Transparent, Skeuo.ambient.copy(alpha = Skeuo.ambient.alpha * 0.5f)), startY = -h, endY = 0f),
-            topLeft = Offset(0f, -h), size = size.copy(height = h))
-    }
+    val h = 8.dp.toPx()
+    drawRect(Brush.verticalGradient(listOf(Color.Transparent, Skeuo.ambient.copy(alpha = Skeuo.ambient.alpha * 0.5f)), startY = -h, endY = 0f),
+        topLeft = Offset(0f, -h), size = size.copy(height = h))
 }.background(C.Bg.copy(alpha = 0.98f)).drawBehind {
     drawLine(C.Line, Offset(0f, 0f), Offset(size.width, 0f), strokeWidth = 1f)
 }
 
 /**
- * 质感开关：内凹的轨道 + 凸起的圆钮。打开时轨道是强调色，钮滑到右边（临界阻尼弹簧）。简洁风格时用 Material 开关。
+ * 质感开关：内凹的轨道 + 凸起的圆钮。打开时轨道是强调色，钮滑到右边（临界阻尼弹簧）。
  */
 @Composable
 fun SkeuoToggle(on: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {

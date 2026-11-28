@@ -268,12 +268,12 @@ private fun BottomBar(modifier: Modifier, backdrop: GlassBackdrop) {
                 val w = maxWidth / tabs.size
                 val x by animateDpAsState(w * selIdx, Motion.liquid(), label = "bubbleX")
                 val stretch = 1f + (kotlin.math.abs((w * selIdx - x).value) / w.value).coerceAtMost(1f) * 0.34f
-                val bubble = if (Glass.on) C.Accent.copy(alpha = if (C.P.dark) 0.24f else 0.16f) else C.AccentSoft
+                val bubble = C.Accent.copy(alpha = if (C.P.dark) 0.24f else 0.16f)
                 val rim = Glass.rimBrush(0.9f)
                 Box(Modifier.offset(x = x).width(w).fillMaxHeight()
                     .graphicsLayer { scaleX = stretch; scaleY = 1f - (stretch - 1f) * 0.3f }
                     .clip(CircleShape).background(bubble)
-                    .then(if (Glass.on) Modifier.border(1.dp, rim, CircleShape) else Modifier))
+                    .border(1.dp, rim, CircleShape))
                 Row(Modifier.fillMaxSize()) {
                     tabs.forEachIndexed { k, t ->
                         val sel = k == selIdx
@@ -293,7 +293,7 @@ private fun BottomBar(modifier: Modifier, backdrop: GlassBackdrop) {
                             .clickable(ix, null, role = androidx.compose.ui.semantics.Role.Tab) { if (!sel) Haptics.tick(view); onTabTap(t.index, sel) }
                             .semantics { selected = sel }, contentAlignment = Alignment.Center) {
                             val up = with(androidx.compose.ui.platform.LocalDensity.current) { 7.dp.toPx() }
-                            if (Glass.on) Box(Modifier.size(44.dp).graphicsLayer { translationY = -up * lift; alpha = lift.coerceIn(0f, 1f) }
+                            Box(Modifier.size(44.dp).graphicsLayer { translationY = -up * lift; alpha = lift.coerceIn(0f, 1f) }
                                 .background(Brush.radialGradient(listOf(C.Accent.copy(alpha = if (C.P.dark) 0.55f else 0.35f), C.Accent.copy(alpha = 0f)))))
                             Icon(if (sel) t.filled() else t.icon(false), null, tint = icon,
                                 modifier = Modifier.size(25.dp).graphicsLayer { translationY = -up * lift; val sc = (1f + 0.08f * lift) * press * pop.value; scaleX = sc; scaleY = sc })
@@ -387,8 +387,7 @@ fun TopSwitch(search: SearchScope = SearchScope.Photos, showDate: Boolean = true
     Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 14.dp, end = 10.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Box {
             // 1.7.0：来源胶囊 = 玻璃胶囊（压在照片上时深色着色 + 白字），按下液体形变；状态点 7dp（绿 = 在线，红 = 连不上）
-            // 1.7.16：压在照片上必须 onDark = true（和右边的 GlassIconButton 一致）。以前漏了：浅色主题 + 简洁风格时
-            // 底色取 Glass.flatFill（浅色 = 纯白）而字和图标是白色 → 一块看不见内容的白胶囊；浅色 + 玻璃时高光按浅色画（35% 白），白字约 3.4:1。
+            // 1.7.16：压在照片上必须 onDark = true（和右边的 GlassIconButton 一致），否则浅色主题下高光按浅色画（35% 白），白字约 3.4:1。
             val srcPress = remember { MutableInteractionSource() }
             Row(Modifier.heightIn(min = 44.dp).glassPress(srcPress)
                 .glass(CircleShape, null, tint = if (overPhoto) Color.Black.copy(alpha = 0.6f) else Color.Unspecified, shadow = if (overPhoto) 0.dp else 8.dp, highlight = if (overPhoto) 0.7f else 1f, onDark = overPhoto)

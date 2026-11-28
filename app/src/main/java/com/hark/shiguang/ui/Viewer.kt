@@ -320,8 +320,8 @@ private fun MoreSheet(p: Photo, onInfo: () -> Unit, onDismiss: () -> Unit, onHid
     }
 }
 
-/** 面板里的淡底（玻璃面板里不再叠玻璃）：玻璃风格是正文色 6%，简洁风格是凹槽色。 */
-private val sheetFill: Color @Composable get() = if (Glass.on) C.Text.copy(alpha = 0.06f) else C.Surface2
+/** 面板里的淡底（玻璃面板里不再叠玻璃）：正文色 6%。 */
+private val sheetFill: Color @Composable get() = C.Text.copy(alpha = 0.06f)
 
 /** 「⋯」面板的大操作块：图标在上、文字在下，高 84，圆角 24，按下液体形变。 */
 @Composable

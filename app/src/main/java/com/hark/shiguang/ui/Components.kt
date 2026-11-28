@@ -59,17 +59,17 @@ import java.util.Locale
 @Composable
 fun shimmerBrush(): Brush {
     // loading-states：骨架只在首屏用；「移除动画」时不扫光，只给静态底色
-    // 1.7.10 v2：玻璃风格下骨架是半透明的「磨砂」块（正文色 6% → 扫光 12%），环境光晕能透出来，不再是一块块实心灰；简洁风格保持实色
-    val base = if (Glass.on) C.Text.copy(alpha = 0.06f) else C.Surface
-    val hi = if (Glass.on) C.Text.copy(alpha = 0.12f) else androidx.compose.ui.graphics.lerp(C.Surface, C.Surface2, 0.7f)
+    // 1.7.10 v2：骨架是半透明的「磨砂」块（正文色 6% → 扫光 12%），环境光晕能透出来，不再是一块块实心灰
+    val base = C.Text.copy(alpha = 0.06f)
+    val hi = C.Text.copy(alpha = 0.12f)
     if (Motion.reduced) return androidx.compose.ui.graphics.SolidColor(base)
     val t = rememberInfiniteTransition(label = "s")
     val x by t.animateFloat(0f, 1400f, infiniteRepeatable(tween(1600, easing = LinearEasing), RepeatMode.Restart), label = "x")
     return Brush.linearGradient(listOf(base, hi, base), start = Offset(x - 400f, 0f), end = Offset(x, 400f))
 }
 
-/** 1.7.10：骨架里的「字行」底色（不扫光）：玻璃风格正文色 6%，简洁风格凹槽色。 */
-val skeletonLine: Color @Composable get() = if (Glass.on) C.Text.copy(alpha = 0.06f) else C.Surface2
+/** 1.7.10：骨架里的「字行」底色（不扫光）：正文色 6%。 */
+val skeletonLine: Color @Composable get() = C.Text.copy(alpha = 0.06f)
 
 /**
  * 1.7.23：一个数字 / 一小段文字还在算时占位的骨架小条（设置「存储空间」右侧、存储空间页总量）。
@@ -298,8 +298,8 @@ fun QuietButton(text: String, color: Color, modifier: Modifier = Modifier, onCli
 }
 
 /**
- * 主按钮（一屏最多一个）。1.7.0 v2：全圆角胶囊、高 52；玻璃风格下表面是上亮下实的强调色 + 上沿白色高光边 + 同色柔光晕
- * （像一颗发光的彩色玻璃），按下液体形变并压暗。简洁风格：实心强调色。名字沿用 GradientButton 以免改动 40 多处调用。
+ * 主按钮（一屏最多一个）。1.7.0 v2：全圆角胶囊、高 52；表面是上亮下实的强调色 + 上沿白色高光边 + 同色柔光晕
+ * （像一颗发光的彩色玻璃），按下液体形变并压暗。名字沿用 GradientButton 以免改动 40 多处调用。
  */
 @Composable
 fun GradientButton(text: String, modifier: Modifier = Modifier, loading: Boolean = false, onClick: () -> Unit) {
@@ -307,18 +307,17 @@ fun GradientButton(text: String, modifier: Modifier = Modifier, loading: Boolean
     val pressed by interaction.collectIsPressedAsState()
     val shape = CircleShape
     val accent = C.Accent
-    val glass = Glass.on
     Box(
         modifier.heightIn(min = 52.dp).glassPress(interaction, 0.6f)
-            .then(if (glass) Modifier.drawWithCache {
+            .drawWithCache {
                 val layers = SkeuoShadow.layers(14.dp.toPx(), 0.55f)
                 val outlines = layers.map { l -> shape.createOutline(androidx.compose.ui.geometry.Size(size.width + 2 * l.spread, size.height + 2 * l.spread), layoutDirection, this) }
                 onDrawBehind { layers.forEachIndexed { i, l -> translate(-l.spread, -l.spread + l.dy) { drawOutline(outlines[i], accent.copy(alpha = l.alpha)) } } }
-            } else Modifier)
+            }
             .clip(shape)
-            .background(if (glass) Brush.verticalGradient(listOf(androidx.compose.ui.graphics.lerp(accent, Color.White, 0.18f), accent)) else androidx.compose.ui.graphics.SolidColor(accent))
+            .background(Brush.verticalGradient(listOf(androidx.compose.ui.graphics.lerp(accent, Color.White, 0.18f), accent)))
             .then(if (pressed) Modifier.background(Color.Black.copy(alpha = 0.1f)) else Modifier)
-            .then(if (glass) Modifier.border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.5f), Color.Transparent)), shape) else Modifier)
+            .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.5f), Color.Transparent)), shape)
             .clickable(interaction, null, enabled = !loading, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
             .padding(horizontal = Space.xl + 4.dp),
         contentAlignment = Alignment.Center
@@ -328,7 +327,7 @@ fun GradientButton(text: String, modifier: Modifier = Modifier, loading: Boolean
     }
 }
 
-/** 次要按钮：1.7.0 玻璃胶囊（磨砂 + 高光边）+ 正文色，和主按钮同高、同样的按压形变。简洁风格中性底。 */
+/** 次要按钮：1.7.0 玻璃胶囊（磨砂 + 高光边）+ 正文色，和主按钮同高、同样的按压形变。 */
 @Composable
 fun SecondaryButton(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
@@ -346,11 +345,10 @@ fun SecondaryButton(text: String, modifier: Modifier = Modifier, onClick: () -> 
 @Composable
 fun ChoiceChip(text: String, selected: Boolean, modifier: Modifier = Modifier, role: androidx.compose.ui.semantics.Role = androidx.compose.ui.semantics.Role.Tab, onClick: () -> Unit) {
     val view = androidx.compose.ui.platform.LocalView.current
-    // 1.7.0 v2：全圆角胶囊；玻璃风格下未选中是磨砂玻璃，选中是实心强调色 + 近黑 / 白字（更饱和、一眼可见）
-    val glass = Glass.on
-    val bg by androidx.compose.animation.animateColorAsState(if (selected) (if (glass) C.Accent else C.AccentSoft) else if (glass) Color.Transparent else C.Chip, Motion.state(), label = "chipBg")
-    val fg by androidx.compose.animation.animateColorAsState(if (selected) (if (glass) C.OnAccent else C.Accent) else C.Sub, Motion.state(), label = "chipFg")
-    Box(modifier.minimumInteractiveComponentSize().pressScale().then(if (glass) Modifier.glass(CircleShape, null, tint = C.Surface, shadow = 0.dp, highlight = 0.7f) else Modifier).clip(CircleShape).background(bg)
+    // 1.7.0 v2：全圆角胶囊；未选中是磨砂玻璃，选中是实心强调色 + 近黑 / 白字（更饱和、一眼可见）
+    val bg by androidx.compose.animation.animateColorAsState(if (selected) C.Accent else Color.Transparent, Motion.state(), label = "chipBg")
+    val fg by androidx.compose.animation.animateColorAsState(if (selected) C.OnAccent else C.Sub, Motion.state(), label = "chipFg")
+    Box(modifier.minimumInteractiveComponentSize().pressScale().glass(CircleShape, null, tint = C.Surface, shadow = 0.dp, highlight = 0.7f).clip(CircleShape).background(bg)
         .clickable(role = role) { if (!selected) Haptics.tick(view); onClick() }.semantics { this.selected = selected }
         .heightIn(min = 32.dp).padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
         Text(text, color = fg, style = MaterialTheme.typography.labelLarge, fontSize = 13.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, maxLines = 1)
@@ -360,11 +358,11 @@ fun ChoiceChip(text: String, selected: Boolean, modifier: Modifier = Modifier, r
 @Composable
 fun RoundIcon(icon: ImageVector, modifier: Modifier = Modifier, tint: Color = C.Text, bg: Color = C.Chip, size: Dp = 40.dp, desc: String? = null, onClick: () -> Unit) {
     // 顶栏的圆形按钮：拟物时是凸起的小圆钮（按下内凹），只在页面的默认底色上这样画；调用方给了别的底色（例如照片上的半透明黑）就保持原样
-    // 1.6.0：两种风格都按下缩放；质感风格是浮起的小圆钮，简洁风格是中性浅底。照片上的半透明黑底保持原样（只缩放）
+    // 1.6.0：按下缩放；默认是浮起的小圆钮。照片上的半透明黑底保持原样（只缩放）
     val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-    val base = if (bg != C.Chip) bg else if (Skeuo.on) C.Surface else C.Chip
+    val base = if (bg != C.Chip) bg else C.Surface
     Box(
-        modifier.size(size).skeuoPressable(interaction, CircleShape, base, scale = 0.92f, flat = bg != C.Chip || !Skeuo.on)
+        modifier.size(size).skeuoPressable(interaction, CircleShape, base, scale = 0.92f, flat = bg != C.Chip)
             .clickable(interaction, null, onClick = onClick)
             .then(if (desc != null) Modifier.semantics { contentDescription = desc; role = androidx.compose.ui.semantics.Role.Button } else Modifier),
         contentAlignment = Alignment.Center

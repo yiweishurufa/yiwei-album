@@ -82,13 +82,6 @@ fun SettingsScreen() {
         Card {
             FillSegmented(ThemeMode.values().map { it.title }, ThemeMode.values().indexOf(ThemeState.mode)) { ThemeState.pickMode(ThemeMode.values()[it]) }
             Div()
-            // 1.7.0：界面风格 玻璃（默认，半透明 + 模糊）/ 简洁（不模糊、纯色，低端机 / 省电）。存储键不变
-            Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 12.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("界面风格", color = C.Text, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                Text(if (ThemeState.skeuo) "半透明与模糊" else "不模糊，更省电", color = C.Sub, style = MaterialTheme.typography.bodySmall)
-            }
-            FillSegmented(listOf("玻璃", "简洁"), if (ThemeState.skeuo) 0 else 1) { ThemeState.pickStyle(it == 0) }
-            Div()
             // 1.7.9 v2：强调色 = 一排玻璃色球（球面高光 + 选中时外圈光环、放大、中间一个勾），标题单独一行
             Text("强调色", color = C.Text, fontSize = 15.sp, modifier = Modifier.padding(start = 18.dp, top = 14.dp))
             Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -278,7 +271,7 @@ fun FillSegmented(items: List<String>, sel: Int, onPick: (Int) -> Unit) {
         items.forEachIndexed { i, t ->
             val on = i == sel
             val fg by androidx.compose.animation.animateColorAsState(if (on) C.Text else C.Sub, Motion.state(), label = "segFg")
-            Box(Modifier.weight(1f).then(if (on) Modifier.skeuoPressed(false, RoundedCornerShape(Radius.m - 3.dp), if (Skeuo.on) C.Surface else C.Bg, Elevation.pressed) else Modifier.clip(RoundedCornerShape(Radius.m - 3.dp)))
+            Box(Modifier.weight(1f).then(if (on) Modifier.skeuoPressed(false, RoundedCornerShape(Radius.m - 3.dp), C.Surface, Elevation.pressed) else Modifier.clip(RoundedCornerShape(Radius.m - 3.dp)))
                 .clickable(role = androidx.compose.ui.semantics.Role.Tab) { if (!on) Haptics.tick(view); onPick(i) }.semantics { selected = on }
                 .heightIn(min = 40.dp).padding(vertical = 9.dp), contentAlignment = Alignment.Center) {
                 Text(t, color = fg, style = MaterialTheme.typography.labelLarge, fontWeight = if (on) FontWeight.Medium else FontWeight.Normal)
@@ -364,12 +357,9 @@ internal fun RowIcon(icon: ImageVector, danger: Boolean) {
     }
 }
 
-/** 全局开关：拟物风格是凹槽 + 凸起圆钮（[SkeuoToggle]），简洁风格是 Material 开关。 */
+/** 全局开关：凹槽 + 凸起圆钮（[SkeuoToggle]）。 */
 @Composable
-fun SkeuoSwitch(on: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
-    if (Skeuo.on) SkeuoToggle(on, enabled, onChange)
-    else Switch(on, onChange, enabled = enabled, colors = SwitchDefaults.colors(checkedThumbColor = C.OnAccent, checkedTrackColor = C.Accent, uncheckedTrackColor = C.Surface2, uncheckedBorderColor = C.Line))
-}
+fun SkeuoSwitch(on: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) = SkeuoToggle(on, enabled, onChange)
 
 @Composable
 fun InputRow(label: String, value: String, hint: String, onChange: (String) -> Unit) {
@@ -399,7 +389,7 @@ private fun AccountCard(name: String, avatar: String, kind: String, user: String
         .semantics(mergeDescendants = true) {}
         .padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.drawBehind {
-            if (Glass.on) drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(listOf(accent.copy(alpha = 0.45f), Color.Transparent), radius = size.minDimension),
+            drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(listOf(accent.copy(alpha = 0.45f), Color.Transparent), radius = size.minDimension),
                 radius = size.minDimension)
         }) { Avatar(avatar, 56.dp) }
         Column(Modifier.weight(1f).padding(start = 16.dp)) {
@@ -422,12 +412,11 @@ private fun AccountCard(name: String, avatar: String, kind: String, user: String
 /**
  * 1.7.9 强调色「玻璃色球」：48dp 触摸区里一颗 30dp 的球——左上一点白色高光、右下压暗，像一粒彩色玻璃；
  * 选中时球从 28 长到 32dp（液体弹簧）、外圈 2dp 同色光环 + 柔光、中间一个勾（不只靠颜色）。读屏「蓝色，单选，已选中」。
- * 简洁风格：纯色圆片 + 正文色外圈（无高光、无光晕）。色球显示当前主题下真正会用到的那一档。
+ * 色球显示当前主题下真正会用到的那一档。
  */
 @Composable
 private fun AccentOrb(a: Accent, on: Boolean, onPick: () -> Unit) {
     val c = if (C.P.dark) a.color else a.soft
-    val glass = Glass.on
     val k by androidx.compose.animation.core.animateFloatAsState(if (on) 1f else 0f, if (on) Motion.liquid() else Motion.state(), label = "orb")
     val view = androidx.compose.ui.platform.LocalView.current
     Box(Modifier.size(48.dp).clip(CircleShape).selectable(on, role = androidx.compose.ui.semantics.Role.RadioButton) { if (!on) Haptics.tick(view); onPick() }
@@ -435,20 +424,19 @@ private fun AccentOrb(a: Accent, on: Boolean, onPick: () -> Unit) {
         Box(Modifier.size(42.dp).drawBehind {
                 // 外圈光环 + 柔光（选中时）
                 if (k > 0f) {
-                    if (glass) drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(listOf(c.copy(alpha = 0.40f * k), Color.Transparent), radius = size.minDimension * 0.62f))
+                    drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(listOf(c.copy(alpha = 0.40f * k), Color.Transparent), radius = size.minDimension * 0.62f))
                     drawCircle(c.copy(alpha = k), radius = size.minDimension / 2f - 1.dp.toPx(), style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()))
                 }
             }, contentAlignment = Alignment.Center) {
             val orb = 28.dp + 4.dp * k
             Box(Modifier.size(orb).clip(CircleShape).background(c)
-                .then(if (glass) Modifier.drawBehind {
+                .drawBehind {
                     // 球面：左上白色高光 → 透明，右下压暗
                     drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(listOf(Color.White.copy(alpha = 0.55f), Color.Transparent),
                         center = androidx.compose.ui.geometry.Offset(size.width * 0.32f, size.height * 0.28f), radius = size.minDimension * 0.55f))
                     drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.22f)),
                         center = androidx.compose.ui.geometry.Offset(size.width * 0.4f, size.height * 0.36f), radius = size.minDimension * 0.75f))
-                } else Modifier)
-                .then(if (!glass && on) Modifier.border(2.dp, C.Text, CircleShape) else Modifier), contentAlignment = Alignment.Center) {
+                }, contentAlignment = Alignment.Center) {
                 if (on) Icon(KI.check(), null, tint = if (C.P.dark) Color(0xFF070A12) else Color.White, modifier = Modifier.size(16.dp).graphicsLayer { alpha = if (Motion.reduced) 1f else k.coerceIn(0f, 1f) })
             }
         }

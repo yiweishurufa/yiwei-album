@@ -244,7 +244,7 @@ private fun SearchBox() {
 private fun PillButton(icon: ImageVector, text: String, modifier: Modifier = Modifier, primary: Boolean = false, onClick: () -> Unit) {
     // 1.6.6：与主 / 次要按钮同一套按压（缩放 + 质感浮起），高 46
     val ix = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-    Row(modifier.height(46.dp).skeuoPressable(ix, RoundedCornerShape(Radius.m), if (primary) C.Accent else if (Skeuo.on) C.Surface else C.Surface2)
+    Row(modifier.height(46.dp).skeuoPressable(ix, RoundedCornerShape(Radius.m), if (primary) C.Accent else C.Surface)
         .clickable(ix, null, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick),
         horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, null, tint = if (primary) C.OnAccent else C.Text, modifier = Modifier.size(18.dp))
@@ -507,7 +507,7 @@ fun MusicNowPlayingScreen() {
         // 1.7.0 v2：封面放大并重度模糊铺满全屏（API 31+ 真模糊；以下仍是压暗的封面），环境光晕取封面颜色
         AmbientFrom(t?.artPath?.let { "file://$it" })
         if (t?.artPath != null) Box(Modifier.fillMaxSize()) {
-            val real = Glass.on && Glass.blurSupported
+            val real = Glass.blurSupported
             NetImage("file://${t.artPath}", Modifier.fillMaxSize().graphicsLayer { if (real) { scaleX = 1.3f; scaleY = 1.3f } }.then(if (real) Modifier.blur(80.dp) else Modifier), crossfade = false)
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(if (real) listOf(C.Bg.copy(alpha = 0.45f), C.Bg.copy(alpha = 0.7f), C.Bg.copy(alpha = 0.92f))
                 else listOf(C.Bg.copy(alpha = 0.86f), C.Bg.copy(alpha = 0.95f), C.Bg))))

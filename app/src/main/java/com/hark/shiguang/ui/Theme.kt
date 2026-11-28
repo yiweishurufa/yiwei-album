@@ -36,7 +36,8 @@ import com.hark.shiguang.Store
  * 1.7.0 设计语言 v2「液态玻璃 + 沉浸照片」（完整规范见 docs/DESIGN.md）。
  * 用户 2026-11-26：「现在的 UI 变化并不大，我要完全不同的」。照片铺满、导航与面板是悬浮的玻璃、背景是极深的蓝黑
  * （浅色为带冷调的近白）并带从照片取色的环境光晕；强调色更饱和、更亮。
- * 两种风格（存储键不变）：玻璃（存储值 "skeuo"，默认）= 半透明 + 模糊 + 高光边；简洁（"flat"）= 不模糊、纯色面，给低端机 / 省电。
+ * 风格：玻璃 = 半透明 + 模糊 + 高光边（Android 12 以下降级外观，见 Glass.kt）。1.7.29 删掉「简洁」风格：旧存储键 ui.style 不再读取，
+ * 之前选了简洁（"flat"）的用户自动用玻璃。
  * 对比度由 /workspace/work/yiwei-album-iteration/redesign/contrast_v2.py 计算，数值写在 DESIGN.md §2。
  */
 enum class ThemeMode(val title: String) { LIGHT("浅色"), DARK("深色"), SYSTEM("跟随系统") }
@@ -67,13 +68,6 @@ data class Palette(
 /** 深色主题的强调色是亮色，按钮上的字用近黑（白字对比度只有 2 左右）。 */
 private val InkOnAccent = Color(0xFF070A12)
 
-// 简洁 · 深色：蓝黑纯色面。text/bg 17.7，sub/bg 8.9，faint/bg 4.7
-private fun darkPalette(a: Accent) = Palette(
-    true, bg = Color(0xFF0B0E15), surface = Color(0xFF161B26), surface2 = Color(0xFF212735), line = Color(0x17FFFFFF),
-    text = Color(0xFFF3F5FA), sub = Color(0xFFA7B0C2), faint = Color(0xFF737D92),
-    accent = a.color, accent2 = a.soft, onAccent = InkOnAccent, display = Type.numFamily,
-)
-
 // 玻璃 · 浅色：带冷调的近白。text/surface 18.5，sub/bg 6.8，faint/bg 3.3
 private fun lightGlassPalette(a: Accent) = Palette(
     false, bg = Color(0xFFEEF2F8), surface = Color(0xFFFFFFFF), surface2 = Color(0xFFE3E8F1), line = Color(0x14000000),
@@ -88,25 +82,14 @@ private fun darkGlassPalette(a: Accent) = Palette(
     accent = a.color, accent2 = a.soft, onAccent = InkOnAccent, display = Type.numFamily,
 )
 
-// 简洁 · 浅色：text/surface 18.5，sub/bg 7.1，faint/bg 3.5
-private fun lightPalette(a: Accent) = Palette(
-    false, bg = Color(0xFFF5F7FA), surface = Color(0xFFFFFFFF), surface2 = Color(0xFFE9EDF3), line = Color(0x14000000),
-    text = Color(0xFF0E1320), sub = Color(0xFF4B5468), faint = Color(0xFF7A8498),
-    accent = a.soft, accent2 = a.color, onAccent = Color.White, display = Type.numFamily,
-)
-
 object ThemeState {
     var mode by mutableStateOf(runCatching { ThemeMode.valueOf(Store.themeMode) }.getOrDefault(ThemeMode.DARK))
     var accent by mutableIntStateOf(Store.accent.coerceIn(0, Accents.lastIndex))
     var systemDark by mutableStateOf(true)
-    /** 界面风格 玻璃（默认）/ 简洁。存储键 ui.style = "skeuo" / "flat"（1.6.0「拟物」→「质感」，1.7.0 →「玻璃」，键不变）。 */
-    var skeuo by mutableStateOf(Store.getStr("ui.style", "skeuo") != "flat")
     val isDark: Boolean get() = when (mode) { ThemeMode.LIGHT -> false; ThemeMode.DARK -> true; ThemeMode.SYSTEM -> systemDark }
     val current: Palette get() = Accents[accent].let {
-        if (skeuo) { if (isDark) darkGlassPalette(it) else lightGlassPalette(it) }
-        else if (isDark) darkPalette(it) else lightPalette(it)
+        if (isDark) darkGlassPalette(it) else lightGlassPalette(it)
     }
-    fun pickStyle(skeuomorphic: Boolean) { skeuo = skeuomorphic; Store.putStr("ui.style", if (skeuomorphic) "skeuo" else "flat") }
     fun pickMode(m: ThemeMode) { mode = m; Store.themeMode = m.name }
     fun pickAccent(i: Int) { accent = i; Store.accent = i }
     fun reload() {

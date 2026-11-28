@@ -188,9 +188,9 @@ fun Segmented(items: List<String>, sel: Int, onPick: (Int) -> Unit) {
     val view = androidx.compose.ui.platform.LocalView.current
     val n = items.size.coerceAtLeast(1)
     val x by androidx.compose.animation.core.animateFloatAsState(sel.toFloat(), Motion.liquid(), label = "segX")
-    val bubble = if (Glass.on) C.Accent.copy(alpha = if (C.P.dark) 0.26f else 0.16f) else C.AccentSoft
+    val bubble = C.Accent.copy(alpha = if (C.P.dark) 0.26f else 0.16f)
     Row(Modifier.width(androidx.compose.foundation.layout.IntrinsicSize.Max)
-        .glass(CircleShape, null, tint = C.Surface, shadow = if (Glass.on) 6.dp else 0.dp, highlight = 0.8f).clip(CircleShape).padding(4.dp)
+        .glass(CircleShape, null, tint = C.Surface, shadow = 6.dp, highlight = 0.8f).clip(CircleShape).padding(4.dp)
         .drawBehind {
             val iw = size.width / n
             val stretch = 1f + kotlin.math.abs(x - sel).coerceAtMost(1f) * 0.3f
@@ -270,7 +270,7 @@ fun GhostButton(t: String, enabled: Boolean = true, onClick: () -> Unit) {
     // 1.6.6：与次要按钮同一套按压（缩放 + 质感浮起），不可用时文字变弱
     val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
     Text(t, color = if (enabled) C.Text else C.Faint, style = MaterialTheme.typography.labelLarge, maxLines = 1,
-        modifier = Modifier.height(48.dp).skeuoPressable(interaction, RoundedCornerShape(Radius.m), if (Skeuo.on) C.Surface else C.Surface2)
+        modifier = Modifier.height(48.dp).skeuoPressable(interaction, RoundedCornerShape(Radius.m), C.Surface)
             .clickable(interaction, null, enabled = enabled, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick).padding(horizontal = Space.l).wrapContentHeight(Alignment.CenterVertically))
 }
 
@@ -303,7 +303,7 @@ fun LibraryDirRow(name: String, path: String, onRemove: () -> Unit) {
 /**
  * 1.7.8 环境光晕跟随海报（DESIGN §2.4）：取屏幕上最靠上那张有海报的格子；它还在屏幕下半部（上面是横条、标题）而有 [lead] 时取 [lead]。
  * [posterOf]：格子的 key → 海报（posterModel 之前的原值）。derivedStateOf 让滚动时只有「领头海报换了」才触发一次取色
- * （Coil 32px 小图，有缓存）；简洁风格不取色（AmbientFrom 内判断）。
+ * （Coil 32px 小图，有缓存）。
  */
 @Composable
 fun AmbientFromGrid(grid: androidx.compose.foundation.lazy.grid.LazyGridState, posterOf: Map<Any, String?>, lead: String? = null) {

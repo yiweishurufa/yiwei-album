@@ -311,7 +311,7 @@ fun LoginScreen() {
             Spacer(Modifier.height(24.dp))
             // 1.7.9 v2：标志放在一块带强调色光晕的玻璃方块里
             Box(Modifier.size(64.dp).drawBehind {
-                drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(listOf(C.Accent.copy(alpha = if (Glass.on) 0.35f else 0f), Color.Transparent),
+                drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(listOf(C.Accent.copy(alpha = 0.35f), Color.Transparent),
                     radius = size.minDimension * 1.1f), radius = size.minDimension * 1.1f)
             }.glass(RoundedCornerShape(22.dp), null, tint = C.Surface, shadow = 10.dp), contentAlignment = Alignment.Center) {
                 Box(Modifier.width(32.dp).height(2.dp).background(C.Text))
@@ -413,7 +413,7 @@ fun LoginScreen() {
 
 /**
  * 1.7.9 v2 玻璃输入框（DESIGN §9）：高 56、圆角 18 的磨砂玻璃（降级外观，不实时模糊）；聚焦时 1.5dp 强调色描边 + 外圈同色柔光，
- * 图标变正文色。[onGlass] = 放在对话框 / 面板这类本身已是玻璃的浮层里：改用一层淡底，不叠玻璃。简洁风格是凹槽色纯色面 + 发丝线。
+ * 图标变正文色。[onGlass] = 放在对话框 / 面板这类本身已是玻璃的浮层里：改用一层淡底，不叠玻璃。
  * 密码框右侧的眼睛是 48dp 的按钮，读屏「显示密码 / 隐藏密码」。[label] 为 null 时不显示标题（读屏用 [hint]）。
  */
 @Composable
@@ -426,7 +426,7 @@ fun Field(
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(18.dp)
     val ring by animateColorAsState(if (focused) C.Accent else C.Line, Motion.state(), label = "fieldRing")
-    val glow by androidx.compose.animation.core.animateFloatAsState(if (focused && Glass.on) 1f else 0f, Motion.state(), label = "fieldGlow")
+    val glow by androidx.compose.animation.core.animateFloatAsState(if (focused) 1f else 0f, Motion.state(), label = "fieldGlow")
     val accent = C.Accent
     Column(modifier) {
         if (label != null) Text(label, style = MaterialTheme.typography.labelLarge, color = C.Sub, modifier = Modifier.padding(start = 6.dp, bottom = 8.dp))
@@ -438,9 +438,9 @@ fun Field(
                         size = androidx.compose.ui.geometry.Size(size.width + 6.dp.toPx(), size.height + 6.dp.toPx()),
                         cornerRadius = androidx.compose.ui.geometry.CornerRadius(21.dp.toPx()))
                 }
-                .then(if (onGlass || !Glass.on) Modifier.clip(shape).background(if (Glass.on) C.Text.copy(alpha = 0.06f) else C.Surface2)
+                .then(if (onGlass) Modifier.clip(shape).background(C.Text.copy(alpha = 0.06f))
                       else Modifier.glass(shape, null, tint = C.Surface, shadow = 0.dp, highlight = 0.8f).clip(shape))
-                .border(if (focused) 1.5.dp else 1.dp, if (focused) ring else if (onGlass || !Glass.on) C.Line else Color.Transparent, shape)
+                .border(if (focused) 1.5.dp else 1.dp, if (focused) ring else if (onGlass) C.Line else Color.Transparent, shape)
                 .padding(start = 16.dp, end = if (password) 4.dp else 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {

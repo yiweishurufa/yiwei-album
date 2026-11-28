@@ -47,7 +47,7 @@ fun DavPresetRow(selected: String?, onPick: (DavPreset) -> Unit) {
         DavPresets.all.forEach { p ->
             val on = p.key == selected
             // 1.7.9 v2：全圆角胶囊；选中是实心强调色 + 近黑 / 白字（不只靠颜色：字重也变），未选中是一层淡底（对话框本身是玻璃，不叠玻璃）
-            Box(Modifier.heightIn(min = 40.dp).clip(CircleShape).background(if (on) C.Accent else if (Glass.on) C.Text.copy(alpha = 0.07f) else C.Surface2)
+            Box(Modifier.heightIn(min = 40.dp).clip(CircleShape).background(if (on) C.Accent else C.Text.copy(alpha = 0.07f))
                 .selectable(on, role = androidx.compose.ui.semantics.Role.RadioButton) { onPick(p) }
                 .padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
                 Text(p.label, fontSize = 13.sp, color = if (on) C.OnAccent else C.Text, fontWeight = if (on) FontWeight.Bold else FontWeight.Medium)

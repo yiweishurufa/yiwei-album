@@ -73,7 +73,7 @@ fun PullRefreshBox(enabled: Boolean, onRefresh: () -> Unit, content: @Composable
 /**
  * 1.7.12 玻璃下拉刷新指示器（DESIGN §7 / §9）：44dp 磨砂玻璃圆片，跟着手指从状态栏下方落下、由小长大；
  * 里面一道强调色弧随下拉长到 300°（同时转动，提示「再拉就刷新」），过了阈值弧变粗；刷新中弧持续旋转。
- * 不在 glassSource 外面，所以总是降级外观（着色 + 噪点 + 高光边）；简洁风格纯色圆片。
+ * 不在 glassSource 外面，所以总是降级外观（着色 + 噪点 + 高光边）。
  * 移除动画时：不旋转、不缩放，刷新中显示一道静止的 270° 弧。读屏：出现时读「下拉刷新」，刷新中礼貌播报「正在刷新」。
  */
 @OptIn(ExperimentalMaterial3Api::class)
