@@ -69,7 +69,7 @@ internal fun CollectionsTab(dav: Boolean) {
     val memories = if (dav) davMemories else fnMemories
 
     val list = rememberMemList(if (dav) "dav-collections-${lib?.accountId}" else "fn-collections-${NasAccounts.currentId}")
-    LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 120.dp + miniPlayerPad)) {
+    LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = homeListBottom() + 30.dp)) {
         item { TopSwitch() }
         item { PhotoModeSwitch() }
         item {

@@ -493,7 +493,7 @@ internal fun firstIndexOfYear(entries: List<Entry>, year: Int): Int {
 @Composable
 fun YearGrid(cards: List<YearCard>, top: Dp, onPick: (Int) -> Unit, onPinch: (Boolean) -> Unit) {
     androidx.compose.foundation.lazy.LazyColumn(
-        contentPadding = PaddingValues(top = top, bottom = 120.dp, start = 14.dp, end = 14.dp),
+        contentPadding = PaddingValues(top = top, bottom = homeListBottom() + 30.dp, start = 14.dp, end = 14.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
         modifier = Modifier.fillMaxSize().pointerInput(Unit) {
             awaitEachGesture {

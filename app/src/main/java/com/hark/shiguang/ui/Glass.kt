@@ -88,6 +88,12 @@ object Glass {
     val tint: Color get() = if (C.P.dark) Color(0xFF0D1322) else Color.White
     /** 着色透明度：有真模糊时 58%（模糊层先压暗 / 提亮过，见 [backdropFilter]）；降级 74%。最差背景下文字仍 ≥ 4.5:1（contrast_v2.py）。 */
     fun tintAlpha(blurred: Boolean): Float = if (blurred) 0.58f else 0.74f
+    /**
+     * 1.7.33（用户 2026-11-28 截图：音乐页最后一行「1376心想事成 / 1首」从底栏后面透出来，和底栏图标叠在一起）：
+     * 底部常驻的玻璃（底栏、迷你播放条）着色更实：真模糊 72%、降级 90%。配合首页内容在底栏区域淡出（Home 里的 bottomFade），
+     * 图标和文字对比度在最差背景下也 ≥ 4.5:1（浅色：#0E1320 78% 字在 72% 白 + 纯黑背景上约 6.0:1；深色 72% 着色 + 纯白背景约 4.9:1，90% 约 8.5:1）。
+     */
+    fun tintAlphaSolid(blurred: Boolean): Float = if (blurred) 0.72f else 0.90f
 
     /** 高光边：上沿亮、下沿弱，像光落在玻璃边上。 */
     fun rimBrush(strength: Float, dark: Boolean = C.P.dark): Brush {
@@ -151,6 +157,7 @@ fun Modifier.glass(
     shadow: Dp = Glass.SHADOW,
     highlight: Float = 1f,
     onDark: Boolean = false,
+    solid: Boolean = false,
 ): Modifier = composed {
     val holder = remember { GlassHolder() }
     // onDark：大图查看器、播放器这类永远是黑底的界面，不随浅色主题变白玻璃
@@ -177,7 +184,7 @@ fun Modifier.glass(
                 }
                 val blurred = useBackdrop && backdrop != null && Build.VERSION.SDK_INT >= 31 &&
                     BackdropImpl.draw(this, holder, backdrop, path, blurPx, dark)
-                drawPath(path, baseTint.copy(alpha = baseTint.alpha * Glass.tintAlpha(blurred)))
+                drawPath(path, baseTint.copy(alpha = baseTint.alpha * (if (solid) Glass.tintAlphaSolid(blurred) else Glass.tintAlpha(blurred))))
                 if (!blurred) drawPath(path, noise)
                 drawPath(path, sheen)
                 drawPath(path, rim, style = stroke)
@@ -196,9 +203,10 @@ fun GlassSurface(
     shadow: Dp = Glass.SHADOW,
     highlight: Float = 1f,
     onDark: Boolean = false,
+    solid: Boolean = false,
     content: @Composable BoxScope.() -> Unit,
 ) {
-    Box(modifier.glass(shape, backdrop, tint, blur, shadow, highlight, onDark).clip(shape), content = content)
+    Box(modifier.glass(shape, backdrop, tint, blur, shadow, highlight, onDark, solid).clip(shape), content = content)
 }
 
 /**

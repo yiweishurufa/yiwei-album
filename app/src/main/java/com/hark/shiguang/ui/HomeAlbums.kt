@@ -77,7 +77,7 @@ internal fun AlbumsTab(dav: Boolean, onBack: (() -> Unit)? = null) {
             PhotoModeSwitch()
         }
         LazyVerticalGrid(
-            GridCells.Adaptive(150.dp), state = grid, modifier = Modifier.weight(1f), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 120.dp + miniPlayerPad),
+            GridCells.Adaptive(150.dp), state = grid, modifier = Modifier.weight(1f), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = homeListBottom() + 30.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             item(span = { GridItemSpan(maxLineSpan) }, key = "top") {

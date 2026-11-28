@@ -37,6 +37,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.animation.core.animateFloatAsState
@@ -180,7 +181,9 @@ fun HomeScreen() {
     Row(Modifier.fillMaxSize().appBackground()) {
     if (wide) SideRail()
     Box(Modifier.weight(1f).fillMaxHeight()) {
-        Box(Modifier.fillMaxSize().glassSource(backdrop)) {
+        // 1.7.33：底栏（和迷你播放条）区域里的内容淡出，文字不再从玻璃后面透出来和图标叠在一起（宽屏没有底栏，不淡出）。
+        // 淡出画在 glassSource 外面：真模糊的玻璃仍然模糊完整的内容（颜色照旧透上来），降级玻璃后面只剩背景。
+        Box(Modifier.fillMaxSize().then(if (wide) Modifier else Modifier.bottomFade()).glassSource(backdrop)) {
         if (HomeState.switching && HomeState.tab != 4) Column { TopSwitch(search = if (HomeState.tab == 5 || HomeState.tab == 6) SearchScope.None else SearchScope.Photos, showDate = HomeState.tab != 5 && HomeState.tab != 6); SkeletonGrid(4, 20.dp) }
         // 用户 2026-10-24 要求继续优化：切底部 tab 时各 tab 的 rememberSaveable 状态（设置页滚动、发现页展开的卡片）
         // 也按 tab 保存，切回来还在。照片网格 / 发现页列表的滚动另有 ScrollMem 按账号保存。
@@ -235,6 +238,27 @@ fun HomeScreen() {
     }
 }
 
+/**
+ * 1.7.33：首页内容在悬浮底栏区域淡出（用户 2026-11-28 截图：列表最后一行文字从底栏后面透出来，和底栏图标重叠）。
+ * 从底栏（+ 迷你播放条）上沿以上 20dp 开始，到底栏图标上沿（离底栏上沿 16dp）完全透明；再往下全透明。
+ * 只是一层 DstIn 渐变蒙版（离屏合成一次），不做模糊。滚到底时最后一行在 [homeListBottom] 的留白里，不受影响。
+ */
+@Composable
+private fun Modifier.bottomFade(): Modifier {
+    val nav = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val barTop = nav + 76.dp + miniPlayerPad   // 底栏 66 + 离底 10 + 导航条 + 迷你播放条
+    val d = androidx.compose.ui.platform.LocalDensity.current
+    val topPx = with(d) { (barTop + 20.dp).toPx() }
+    val clearPx = with(d) { (barTop - 16.dp).toPx() }
+    return this.graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+        .drawWithContent {
+            drawContent()
+            val h = size.height
+            drawRect(Brush.verticalGradient(0f to Color.Black, 1f to Color.Transparent, startY = h - topPx, endY = h - clearPx),
+                blendMode = androidx.compose.ui.graphics.BlendMode.DstIn)
+        }
+}
+
 /** 首页各 tab 的状态 key：tab + 照片页「视频」筛选 + 来源（飞牛 / WebDAV 的页面结构不同，不互相恢复）。 */
 internal fun homeTabKey(tab: Int, videosInPhotos: Boolean, source: String): String =
     "tab$tab" + (if (tab == 0 && videosInPhotos) "v" else "") + "-" + source
@@ -272,7 +296,7 @@ private fun BottomBar(modifier: Modifier, backdrop: GlassBackdrop) {
     val view = androidx.compose.ui.platform.LocalView.current
     val selIdx = tabs.indexOfFirst { HomeState.tab == it.index || (it.index == 0 && HomeState.tab == 2) }.coerceAtLeast(0)
     Box(modifier.fillMaxWidth().navigationBarsPadding().padding(start = 14.dp, end = 14.dp, bottom = 10.dp)) {
-        GlassSurface(Modifier.fillMaxWidth().height(66.dp), shape = CircleShape, backdrop = backdrop, shadow = 18.dp) {
+        GlassSurface(Modifier.fillMaxWidth().height(66.dp), shape = CircleShape, backdrop = backdrop, shadow = 18.dp, solid = true) {
             BoxWithConstraints(Modifier.fillMaxSize().padding(5.dp)) {
                 val w = maxWidth / tabs.size
                 val x by animateDpAsState(w * selIdx, Motion.liquid(), label = "bubbleX")
@@ -514,7 +538,7 @@ internal fun PhotoHero(cover: Photo?, kicker: String?, title: String, sub: Strin
  * 滚动途中内容从悬浮玻璃底栏后面透过去是设计如此（DESIGN §9），只保证到底时能完整露出来。宽屏（侧边栏、没有底栏）保持原来的 100dp。
  */
 @Composable
-private fun homeListBottom(): androidx.compose.ui.unit.Dp {
+internal fun homeListBottom(): androidx.compose.ui.unit.Dp {
     if (isWide()) return 100.dp + miniPlayerPad   // 宽屏不变
     return 90.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + miniPlayerPad
 }

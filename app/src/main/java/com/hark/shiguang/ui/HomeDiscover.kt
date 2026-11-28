@@ -88,7 +88,7 @@ internal fun DiscoverTab() {
     val places = HomeState.places
     var fnMemories by remember { mutableStateOf<List<MemoryGroup>>(emptyList()) }
     LaunchedEffect(HomeState.timeline.days) { fnMemories = runCatching { OnThisDay.loadFn(HomeState.timeline, NasAccounts.currentId) }.getOrDefault(emptyList()) }
-    LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 120.dp + miniPlayerPad)) {
+    LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = homeListBottom() + 30.dp)) {
         item { TopSwitch(search = SearchScope.None) }   // 发现页有自己的搜索框，顶栏不再重复一个搜索图标
         item { BigTitle("发现", "") }
         item { SearchBar() }
@@ -199,7 +199,7 @@ internal fun DavDiscoverTab() {
     var mergeFrom by remember { mutableStateOf<com.hark.shiguang.FacePerson?>(null) }
     var menuPlace by remember { mutableStateOf<Pair<String, List<Photo>>?>(null) }
     val list = rememberMemList("dav-discover-" + lib.accountId)
-    LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 120.dp + miniPlayerPad)) {
+    LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = homeListBottom() + 30.dp)) {
         item { TopSwitch(search = SearchScope.None) }   // 发现页有自己的搜索框，顶栏不再重复一个搜索图标
         item { BigTitle("发现", "") }
         item { SearchBar() }

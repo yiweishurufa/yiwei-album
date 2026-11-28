@@ -69,7 +69,7 @@ fun VideosTab(dav: Boolean, inPhotos: Boolean = false) {
                 else if (lib.error != null) ErrorState(lib.error, onRetry = { scope.launch { lib.scan(reason = "出错后重试", user = true) } })
                 else StateMessage(LI.videos(), "没有视频", "")
             } }
-            else PhotoGrid(entries, cols, lib.scanning, onEnd = {}, onOpen = { Nav.push(Route.Viewer(vids, it)) }, state = grid, bottom = 100.dp + miniPlayerPad,
+            else PhotoGrid(entries, cols, lib.scanning, onEnd = {}, onOpen = { Nav.push(Route.Viewer(vids, it)) }, state = grid, bottom = homeListBottom(),
                 header = { Column { Head(); Title("视频", "${vids.size} 个" + if (lib.scanning) " · 正在扫描…" else "") } })
         } else {
             val src = remember(NasAccounts.currentId, NasVideos.version) { NasVideos.get() }
@@ -80,7 +80,7 @@ fun VideosTab(dav: Boolean, inPhotos: Boolean = false) {
                 src.photos.isEmpty() && src.loading -> Column { Head(); Title("视频", "正在查找…"); SkeletonGrid(cols, 0.dp) }
                 src.photos.isEmpty() && src.error != null -> Column { Head(); Box(Modifier.weight(1f)) { ErrorState(src.error, onRetry = { scope.launch { src.refresh() } }) } }
                 src.photos.isEmpty() -> Column { Head(); Title("视频", "0 个"); Box(Modifier.weight(1f)) { StateMessage(LI.videos(), "没有视频", "") } }
-                else -> PhotoGrid(entries, cols, src.loading, onEnd = { scope.launch { src.next() } }, onOpen = { Nav.push(Route.Viewer(shown, it)) }, state = grid, bottom = 100.dp + miniPlayerPad,
+                else -> PhotoGrid(entries, cols, src.loading, onEnd = { scope.launch { src.next() } }, onOpen = { Nav.push(Route.Viewer(shown, it)) }, state = grid, bottom = homeListBottom(),
                     header = { Column { Head(); Title("视频", "${shown.size}${if (src.more) "+" else ""} 个") } })
             }
         }
