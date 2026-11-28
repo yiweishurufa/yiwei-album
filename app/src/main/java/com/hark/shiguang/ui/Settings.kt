@@ -569,7 +569,7 @@ fun AdvancedSettingsScreen() {
                 if (!dav) {
                     Div()
                     ToggleRow(LI.trash(), "彻底删除", if (forever) "删除后无法恢复" else null, forever, alert = forever,
-                        info = "打开后删除照片时跳过飞牛回收站，无法恢复；关闭时删除的照片先进飞牛回收站，30 天内可恢复。") {
+                        info = "打开后删除照片时跳过飞牛回收站，无法恢复；关闭时删除的照片先进飞牛回收站，30 天内可在「相册 → 回收站」恢复。") {
                         forever = it; Store.putStr("nas.deleteForever", if (it) "1" else "")
                     }
                 } else {

@@ -33,7 +33,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -133,22 +132,8 @@ internal fun DiscoverTab() {
                 ToolRow(LI.copy(), "重复与相似") { Nav.push(Route.Duplicates) }
             }
         }
-        // ================= 工具（低频，默认收起成一行；有传输进行中时自动展开）
-        item { ZoneHeader("工具") }
-        item {
-            var open by rememberSaveable { mutableStateOf(false) }
-            val expanded = open || Transfers.active > 0
-            GroupCard {
-                if (!expanded) ToolRow(LI.folder(), "文件夹 · 回收站 · 传输") { open = true }
-                else {
-                    ToolRow(LI.folder(), "文件夹") { Nav.push(Route.Folders("", "文件夹")) }
-                    GroupDivider()
-                    ToolRow(LI.trash(), "回收站") { Nav.push(Route.Recycle) }
-                    GroupDivider()
-                    ToolRow(LI.swap(), "传输队列", if (Transfers.active > 0) "${Transfers.active} 个进行中" else null) { Nav.push(Route.Transfers) }
-                }
-            }
-        }
+        // 1.7.29：删掉「工具」区的折叠行「文件夹 · 回收站 · 传输」（用户 11-28 同意）。文件夹、回收站移到「相册」页
+        // （和最近添加 / 隐藏相册并列）；传输队列在设置 → 备份顶栏、上传后自动打开、下载提示条的「查看」。
     }
 }
 

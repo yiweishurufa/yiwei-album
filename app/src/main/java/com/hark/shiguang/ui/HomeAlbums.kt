@@ -129,6 +129,14 @@ internal fun AlbumsTab(dav: Boolean, onBack: (() -> Unit)? = null) {
                         Nav.push(Route.Collection("最近添加", "", PhotoSource(grouped = false) { o, l -> Repo.photos(Repo.FAR_START, Repo.FAR_END, o, l, mode = "createdAt") }))
                     }
                 }
+                // 1.7.29：原来在 发现 → 工具 的折叠行里，搬到这里（和 WebDAV「相册」页的文件夹一样按目录浏览）
+                item(key = "folders") {
+                    AlbumTile("文件夹", "按 NAS 目录浏览", null, icon = LI.folder()) { Nav.push(Route.Folders("", "文件夹")) }
+                }
+                // 1.7.29：飞牛回收站的唯一入口（误删的照片 30 天内在这里找回），放在系统相册的最后
+                item(key = "recycle") {
+                    AlbumTile("回收站", "删除的照片 30 天内可恢复", null, icon = LI.trash()) { Nav.push(Route.Recycle) }
+                }
                 val albums = HomeState.albums
                 if (albums == null && err != null) item(span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.height(420.dp)) { ErrorState(err, onRetry = { load() }) } }
                 else if (albums == null) items(4) { Box(Modifier.aspectRatio(1f).clip(RoundedCornerShape(C.Card)).background(shimmerBrush())) }

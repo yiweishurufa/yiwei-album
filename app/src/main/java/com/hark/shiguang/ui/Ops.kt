@@ -206,7 +206,11 @@ object Ops {
                 }.onFailure { failToast(c, it, "下载失败") }
             }
         }
-        if (photos.isNotEmpty()) toast(c, "已加入传输队列（${photos.size}）")
+        // 1.7.29：发现页的「传输」折叠行删了，提示条带「查看」直达传输队列（看进度、重试失败项）
+        if (photos.isNotEmpty()) {
+            val msg = "已加入传输队列（${photos.size}）"
+            if (Snack.hostActive) Snack.show(msg, "查看") { Nav.push(Route.Transfers) } else toast(c, msg)
+        }
     }
 
     fun downloadLiveVideo(ctx: Context, p: Photo) {
