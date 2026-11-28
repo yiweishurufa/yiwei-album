@@ -176,6 +176,10 @@ object MusicState {
     fun next() = with { it.seekToNextMediaItem() }
     fun prev() = with { if (it.currentPosition > 3000) it.seekTo(0) else it.seekToPreviousMediaItem() }
     fun seek(ms: Long) = with { it.seekTo(ms) }
+    /** 1.7.34 滑动切到上一首：直接换歌（不像 [prev] 那样播过 3 秒先回到开头）。 */
+    fun prevTrack() = with { it.seekToPreviousMediaItem() }
+    /** 1.7.34 这个方向（+1 下一首 / -1 上一首）上有没有歌，规则同 media3 的导航（见 SwipeMath.canGo）。 */
+    fun canSkip(dir: Int): Boolean = com.hark.shiguang.ui.SwipeMath.canGo(dir, index, queue.size, repeat == Player.REPEAT_MODE_ALL, shuffle)
     fun playAt(i: Int) = with { it.seekTo(i, 0); it.play() }
     fun remove(i: Int) = with { it.removeMediaItem(i) }
     /** 全面审查 B9：播放列表拖动排序。 */
