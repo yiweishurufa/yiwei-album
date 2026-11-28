@@ -735,6 +735,10 @@ object MusicPrefs {
     var lyricBlur: Boolean
         get() = Store.getStr("music.lyricBlur", "1") == "1"
         set(v) = Store.putStr("music.lyricBlur", if (v) "1" else "0")
+    /** 1.7.36 正在播放页背景流动（封面取色的色块缓慢漂移，只在播放中且页面在前台），默认开。 */
+    var bgFlow: Boolean
+        get() = Store.getStr("music.bgFlow", "1") == "1"
+        set(v) = Store.putStr("music.bgFlow", if (v) "1" else "0")
     /** 联网补全（网易云音乐、QQ 音乐公开接口 + LRCLIB），设置里可关。 */
     var online: Boolean
         get() = Store.getStr("music.online", "1") == "1"

@@ -10,6 +10,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -29,6 +33,35 @@ import kotlin.math.abs
 
 /** Extra bottom space for Home tab lists while the mini bar is showing, so it no longer covers the last row. */
 val miniPlayerPad: Dp get() = if (MusicState.active && !Selection.active) 64.dp else 0.dp
+
+/**
+ * 1.7.36 迷你播放条 → 正在播放的「容器展开」（没有 SharedTransitionLayout，沿用相册大图 [Hero] 的办法）：
+ * 只存迷你条胶囊和小封面的 LayoutCoordinates 引用，点开 / 上滑那一刻才算屏幕位置交给正在播放页；
+ * 正在播放页从胶囊大小「揭开」到全屏、封面从小封面长到大封面，收起时反过来缩回迷你条，缩完 [closed] = true，这次出栈不再做页面转场。
+ */
+object MiniHero {
+    class Rects(val capsule: Rect, val art: Rect)
+    var capsule: LayoutCoordinates? = null
+    var art: LayoutCoordinates? = null
+    /** 这次打开要做容器展开（正在播放页读出后在首帧之后清掉；MainActivity 据此不叠页面转场）。 */
+    var pending: Rects? = null
+    var closed = false
+
+    /** 迷你条现在在屏幕上的位置（不在组合里 / 被多选隐藏时为 null）。 */
+    fun target(): Rects? {
+        val c = capsule?.takeIf { it.isAttached }?.boundsInRoot() ?: return null
+        val a = art?.takeIf { it.isAttached }?.boundsInRoot() ?: return null
+        if (c.width <= 0f || a.width <= 0f) return null
+        return Rects(c, a)
+    }
+
+    fun open() {
+        if (Nav.stack.lastOrNull() == Route.MusicNowPlaying) return
+        pending = if (Motion.reduced || Selection.active) null else target()
+        closed = false
+        Nav.push(Route.MusicNowPlaying)
+    }
+}
 
 /**
  * Above the bottom navigation (or at the bottom on wide screens) while something is queued.
@@ -54,12 +87,12 @@ fun MiniPlayer(modifier: Modifier = Modifier, backdrop: GlassBackdrop? = null) {
     val view = LocalView.current
     val density = LocalDensity.current.density
     val upPx = SwipeMath.UP_DP * density
-    Column(modifier.padding(horizontal = 14.dp).fillMaxWidth().glassPress(press, 0.5f).glass(shape, backdrop, shadow = 14.dp, solid = true).clip(shape)
+    Column(modifier.padding(horizontal = 14.dp).fillMaxWidth().onGloballyPositioned { MiniHero.capsule = it }.glassPress(press, 0.5f).glass(shape, backdrop, shadow = 14.dp, solid = true).clip(shape)
         .mediaDrag(Unit, horizontal = true, vertical = true,
             onHorizontal = { skip.drag(it) },
             onHorizontalEnd = { _, v -> scope.launch { skip.release(v / density) { Haptics.tick(view) } } },
-            onVerticalEnd = { total, v -> if (total < -upPx || (v / density < -SwipeMath.SKIP_VELOCITY_DP && total < 0f)) Nav.push(Route.MusicNowPlaying) })
-        .clickable(press, null, onClickLabel = "打开正在播放") { Nav.push(Route.MusicNowPlaying) }
+            onVerticalEnd = { total, v -> if (total < -upPx || (v / density < -SwipeMath.SKIP_VELOCITY_DP && total < 0f)) MiniHero.open() })
+        .clickable(press, null, onClickLabel = "打开正在播放") { MiniHero.open() }
         .semantics(mergeDescendants = false) {
             contentDescription = "正在播放：$title" + (t?.displayArtist?.takeIf { it.isNotBlank() }?.let { "，$it" } ?: "")
             customActions = listOfNotNull(
@@ -74,7 +107,7 @@ fun MiniPlayer(modifier: Modifier = Modifier, backdrop: GlassBackdrop? = null) {
                 translationX = x
                 alpha = if (skip.width > 0f) (1f - abs(x) / skip.width * 0.7f).coerceIn(0f, 1f) else 1f
             }, verticalAlignment = Alignment.CenterVertically) {
-                MusicArt(t?.artPath, Modifier.size(42.dp), corner = Radius.l - Space.s)
+                MusicArt(t?.artPath, Modifier.size(42.dp).onGloballyPositioned { MiniHero.art = it }, corner = Radius.l - Space.s)
                 Column(Modifier.weight(1f).padding(start = Space.m)) {
                     Text(title, color = C.OnGlass, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(t?.displayArtist ?: "", color = C.OnGlassSub, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)

@@ -571,6 +571,7 @@ fun MediaSettingsScreen() {
     var bgAudio by remember { mutableStateOf(PlayPrefs.bgAudio) }
     var gapless by remember { mutableStateOf(MusicPrefs.gapless) }
     var lyricBlur by remember { mutableStateOf(MusicPrefs.lyricBlur) }
+    var bgFlow by remember { mutableStateOf(MusicPrefs.bgFlow) }
     var fnQuality by remember { mutableStateOf(PlayPrefs.fnQualityRemember) }
     Page("影音设置", src?.let { "${if (it.kind == "dav") "WebDAV" else "飞牛"} · ${it.title}" } ?: "") {
         Column(Modifier.fillMaxSize().verticalScrollCompat().navigationBarsPadding().padding(bottom = 40.dp)) {
@@ -605,6 +606,10 @@ fun MediaSettingsScreen() {
                 ToggleRow(LI.music(), "音乐无缝播放", on = gapless, info = "当前这首缓冲好后提前加载下一首，切歌不停顿，整张专辑连续播放没有空隙。会提前用掉一首歌的流量。") {
                     gapless = it; MusicPrefs.gapless = it
                 }
+                Div()
+                // 1.7.36 正在播放页背景：封面取色的色块缓慢漂移
+                ToggleRow(LI.music(), "播放页背景流动", on = bgFlow, info = "正在播放页的背景取自封面的几种颜色。打开时，播放中颜色会非常缓慢地流动，暂停就停下；" +
+                    "关掉后背景保持静止。离开正在播放页、锁屏或切到后台时不会流动。系统「移除动画」打开时始终静止。") { bgFlow = it; MusicPrefs.bgFlow = it }
                 // 1.7.35 歌词 v2：近处几行轻模糊（只在 Android 12 及以上）
                 if (Glass.blurSupported) {
                     Div()

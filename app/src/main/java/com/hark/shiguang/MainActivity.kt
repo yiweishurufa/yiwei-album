@@ -292,6 +292,9 @@ class MainActivity : ComponentActivity() {
                             // 大图已缩回缩略图位置时（Hero.closed）直接移除，网格就在原处
                             !Motion.reduced && targetState.route is Route.Viewer && Hero.from != null -> EnterTransition.None togetherWith fadeOut(Motion.exit())
                             !Motion.reduced && initialState.route is Route.Viewer && Hero.closed -> EnterTransition.None togetherWith ExitTransition.None
+                            // 1.7.36：从迷你播放条打开 / 缩回迷你条时，正在播放页自己做容器展开 / 收起（MiniHero），页面层不再叠转场
+                            !Motion.reduced && targetState.route == Route.MusicNowPlaying && com.hark.shiguang.ui.MiniHero.pending != null -> EnterTransition.None togetherWith ExitTransition.None
+                            !Motion.reduced && initialState.route == Route.MusicNowPlaying && com.hark.shiguang.ui.MiniHero.closed -> EnterTransition.None togetherWith ExitTransition.None
                             // 1.6.6：正在播放页像从迷你播放条展开的面板——从下往上滑入（面板弹簧），收起时向下滑出并压在上层
                             !Motion.reduced && targetState.route == Route.MusicNowPlaying -> (slideInVertically(Motion.sheet()) { it / 2 } + fadeIn(Motion.enter())) togetherWith fadeOut(Motion.exit())
                             !Motion.reduced && initialState.route == Route.MusicNowPlaying -> (fadeIn(Motion.enter()) togetherWith (slideOutVertically(Motion.page()) { it / 2 } + fadeOut(Motion.exit()))).apply { targetContentZIndex = -1f }
