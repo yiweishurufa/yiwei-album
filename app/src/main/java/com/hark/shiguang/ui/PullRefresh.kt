@@ -94,17 +94,23 @@ fun GlassRefreshIndicator(state: PullToRefreshState, modifier: Modifier = Modifi
     LaunchedEffect(armedNow) { if (armedNow) Haptics.tick(view) }
     val done = remember { androidx.compose.animation.core.Animatable(0f) }
     var wasRefreshing by remember { mutableStateOf(false) }
+    // 1.7.32：收尾动画播完后，下拉距离还没收回到 0 的那几帧圆片不再按「正在下拉」重新显出来（以前收尾淡出后会再闪一下）；
+    // 动画被打断（页面离开、又开始刷新）也一定复位，不会停在半透明的收尾状态。
+    var settling by remember { mutableStateOf(false) }
     LaunchedEffect(refreshing) {
-        if (refreshing) { done.snapTo(0f); wasRefreshing = true; return@LaunchedEffect }
+        if (refreshing) { done.snapTo(0f); settling = false; wasRefreshing = true; return@LaunchedEffect }
         if (!wasRefreshing) return@LaunchedEffect
         wasRefreshing = false
         if (Motion.reduced) return@LaunchedEffect
-        done.snapTo(0.001f)
-        done.animateTo(1f, tween(Motion.BURST - 140, easing = Motion.EaseOut))
-        done.snapTo(0f)
+        settling = true
+        try {
+            done.snapTo(0.001f)
+            done.animateTo(1f, tween(Motion.BURST - 140, easing = Motion.EaseOut))
+        } finally { kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { done.snapTo(0f) } }
     }
+    if (settling && !refreshing && state.verticalOffset <= 0.5f) androidx.compose.runtime.SideEffect { settling = false }
     val finishing by remember { androidx.compose.runtime.derivedStateOf { done.value > 0f } }
-    val visible = refreshing || (!finishing && state.verticalOffset > 0.5f)
+    val visible = refreshing || (!finishing && !settling && state.verticalOffset > 0.5f)
     val accent = C.Accent
     val track = C.Text.copy(alpha = 0.12f)
     Box(
@@ -122,7 +128,7 @@ fun GlassRefreshIndicator(state: PullToRefreshState, modifier: Modifier = Modifi
                     return@graphicsLayer
                 }
                 translationY = statusTop + gapPx + state.verticalOffset - size.height
-                alpha = if (refreshing) 1f else (p * 1.8f).coerceIn(0f, 1f)
+                alpha = if (refreshing) 1f else if (settling) 0f else (p * 1.8f).coerceIn(0f, 1f)
                 if (!Motion.reduced && !refreshing) { val s = 0.7f + 0.3f * p.coerceAtMost(1f); scaleX = s; scaleY = s }
             }
             .then(if (visible) Modifier.semantics {

@@ -79,6 +79,8 @@ object Haptics {
 fun Modifier.enterRise(index: Int): Modifier = composed {
     if (Motion.reduced || index >= Motion.STAGGER_MAX) return@composed this
     var played by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    // 1.7.32：刚切过底栏 Tab（整页正在淡入）时不再叠一层错开上浮——以前从照片切到影视，海报要等页面淡入后再一张张浮出来，像首帧空白
+    if (!played && android.os.SystemClock.uptimeMillis() - HomeState.tabSwitchedAt < Motion.TAB_IN_DELAY + Motion.TAB_IN + 200) played = true
     if (played) return@composed this
     val t = remember { androidx.compose.animation.core.Animatable(0f) }
     LaunchedEffect(Unit) {

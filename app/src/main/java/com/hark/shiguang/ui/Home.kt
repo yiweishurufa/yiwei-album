@@ -3,6 +3,7 @@ package com.hark.shiguang.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -183,10 +184,14 @@ fun HomeScreen() {
         if (HomeState.switching && HomeState.tab != 4) Column { TopSwitch(search = if (HomeState.tab == 5 || HomeState.tab == 6) SearchScope.None else SearchScope.Photos, showDate = HomeState.tab != 5 && HomeState.tab != 6); SkeletonGrid(4, 20.dp) }
         // 用户 2026-10-24 要求继续优化：切底部 tab 时各 tab 的 rememberSaveable 状态（设置页滚动、发现页展开的卡片）
         // 也按 tab 保存，切回来还在。照片网格 / 发现页列表的滚动另有 ScrollMem 按账号保存。
-        // 1.7.12：切 Tab 时新旧内容交叉淡入（Motion.crossfade，220ms，不位移）；移除动画时直接切换
-        else androidx.compose.animation.Crossfade(HomeState.tab to HomeState.source, animationSpec = Motion.crossfade(), label = "homeTab") { (tab, src) ->
+        // 1.7.12：切 Tab 时新旧内容交叉淡入。1.7.32（用户 2026-11-28「底部从照片切换到视频动画有问题」）：
+        // 以前两页各 220ms 同时淡入淡出，中间一段两页都是半透明叠在一起（照片网格透出影视海报，重影 + 发灰）。
+        // 现在旧页 90ms 快速淡出、新页稍后 170ms 淡入（Motion.tabEnter / tabExit），几乎不再同时可见；移除动画时直接切换。
+        // 各 Tab 的状态仍按 tab 保存（tabStates），切回来滚动位置、展开的卡片都在。
+        else androidx.compose.animation.AnimatedContent(HomeState.tab to HomeState.source, transitionSpec = { Motion.tabEnter() togetherWith Motion.tabExit() }, label = "homeTab") { (tab, src) ->
           val dav = src == "dav"
           tabStates.SaveableStateProvider(homeTabKey(tab, false, src)) {
+            androidx.compose.runtime.CompositionLocalProvider(LocalHomeTab provides tab) {
             when (tab) {
                 // 全面审查 C2：「视频」筛选并回时间线（月份标题、捏合缩放、列数都和全部 / 照片 / 实况一致）
                 0 -> if (dav) DavPhotosTab() else PhotosTab()
@@ -196,6 +201,7 @@ fun HomeScreen() {
                 5 -> MoviesTab()
                 6 -> MusicTab()
                 else -> SettingsScreen()
+            }
             }
           }
         }
@@ -280,18 +286,14 @@ private fun BottomBar(modifier: Modifier, backdrop: GlassBackdrop) {
                 Row(Modifier.fillMaxSize()) {
                     tabs.forEachIndexed { k, t ->
                         val sel = k == selIdx
-                        val lift by animateFloatAsState(if (sel) 1f else 0f, Motion.liquid(), label = "tabLift")
+                        // 1.7.32：图标上移 / 标签浮现改用几乎不过冲的弹簧（以前用玻璃气泡的弹性弹簧，标签和图标会上下多弹一下）
+                        val lift by animateFloatAsState(if (sel) 1f else 0f, Motion.settle(), label = "tabLift")
                         val icon by androidx.compose.animation.animateColorAsState(if (sel) C.Accent else C.OnGlassSub, Motion.state(), label = "tabIcon")
-                        // 1.7.26：按下图标微缩（跟手），选中的一瞬间图标轻弹一下（Motion.pop，只在「变成选中」时播，第一次组合不播）
+                        // 1.7.26：按下图标微缩（跟手）。1.7.32：去掉「选中瞬间先跳到 0.8 再弹回」——snapTo 是一帧内的硬跳，
+                        // 又和按压缩放（0.86）相乘，松手那一刻图标会突然缩到约 0.7 再弹大，看起来像闪了一下
                         val ix = remember { MutableInteractionSource() }
                         val pressed by ix.collectIsPressedAsState()
                         val press by animateFloatAsState(if (pressed) Motion.PRESS_SCALE_ICON else 1f, if (pressed) Motion.pressIn() else Motion.pressOut(), label = "tabPress")
-                        val pop = remember { androidx.compose.animation.core.Animatable(1f) }
-                        var wasSel by remember { mutableStateOf(sel) }
-                        LaunchedEffect(sel) {
-                            if (sel && !wasSel && !Motion.reduced) { pop.snapTo(0.8f); pop.animateTo(1f, Motion.pop()) }
-                            wasSel = sel
-                        }
                         Box(Modifier.weight(1f).fillMaxHeight().clip(CircleShape)
                             .clickable(ix, null, role = androidx.compose.ui.semantics.Role.Tab) { if (!sel) Haptics.tick(view); onTabTap(t.index, sel) }
                             .semantics { selected = sel }, contentAlignment = Alignment.Center) {
@@ -299,7 +301,7 @@ private fun BottomBar(modifier: Modifier, backdrop: GlassBackdrop) {
                             Box(Modifier.size(44.dp).graphicsLayer { translationY = -up * lift; alpha = lift.coerceIn(0f, 1f) }
                                 .background(Brush.radialGradient(listOf(C.Accent.copy(alpha = if (C.P.dark) 0.55f else 0.35f), C.Accent.copy(alpha = 0f)))))
                             Icon(if (sel) t.filled() else t.icon(false), null, tint = icon,
-                                modifier = Modifier.size(25.dp).graphicsLayer { translationY = -up * lift; val sc = (1f + 0.08f * lift) * press * pop.value; scaleX = sc; scaleY = sc })
+                                modifier = Modifier.size(25.dp).graphicsLayer { translationY = -up * lift; val sc = (1f + 0.08f * lift) * press; scaleX = sc; scaleY = sc })
                             Text(t.title, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = C.OnGlass, maxLines = 1,
                                 modifier = Modifier.graphicsLayer { alpha = lift.coerceIn(0f, 1f); translationY = up * 2.3f + (1f - lift) * up })
                         }
@@ -313,15 +315,22 @@ private fun BottomBar(modifier: Modifier, backdrop: GlassBackdrop) {
 /** 1.7.0：滚过首页大图后，标题收进顶部的玻璃胶囊（照片页的「11月 · 2026年」、按年视图）。各 tab 写 [title]，离开时清掉。 */
 object HomeChrome {
     var title by mutableStateOf<String?>(null)
+    /** 1.7.32：写标题的是哪个 Tab。切 Tab 时旧页还要淡出一会儿，胶囊只显示当前 Tab 写的标题，旧页离开时也不会把新页的标题清掉。 */
+    var owner by mutableIntStateOf(-1)
 }
+
+/** 1.7.32：首页 Tab 内容里可读到自己是哪个 Tab（[HomeChrome.owner]）。 */
+val LocalHomeTab = androidx.compose.runtime.staticCompositionLocalOf { -1 }
 
 @Composable
 private fun HomeTopCapsule(backdrop: GlassBackdrop) {
-    val t = HomeChrome.title
+    // 1.7.32：不是当前 Tab 写的标题不显示（以前从照片切到影视时，照片页的「11月 · 2026年」胶囊要等照片页淡出完才弹性缩走）
+    val mine = HomeChrome.owner == HomeState.tab
+    val t = HomeChrome.title?.takeIf { mine }
     var last by remember { mutableStateOf("") }
     if (t != null) last = t
     val p by animateFloatAsState(if (t != null) 1f else 0f, Motion.materialize(), label = "capsule")
-    if (t == null && p < 0.01f) return
+    if (t == null && (p < 0.01f || !mine)) return
     Box(Modifier.fillMaxWidth().statusBarsPadding().padding(top = 6.dp), contentAlignment = Alignment.TopCenter) {
         val drop = with(androidx.compose.ui.platform.LocalDensity.current) { 14.dp.toPx() }
         GlassSurface(Modifier.graphicsLayer {
@@ -340,8 +349,10 @@ private fun HomeTopCapsule(backdrop: GlassBackdrop) {
 /** 写入顶栏胶囊标题；页面离开时清掉。 */
 @Composable
 internal fun ChromeTitle(title: String?) {
-    SideEffect { HomeChrome.title = title }
-    DisposableEffect(Unit) { onDispose { HomeChrome.title = null } }
+    val tab = LocalHomeTab.current
+    // 正在淡出的旧 Tab 不再写（否则它的最后一次重组会把新 Tab 的标题盖掉）
+    SideEffect { if (tab == HomeState.tab || tab == -1) { HomeChrome.title = title; HomeChrome.owner = if (tab == -1) HomeState.tab else tab } }
+    DisposableEffect(Unit) { onDispose { if (HomeChrome.owner == tab || tab == -1) HomeChrome.title = null } }
 }
 
 /** One source = one 飞牛 account or one WebDAV account. */

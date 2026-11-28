@@ -226,7 +226,12 @@ object HomeState {
     var albums by mutableStateOf<List<Album>?>(null)
     var persons by mutableStateOf<List<Person>?>(null)
     var places by mutableStateOf<List<Place>?>(null)
-    var tab by mutableIntStateOf(0)
+    private var tabState by mutableIntStateOf(0)
+    var tab: Int
+        get() = tabState
+        set(v) { if (v != tabState) tabSwitchedAt = android.os.SystemClock.uptimeMillis(); tabState = v }
+    /** 1.7.32：最近一次切换底栏 Tab 的时间。切 Tab 后很短时间内新页的列表不再各自错开上浮（[enterRise]），只跟着整页淡入，免得内容晚一拍才冒出来。 */
+    @Volatile var tabSwitchedAt = 0L
     /** 1.0.2: jump back to the 发现 tab (重复/相似 pages point there for progress). */
     fun openAiTab() { tab = 3; Nav.reset(Route.Home) }
 

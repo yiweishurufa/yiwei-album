@@ -326,7 +326,16 @@ object Motion {
         if (reduced) androidx.compose.animation.fadeOut(tween(60))
         else androidx.compose.animation.fadeOut(exit()) + androidx.compose.animation.scaleOut(exit(), targetScale = 0.96f)
 
-    /** 首页 Tab 切换：内容交叉淡入（不位移）。移除动画时直接切换。 */
+    /** 1.7.32 首页 Tab 切换：旧页 [TAB_OUT] ms 快速淡出，新页延后 [TAB_IN_DELAY] ms、用 [TAB_IN] ms 淡入——两页几乎不同时半透明叠着（不再重影）。移除动画时直接切换。 */
+    const val TAB_OUT = 90
+    const val TAB_IN = 170
+    const val TAB_IN_DELAY = 50
+    fun tabEnter(): androidx.compose.animation.EnterTransition =
+        if (reduced) androidx.compose.animation.EnterTransition.None else androidx.compose.animation.fadeIn(tween(TAB_IN, delayMillis = TAB_IN_DELAY, easing = EaseOut))
+    fun tabExit(): androidx.compose.animation.ExitTransition =
+        if (reduced) androidx.compose.animation.ExitTransition.None else androidx.compose.animation.fadeOut(tween(TAB_OUT, easing = EaseOut))
+
+    /** 首页 Tab 切换：内容交叉淡入（不位移）。移除动画时直接切换。1.7.32 起首页改用 [tabEnter] / [tabExit]。 */
     fun <T> crossfade(): FiniteAnimationSpec<T> = if (reduced) snap() else tween(220, easing = EaseOut)
 }
 
