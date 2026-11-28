@@ -98,8 +98,11 @@ object ScrollTop {
 @Composable
 fun ScrollToTopOnTab(grid: LazyGridState? = null, list: LazyListState? = null) {
     val t = ScrollTop.tick
+    // 1.7.30：只响应「进入组合之后」的点按。以前用 t > 0 判断：点过一次当前 Tab 后，每次切回这个 Tab（Crossfade 重新组合）
+    // 都会立刻回到顶部，记住的滚动位置丢了。
+    val start = remember { t }
     LaunchedEffect(t) {
-        if (t == 0) return@LaunchedEffect
+        if (t == 0 || t == start) return@LaunchedEffect
         val g = grid?.let { it.firstVisibleItemIndex > 0 || it.firstVisibleItemScrollOffset > 0 } == true
         val l = list?.let { it.firstVisibleItemIndex > 0 || it.firstVisibleItemScrollOffset > 0 } == true
         if (g || l) ScrollTop.moved = t

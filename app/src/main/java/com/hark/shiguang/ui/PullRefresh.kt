@@ -59,8 +59,10 @@ fun PullRefreshBox(enabled: Boolean, onRefresh: () -> Unit, content: @Composable
     }
     // 1.7.26 F8：点当前底栏 Tab 时页面已经在顶部 → 当作下拉刷新（等一帧，让同一页的 ScrollToTopOnTab 先报告要不要滚动）
     val tick = ScrollTop.tick
+    // 1.7.30：只响应进入组合之后的点按。以前点过一次当前 Tab 后，每次切到影视 / 音乐 / 照片页（重新组合）都会自己刷新一次。
+    val start = remember { tick }
     LaunchedEffect(tick) {
-        if (tick == 0) return@LaunchedEffect
+        if (tick == 0 || tick == start) return@LaunchedEffect
         androidx.compose.runtime.withFrameNanos { }
         if (ScrollTop.moved != tick && canRefresh && !ptr.isRefreshing) ptr.startRefresh()
     }
