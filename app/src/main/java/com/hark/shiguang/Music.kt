@@ -731,6 +731,10 @@ object MusicPrefs {
     var cleanNames: Boolean
         get() = cleanState.value
         set(v) { Store.putStr("music.cleanNames", if (v) "1" else "0"); cleanState.value = v }
+    /** 1.7.35 歌词柔焦：Android 12+ 离当前句 1–4 行轻模糊，默认开；个别机型觉得闪可关。 */
+    var lyricBlur: Boolean
+        get() = Store.getStr("music.lyricBlur", "1") == "1"
+        set(v) = Store.putStr("music.lyricBlur", if (v) "1" else "0")
     /** 联网补全（网易云音乐、QQ 音乐公开接口 + LRCLIB），设置里可关。 */
     var online: Boolean
         get() = Store.getStr("music.online", "1") == "1"
@@ -786,32 +790,166 @@ object Music {
     fun fmt(ms: Long): String { val s = (ms / 1000).coerceAtLeast(0); return if (s >= 3600) "%d:%02d:%02d".format(s / 3600, s % 3600 / 60, s % 60) else "%d:%02d".format(s / 60, s % 60) }
 }
 
-/** Parsed LRC: lines sorted by time. Handles several time tags per line, [offset:], and "translation" lines with the same time. */
+/**
+ * Parsed LRC: lines sorted by time. Handles several time tags per line, [offset:], and "translation" lines with the same time.
+ * 1.7.35 歌词 v2：
+ * - 逐字时间（只在内存里，缓存的歌词文本原样不动）：增强 LRC `[00:12.00]<00:12.00>字<00:12.40>字<00:13.10>`、
+ *   行内方括号 `[00:12.00]字[00:12.40]字[00:13.10]`、网易 YRC `[12000,3000](12000,400,0)字(12400,700,0)字`。
+ * - 空白行（只有时间标签）当作上一句的结束时间（[Line.endMs]），用来判断间奏；空白行本身仍像以前一样去掉。
+ */
 object Lrc {
-    data class Line(val ms: Long, val text: String, val sub: String = "")
+    data class Word(val startMs: Long, val endMs: Long, val text: String)
+    data class Line(val ms: Long, val text: String, val sub: String = "", val words: List<Word> = emptyList(), val endMs: Long = -1) {
+        /** 这句唱完的时间：有逐字时间取最后一个字的结束，否则取空白行给的结束；都没有为 -1。 */
+        val end: Long get() = words.lastOrNull()?.endMs?.takeIf { it > 0 } ?: endMs
+    }
+    /** 间奏：[afterIndex] 这句之后（-1 = 第一句之前的前奏），从 [startMs] 到 [endMs]。 */
+    data class Gap(val afterIndex: Int, val startMs: Long, val endMs: Long)
+
+    /** 两句之间空出这么久才显示间奏点（AMLL / Spotify 复刻里常用 6 秒）。 */
+    const val GAP_MS = 6000L
+
     private val TAG = Regex("\\[(\\d{1,3}):(\\d{1,2})(?:[.:](\\d{1,3}))?]")
+    private val WORD_TAG = Regex("<(\\d{1,3}):(\\d{1,2})(?:[.:](\\d{1,3}))?>")
+    private val YRC_LINE = Regex("^\\[(\\d+),(\\d+)](.*)$")
+    private val YRC_WORD = Regex("\\((\\d+),(\\d+),\\d+\\)")
+
+    private fun ms(min: String, sec: String, frac: String): Long =
+        min.toLong() * 60_000 + sec.toLong() * 1000 + when (frac.length) { 0 -> 0; 1 -> frac.toLong() * 100; 2 -> frac.toLong() * 10; else -> frac.take(3).toLong() }
+
+    /** 一段带时间标记的文字 → 逐字列表。[marks] 是（标记位置区间, 时间）；最后一个标记之后没有字时它是最后一个字的结束。 */
+    private fun wordsBetween(body: String, marks: List<Pair<IntRange, Long>>, lineStart: Long): List<Word> {
+        if (marks.isEmpty()) return emptyList()
+        val out = ArrayList<Word>()
+        // 第一个标记前面就有字：从这一行的时间开始
+        val head = body.substring(0, marks.first().first.first)
+        if (head.isNotBlank()) out.add(Word(lineStart, marks.first().second, head))
+        for (i in marks.indices) {
+            val from = marks[i].first.last + 1
+            val to = if (i + 1 < marks.size) marks[i + 1].first.first else body.length
+            val text = body.substring(from, to)
+            if (text.isEmpty()) continue
+            val end = if (i + 1 < marks.size) marks[i + 1].second else -1L
+            out.add(Word(marks[i].second, end, text))
+        }
+        // 最后一个字没有结束标记：先记 -1，后面用下一句开始补
+        return out.filter { it.text.isNotEmpty() }
+    }
+
+    /** 去掉首字前、末字后的空白，丢掉空字；显示的整句 = 各字拼起来，逐字点亮的字符数才对得上。 */
+    private fun tidy(ws: List<Word>): List<Word> {
+        if (ws.isEmpty()) return ws
+        val l = ws.toMutableList()
+        l[0] = l[0].copy(text = l[0].text.trimStart())
+        l[l.size - 1] = l[l.size - 1].copy(text = l[l.size - 1].text.trimEnd())
+        return l.filter { it.text.isNotEmpty() }
+    }
+
     fun parse(s: String): List<Line> {
         var offset = 0L
         Regex("\\[offset:\\s*([+-]?\\d+)]", RegexOption.IGNORE_CASE).find(s)?.let { offset = it.groupValues[1].toLongOrNull() ?: 0 }
-        val out = ArrayList<Pair<Long, String>>()
-        s.lineSequence().forEach { raw ->
+        val out = ArrayList<Line>()
+        fun shift(t: Long) = (t - offset).coerceAtLeast(0)
+        s.lineSequence().forEach { raw0 ->
+            val raw = raw0.trimEnd('\r')
+            // 网易 YRC：[开始,时长](字开始,字时长,0)字…
+            YRC_LINE.find(raw.trim())?.let { m ->
+                val start = m.groupValues[1].toLong(); val dur = m.groupValues[2].toLong(); val body = m.groupValues[3]
+                val ws = YRC_WORD.findAll(body).toList()
+                if (ws.isNotEmpty()) {
+                    val words = ws.mapIndexed { i, w ->
+                        val textEnd = if (i + 1 < ws.size) ws[i + 1].range.first else body.length
+                        val ws0 = w.groupValues[1].toLong(); val wd = w.groupValues[2].toLong()
+                        Word(shift(ws0), shift(ws0 + wd), body.substring(w.range.last + 1, textEnd))
+                    }.filter { it.text.isNotEmpty() }
+                    val tw = tidy(words)
+                    out.add(Line(shift(start), tw.joinToString("") { it.text }, words = tw, endMs = shift(start + dur)))
+                    return@forEach
+                }
+            }
             val tags = TAG.findAll(raw).toList()
             if (tags.isEmpty()) return@forEach
-            val text = raw.substring(tags.last().range.last + 1).replace(Regex("<\\d+:\\d+(?:\\.\\d+)?>"), "").trim()
-            tags.forEach { m ->
-                val frac = m.groupValues[3]
-                val ms = m.groupValues[1].toLong() * 60_000 + m.groupValues[2].toLong() * 1000 + when (frac.length) { 0 -> 0; 1 -> frac.toLong() * 100; 2 -> frac.toLong() * 10; else -> frac.take(3).toLong() }
-                out.add((ms - offset).coerceAtLeast(0) to text)
+            // 行首连续的时间标签 = 这一行的时间（可以有多个，同一句重复出现）；后面夹在文字中间的是逐字标记
+            var lead = 1
+            while (lead < tags.size && raw.substring(tags[lead - 1].range.last + 1, tags[lead].range.first).isBlank()) lead++
+            val lineTags = tags.take(lead)
+            val inline = tags.drop(lead)
+            val body = raw.substring(lineTags.last().range.last + 1)
+            val times = lineTags.map { shift(ms(it.groupValues[1], it.groupValues[2], it.groupValues[3])) }
+            // 逐字：尖括号标记优先；没有尖括号但有行内方括号也算
+            val angle = WORD_TAG.findAll(body).toList()
+            val words: List<Word>
+            val text: String
+            if (angle.isNotEmpty()) {
+                words = wordsBetween(body, angle.map { it.range to shift(ms(it.groupValues[1], it.groupValues[2], it.groupValues[3])) }, times.first())
+                text = body.replace(WORD_TAG, "").trim()
+            } else if (inline.isNotEmpty() && times.size == 1) {
+                val base = lineTags.last().range.last + 1
+                words = wordsBetween(body, inline.map { IntRange(it.range.first - base, it.range.last - base) to shift(ms(it.groupValues[1], it.groupValues[2], it.groupValues[3])) }, times.first())
+                text = body.replace(TAG, "").trim()
+            } else { words = emptyList(); text = body.trim() }
+            val ws = tidy(words)
+            times.forEach { t -> out.add(Line(t, if (ws.isNotEmpty()) ws.joinToString("") { it.text } else text, words = if (times.size == 1) ws else emptyList())) }
+        }
+        // merge same-time lines (original + translation); a blank line ends the line before it
+        val merged = ArrayList<Line>()
+        out.sortedBy { it.ms }.forEach { l ->
+            val last = merged.lastOrNull()
+            if (last != null && last.ms == l.ms && l.text.isNotEmpty())
+                merged[merged.size - 1] = if (last.text.isEmpty()) last.copy(text = l.text, words = l.words) else last.copy(sub = if (last.sub.isEmpty()) l.text else last.sub)
+            else merged.add(l)
+        }
+        // 结束时间：空白行 → 前一句的结束；逐字最后一个字没有结束 → 用下一句开始（最多 + 5 秒）
+        for (i in merged.indices) {
+            val l = merged[i]
+            if (l.text.isEmpty() && i > 0 && merged[i - 1].text.isNotEmpty() && merged[i - 1].endMs < 0) merged[i - 1] = merged[i - 1].copy(endMs = l.ms)
+        }
+        for (i in merged.indices) {
+            val l = merged[i]
+            val lw = l.words.lastOrNull() ?: continue
+            if (lw.endMs < 0) {
+                val nextStart = merged.getOrNull(i + 1)?.ms ?: (lw.startMs + 1000)
+                val end = minOf(nextStart, lw.startMs + 5000).coerceAtLeast(lw.startMs + 1)
+                merged[i] = l.copy(words = l.words.dropLast(1) + lw.copy(endMs = end))
             }
         }
-        // merge same-time lines (original + translation)
-        val merged = ArrayList<Line>()
-        out.sortedBy { it.first }.forEach { (t, x) ->
-            val last = merged.lastOrNull()
-            if (last != null && last.ms == t && x.isNotEmpty()) merged[merged.size - 1] = if (last.text.isEmpty()) last.copy(text = x) else last.copy(sub = if (last.sub.isEmpty()) x else last.sub)
-            else merged.add(Line(t, x))
-        }
         return merged.filter { it.text.isNotEmpty() || merged.size < 3 }
+    }
+
+    /** 间奏：第一句之前、或一句唱完（知道结束时间时）到下一句开始之间空了 ≥ [GAP_MS]。 */
+    fun gaps(lines: List<Line>): List<Gap> {
+        if (lines.isEmpty() || lines.first().ms < 0) return emptyList()
+        val out = ArrayList<Gap>()
+        if (lines.first().ms >= GAP_MS) out.add(Gap(-1, 0, lines.first().ms))
+        for (i in 0 until lines.size - 1) {
+            val end = lines[i].end
+            if (end > 0 && lines[i + 1].ms - end >= GAP_MS) out.add(Gap(i, end, lines[i + 1].ms))
+        }
+        return out
+    }
+
+    /** 当前句：最后一句开始时间 ≤ 播放位置（提前 [leadMs] 亮起）；没有时间轴为 null。 */
+    fun current(lines: List<Line>, pos: Long, leadMs: Long = 300): Int? {
+        if (lines.isEmpty() || lines.first().ms < 0) return null
+        var i = lines.indexOfLast { it.ms <= pos + leadMs }
+        if (i < 0) i = 0
+        return i
+    }
+
+    /**
+     * 逐字点亮进度：这一句里已唱过的字符数（可带小数，正在唱的字按时间比例算）。没有逐字时间返回 null。
+     */
+    fun sungChars(line: Line, pos: Long): Float? {
+        if (line.words.isEmpty()) return null
+        var n = 0f
+        for (w in line.words) {
+            when {
+                pos >= w.endMs -> n += w.text.length
+                pos <= w.startMs -> return n
+                else -> { val f = (pos - w.startMs).toFloat() / (w.endMs - w.startMs).coerceAtLeast(1); return n + w.text.length * f.coerceIn(0f, 1f) }
+            }
+        }
+        return n
     }
     /** Plain lyrics without timestamps (USLT) as one untimed list. */
     fun plain(s: String): List<Line> = s.lines().map { it.trim() }.filter { it.isNotEmpty() }.map { Line(-1, it) }
