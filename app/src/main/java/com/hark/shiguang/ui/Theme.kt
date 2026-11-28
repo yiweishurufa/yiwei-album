@@ -82,19 +82,44 @@ private fun darkGlassPalette(a: Accent) = Palette(
     accent = a.color, accent2 = a.soft, onAccent = InkOnAccent, display = Type.numFamily,
 )
 
-object ThemeState {
-    var mode by mutableStateOf(runCatching { ThemeMode.valueOf(Store.themeMode) }.getOrDefault(ThemeMode.DARK))
-    var accent by mutableIntStateOf(Store.accent.coerceIn(0, Accents.lastIndex))
-    var systemDark by mutableStateOf(true)
-    val isDark: Boolean get() = when (mode) { ThemeMode.LIGHT -> false; ThemeMode.DARK -> true; ThemeMode.SYSTEM -> systemDark }
-    val current: Palette get() = Accents[accent].let {
-        if (isDark) darkGlassPalette(it) else lightGlassPalette(it)
+/**
+ * 1.7.30：主题存储值的解析集中在这里（纯函数，ThemeStateTest 覆盖）。任何读不懂的旧值都回落默认，绝不抛异常：
+ * - themeMode：大小写、首尾空格都认；未知值（旧版本或手改）→ 深色。
+ * - accent：越界（旧版本有过更多 / 更少的强调色）→ 夹到合法范围；负数 → 0。
+ * 存储格式不变（themeMode 字符串、accent 整数）。
+ */
+internal object ThemePrefs {
+    val DEFAULT_MODE = ThemeMode.DARK
+    fun parseMode(raw: String?): ThemeMode {
+        val k = raw?.trim()?.uppercase(java.util.Locale.ROOT).orEmpty()
+        return ThemeMode.values().firstOrNull { it.name == k } ?: DEFAULT_MODE
     }
-    fun pickMode(m: ThemeMode) { mode = m; Store.themeMode = m.name }
-    fun pickAccent(i: Int) { accent = i; Store.accent = i }
+    fun accentIndex(raw: Int?): Int = (raw ?: 0).coerceIn(0, Accents.lastIndex)
+    fun isDark(mode: ThemeMode, systemDark: Boolean): Boolean = when (mode) { ThemeMode.LIGHT -> false; ThemeMode.DARK -> true; ThemeMode.SYSTEM -> systemDark }
+    fun palette(mode: ThemeMode, accent: Int, systemDark: Boolean): Palette {
+        val a = Accents[accentIndex(accent)]
+        return if (isDark(mode, systemDark)) darkGlassPalette(a) else lightGlassPalette(a)
+    }
+}
+
+/**
+ * 1.7.30：把动画值变成合法的颜色透明度。弹簧（Motion.liquid / pop / materialize…）会过冲到 1 以上或回弹到 0 以下，
+ * Compose 的 Color.copy(alpha = 1.08f) 直接抛 IllegalArgumentException（「alpha = 1.08 outside the range」）——
+ * 1.7.9–1.7.29 点强调色色球闪退就是这个。凡是拿动画值当 alpha 的地方都过一遍它。NaN → 0。
+ */
+fun unitAlpha(v: Float): Float = if (v.isNaN()) 0f else v.coerceIn(0f, 1f)
+
+object ThemeState {
+    var mode by mutableStateOf(ThemePrefs.parseMode(runCatching { Store.themeMode }.getOrNull()))
+    var accent by mutableIntStateOf(ThemePrefs.accentIndex(runCatching { Store.accent }.getOrNull()))
+    var systemDark by mutableStateOf(true)
+    val isDark: Boolean get() = ThemePrefs.isDark(mode, systemDark)
+    val current: Palette get() = ThemePrefs.palette(mode, accent, systemDark)
+    fun pickMode(m: ThemeMode) { mode = m; runCatching { Store.themeMode = m.name } }
+    fun pickAccent(i: Int) { val k = ThemePrefs.accentIndex(i); accent = k; runCatching { Store.accent = k } }
     fun reload() {
-        mode = runCatching { ThemeMode.valueOf(Store.themeMode) }.getOrDefault(ThemeMode.DARK)
-        accent = Store.accent.coerceIn(0, Accents.lastIndex)
+        mode = ThemePrefs.parseMode(runCatching { Store.themeMode }.getOrNull())
+        accent = ThemePrefs.accentIndex(runCatching { Store.accent }.getOrNull())
     }
 }
 

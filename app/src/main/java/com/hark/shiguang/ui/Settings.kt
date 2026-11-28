@@ -422,8 +422,10 @@ private fun AccentOrb(a: Accent, on: Boolean, onPick: () -> Unit) {
         Box(Modifier.size(42.dp).drawBehind {
                 // 外圈光环 + 柔光（选中时）
                 if (k > 0f) {
-                    drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(listOf(c.copy(alpha = 0.40f * k), Color.Transparent), radius = size.minDimension * 0.62f))
-                    drawCircle(c.copy(alpha = k), radius = size.minDimension / 2f - 1.dp.toPx(), style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()))
+                    // 1.7.30：k 来自 Motion.liquid 弹簧，选中时会过冲到约 1.08；直接当 alpha 用会抛异常闪退（用户 11-28 反馈「更换主题色会闪退」）
+                    val ka = unitAlpha(k)
+                    drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(listOf(c.copy(alpha = 0.40f * ka), Color.Transparent), radius = size.minDimension * 0.62f))
+                    drawCircle(c.copy(alpha = ka), radius = size.minDimension / 2f - 1.dp.toPx(), style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()))
                 }
             }, contentAlignment = Alignment.Center) {
             val orb = 28.dp + 4.dp * k
@@ -435,7 +437,7 @@ private fun AccentOrb(a: Accent, on: Boolean, onPick: () -> Unit) {
                     drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.22f)),
                         center = androidx.compose.ui.geometry.Offset(size.width * 0.4f, size.height * 0.36f), radius = size.minDimension * 0.75f))
                 }, contentAlignment = Alignment.Center) {
-                if (on) Icon(KI.check(), null, tint = if (C.P.dark) Color(0xFF070A12) else Color.White, modifier = Modifier.size(16.dp).graphicsLayer { alpha = if (Motion.reduced) 1f else k.coerceIn(0f, 1f) })
+                if (on) Icon(KI.check(), null, tint = if (C.P.dark) Color(0xFF070A12) else Color.White, modifier = Modifier.size(16.dp).graphicsLayer { alpha = if (Motion.reduced) 1f else unitAlpha(k) })
             }
         }
     }
