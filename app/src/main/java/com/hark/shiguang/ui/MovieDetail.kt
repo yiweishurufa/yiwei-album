@@ -565,6 +565,7 @@ internal fun TmdbSettingsCard(extra: @Composable ColumnScope.() -> Unit = {}) {
 fun MediaSettingsScreen() {
     val src = currentSource()
     var online by remember { mutableStateOf(MusicPrefs.online) }
+    var cleanNames by remember { mutableStateOf(MusicPrefs.cleanNames) }
     var pip by remember { mutableStateOf(VideoPip.enabled) }
     var autoNext by remember { mutableStateOf(PlayPrefs.autoNext) }
     var bgAudio by remember { mutableStateOf(PlayPrefs.bgAudio) }
@@ -607,7 +608,14 @@ fun MediaSettingsScreen() {
             Section("资料补全（所有来源共用）")
             TmdbSettingsCard {
                 ToggleRow(KI.cloud(), "音乐联网补全", on = online,
-                    info = "文件里缺专辑、歌手、封面或歌词时，从网易云音乐（国内直连）和 LRCLIB 补上；不会改写文件里已有的信息。") { online = it; MusicPrefs.online = it }
+                    info = "文件里缺专辑、歌手、封面或歌词时，按「歌名 + 歌手 + 时长」从网易云音乐、QQ 音乐（国内直连）和 LRCLIB 补上；对不上的不用。" +
+                        "不会改写文件里已有的信息，封面和歌词只存在本机。翻唱歌曲不会用原唱的专辑封面。") { online = it; MusicPrefs.online = it }
+                Div()
+                // 1.7.32：歌名规范显示（只改显示，不改文件）
+                ToggleRow(LI.music(), "自动规范歌名", on = cleanNames,
+                    info = "显示歌名时去掉音轨号（如「07-」）、文件名里的「歌手 - 」和 [FLAC]、320k、无损、官方版之类的杂项；Live、伴奏、Remix 等版本说明会保留。只改显示，不改文件。") {
+                    cleanNames = it; MusicPrefs.cleanNames = it
+                }
             }
         }
     }

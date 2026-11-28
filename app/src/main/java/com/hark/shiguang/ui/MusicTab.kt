@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -46,6 +47,7 @@ import androidx.media3.common.Player
 import com.hark.shiguang.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -183,8 +185,8 @@ class MusicView(val shown: List<Track>, val albums: List<MusicGroup>, val artist
 private fun buildMusicView(all: List<Track>, q: String, sub: Int, sort: Int = 0): MusicView {
     val col = java.text.Collator.getInstance(java.util.Locale.CHINA)   // own instance: Collator is not thread-safe
     fun <T> sortByKey(l: List<T>, s: (T) -> String): List<T> = l.map { col.getCollationKey(s(it)) to it }.sortedBy { it.first }.map { it.second }
-    val base = if (q.isEmpty()) all else all.filter { t -> listOf(t.title, t.artist, t.album, t.albumArtist, t.name).any { it.contains(q, true) } }
-    val byTitle = sortByKey(base) { it.title.ifBlank { it.name } }
+    val base = if (q.isEmpty()) all else all.filter { t -> listOf(t.displayTitle, t.title, t.artist, t.album, t.albumArtist, t.name).any { it.contains(q, true) } }
+    val byTitle = sortByKey(base) { it.displayTitle }
     val shown = when (sort) {
         1 -> byTitle.sortedByDescending { it.mtime }
         2 -> sortByKey(byTitle) { it.displayArtist }
@@ -282,12 +284,14 @@ private fun TrackRow(t: Track, sourceKey: String, showNo: Boolean = false, index
     val lib = remember(sourceKey) { Music.lib(sourceKey) }
     val fav = t.id in lib.favs
     var menu by remember { mutableStateOf(false) }
+    var manual by remember { mutableStateOf(false) }
+    if (manual) MusicManualSearch(t, sourceKey) { manual = false }
     Box {
         // 1.6.6：正在播放的这首 = 封面上压一层三根跳动小柱（只在真在播时动）+ 标题强调色；时长等宽数字次要色
         val sub = listOf(t.displayArtist, t.album).filter { it.isNotBlank() }.joinToString(" · ")
         Row(Modifier.fillMaxWidth().enterRise(index).combinedClickable(onClick = onClick, onLongClick = { menu = true }, onLongClickLabel = "更多操作")
             .semantics(mergeDescendants = true) {
-                contentDescription = listOfNotNull(t.title.ifBlank { t.name }, sub.takeIf { it.isNotEmpty() }, if (fav) "已喜欢" else null, if (playing) "正在播放" else null,
+                contentDescription = listOfNotNull(t.displayTitle, sub.takeIf { it.isNotEmpty() }, if (fav) "已喜欢" else null, if (playing) "正在播放" else null,
                     t.durationMs.takeIf { it > 0 }?.let { Music.fmt(it) }).joinToString("，")
             }
             .heightIn(min = Space.row + Space.xs).padding(horizontal = Space.page, vertical = Space.xs + 2.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -300,7 +304,7 @@ private fun TrackRow(t: Track, sourceKey: String, showNo: Boolean = false, index
                 if (playing) Box(Modifier.matchParentSize().clip(RoundedCornerShape(Radius.s)).background(Color(0x73000000)), contentAlignment = Alignment.Center) { NowPlayingBars(MusicState.isPlaying, Color.White) }
             }
             Column(Modifier.weight(1f).padding(start = Space.m)) {
-                Text(t.title.ifBlank { t.name }, color = if (playing) C.Accent else C.Text, style = MaterialTheme.typography.bodyLarge, fontSize = 15.sp, fontWeight = if (playing) FontWeight.Medium else FontWeight.Normal,
+                Text(t.displayTitle, color = if (playing) C.Accent else C.Text, style = MaterialTheme.typography.bodyLarge, fontSize = 15.sp, fontWeight = if (playing) FontWeight.Medium else FontWeight.Normal,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (fav) Icon(KI.heartSolid(), null, tint = C.Accent, modifier = Modifier.padding(end = Space.xs).size(12.dp))
@@ -331,9 +335,20 @@ private fun TrackRow(t: Track, sourceKey: String, showNo: Boolean = false, index
                     r.onSuccess { (u, h) -> ExternalPlayer.open(ctx, u, h, t.name, audio = true)?.let { toast(ctx, it) } }.onFailure { failToast(ctx, it, "打开失败") }
                 }
             })
+            // 1.7.32：封面 / 歌词 / 歌名不对时，重新匹配（按现在的规则重读重查）或手动搜索挑一个
+            DropdownMenuItem(text = { Text("重新匹配封面和歌词", color = C.Text) }, onClick = {
+                menu = false
+                toast(ctx, "正在重新匹配…")
+                Ops.launch {
+                    runCatching { lib.rematch(t) }
+                        .onSuccess { n -> toast(ctx, if (n.artPath != null) "已重新匹配" else "已重新匹配，没有找到可信的封面") }
+                        .onFailure { failToast(ctx, it, "重新匹配失败") }
+                }
+            })
+            DropdownMenuItem(text = { Text("手动搜索封面和歌词", color = C.Text) }, onClick = { menu = false; manual = true })
             if (t.album.isNotBlank()) DropdownMenuItem(text = { Text("查看专辑", color = C.Text) }, onClick = { menu = false; Nav.push(Route.MusicList("album", t.albumKey, t.displayAlbum)) })
             DropdownMenuItem(text = { Text("查看歌手", color = C.Text) }, onClick = { menu = false; Nav.push(Route.MusicList("artist", t.artists.first(), t.artists.first())) })
-            DropdownMenuItem(text = { Column { Text("文件信息", color = C.Text); Text("${t.ext.uppercase()} · ${t.codec} · ${"%.1f".format(t.size / 1048576.0)} MB", color = C.Sub, fontSize = 11.sp)
+            DropdownMenuItem(text = { Column { Text("文件信息", color = C.Text); if (t.displayTitle != t.title && t.title.isNotBlank()) Text("原标题：${t.title}", color = C.Sub, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis); Text("${t.ext.uppercase()} · ${t.codec} · ${"%.1f".format(t.size / 1048576.0)} MB", color = C.Sub, fontSize = 11.sp)
                 Text(t.path.removePrefix("fm:"), color = C.Sub, fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis) } }, onClick = { menu = false })
         }
     }
@@ -452,7 +467,7 @@ fun MiniPlayer(modifier: Modifier = Modifier, backdrop: GlassBackdrop? = null) {
     // 全面审查 B10：暂停时只读一次位置，不再每 0.5 秒刷新
     LaunchedEffect(MusicState.isPlaying, MusicState.mediaId) { pos = MusicState.position; while (MusicState.isPlaying) { delay(500); pos = MusicState.position } }
     val dur = MusicState.duration
-    val title = t?.title?.ifBlank { t.name } ?: "正在准备…"
+    val title = t?.displayTitle ?: "正在准备…"
     // 1.7.0 v2：玻璃胶囊（和底栏同宽、首页上有真模糊），按下液体形变；环境光晕取当前封面
     AmbientFrom(t?.artPath?.let { "file://$it" })
     val press = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
@@ -520,7 +535,8 @@ fun MusicNowPlayingScreen() {
                     if (t != null) Text(t.displayAlbum, color = C.Text, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 // A2：喜欢当前这首
-                if (t != null && lib != null) {
+                // 1.7.32：按曲目分开记，切歌时（上一首喜欢、这一首没喜欢）心形不再自己弹一下，只在点它时弹
+                if (t != null && lib != null) key(t.id) {
                     val fav = t.id in lib.favs
                     IconButton(onClick = { lib.toggleFav(t.id) }) {
                         Icon(if (fav) KI.heartSolid() else KI.heart(), if (fav) "取消喜欢" else "喜欢", tint = if (fav) C.Accent else C.Text, modifier = Modifier.size(24.dp).popOnChange(fav))
@@ -547,8 +563,11 @@ fun MusicNowPlayingScreen() {
                             MusicArt(t?.artPath, Modifier.padding(horizontal = 36.dp).fillMaxWidth().aspectRatio(1f).graphicsScale(scale), corner = Radius.l, lifted = true)
                             // one current lyric line under the cover
                             val cur = lyrics?.let { l -> currentLine(l, pos) }?.let { lyrics?.getOrNull(it)?.text }
-                            androidx.compose.animation.AnimatedContent(cur ?: "", transitionSpec = {
-                                (fadeIn(Motion.enter()) + androidx.compose.animation.slideInVertically(Motion.move()) { it / 2 }) togetherWith fadeOut(Motion.exit())
+                            // 1.7.32：旧的一句同时往上退出（以前原地淡出、新的一句从下面压上来，两行叠在一起有重影）；裁在这一行的高度里
+                            androidx.compose.animation.AnimatedContent(cur ?: "", Modifier.clipToBounds(), transitionSpec = {
+                                if (Motion.reduced) fadeIn(Motion.state()) togetherWith fadeOut(Motion.exit())
+                                else (fadeIn(Motion.enter()) + androidx.compose.animation.slideInVertically(Motion.move()) { it / 2 }) togetherWith
+                                    (fadeOut(Motion.exit()) + androidx.compose.animation.slideOutVertically(Motion.move()) { -it / 2 })
                             }, label = "curLine") { line ->
                                 Text(line, color = C.Sub, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
                                     modifier = Modifier.padding(top = 22.dp, start = Space.xl, end = Space.xl).fillMaxWidth())
@@ -558,7 +577,7 @@ fun MusicNowPlayingScreen() {
                 }
             }
             Column(Modifier.padding(horizontal = 26.dp)) {
-                Text(t?.title?.ifBlank { t.name } ?: "", style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(t?.displayTitle ?: "", style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = Space.xxs)) {
                     Text(t?.displayArtist ?: "", color = C.Sub, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                     t?.let { badge(it) }?.let { b -> Text(b, color = C.Sub, style = MaterialTheme.typography.labelSmall, fontSize = 10.sp, modifier = Modifier.padding(start = Space.s).clip(RoundedCornerShape(4.dp)).background(C.Chip).padding(horizontal = 4.dp, vertical = 1.dp)) }
@@ -801,4 +820,77 @@ private fun MusicSortMenu() {
             }
         }
     }
+}
+
+/**
+ * 1.7.32 歌曲菜单「手动搜索封面和歌词」：在网易云音乐、QQ 音乐里搜（关键词默认是规范歌名 + 歌手，可改），
+ * 列出歌名 / 歌手 / 专辑 / 时长，选一个就用它的封面和歌词（内嵌和同目录的歌词仍然优先）。
+ */
+@Composable
+private fun MusicManualSearch(t: Track, sourceKey: String, onDismiss: () -> Unit) {
+    val ctx = LocalContext.current
+    val lib = remember(sourceKey) { Music.lib(sourceKey) }
+    var q by remember { mutableStateOf(listOf(t.cleanTitle, t.displayArtist.takeIf { it != "未知歌手" }.orEmpty()).filter { it.isNotBlank() }.joinToString(" ")) }
+    var results by remember { mutableStateOf<List<MusicMatch.Cand>?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    var err by remember { mutableStateOf<String?>(null) }
+    var applying by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    fun search() {
+        if (q.isBlank() || busy) return
+        busy = true; err = null
+        scope.launch {
+            val r = withContext(Dispatchers.IO) { runCatching { MusicOnline.manualSearch(q.trim(), t) } }
+            busy = false
+            r.onSuccess { results = it }.onFailure { err = "网络不通，稍后再试"; results = null }
+        }
+    }
+    LaunchedEffect(Unit) { search() }
+    AppAlertDialog(onDismissRequest = onDismiss, containerColor = C.Surface,
+        title = { Text("手动搜索", color = C.Text) },
+        text = {
+            Column(Modifier.fillMaxWidth()) {
+                Row(Modifier.fillMaxWidth().height(46.dp).skeuoInset(RoundedCornerShape(Radius.m)).padding(start = Space.m), verticalAlignment = Alignment.CenterVertically) {
+                    BasicTextField(q, { q = it }, singleLine = true, textStyle = MaterialTheme.typography.bodyLarge.copy(color = C.Text), cursorBrush = SolidColor(C.Accent),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
+                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { search() }),
+                        modifier = Modifier.weight(1f).semantics { contentDescription = "搜索关键词" })
+                    IconButton(onClick = { search() }) { Icon(KI.search(), "搜索", tint = C.Sub, modifier = Modifier.size(20.dp)) }
+                }
+                Box(Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 380.dp).padding(top = Space.s), contentAlignment = Alignment.Center) {
+                    val r = results
+                    when {
+                        busy || applying -> CircularProgressIndicator(color = C.Sub, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
+                        err != null -> Text(err!!, color = C.Sub, style = MaterialTheme.typography.bodyMedium)
+                        r != null && r.isEmpty() -> Text("没有找到，换个关键词试试", color = C.Sub, style = MaterialTheme.typography.bodyMedium)
+                        r != null -> LazyColumn(Modifier.fillMaxWidth()) {
+                            items(r, key = { "${it.source}|${it.id}" }) { c ->
+                                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(Radius.s)).clickable(onClickLabel = "用这个结果") {
+                                    applying = true
+                                    scope.launch {
+                                        runCatching { lib.applyPick(t, c) }
+                                            .onSuccess { toast(ctx, "已换成所选的封面和歌词"); onDismiss() }
+                                            .onFailure { applying = false; failToast(ctx, it, "下载失败") }
+                                    }
+                                }.padding(vertical = Space.s), verticalAlignment = Alignment.CenterVertically) {
+                                    Box(Modifier.size(44.dp).clip(RoundedCornerShape(Radius.s)).background(C.Surface2), contentAlignment = Alignment.Center) {
+                                        if (c.cover != null) NetImage(c.cover, Modifier.fillMaxSize()) else Icon(KI.music(), null, tint = C.Faint, modifier = Modifier.size(18.dp))
+                                    }
+                                    Column(Modifier.weight(1f).padding(start = Space.m)) {
+                                        Text(c.title, color = C.Text, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(listOf(c.artists.joinToString("/"), c.album).filter { it.isNotBlank() }.joinToString(" · "), color = C.Sub, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                    Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = Space.s)) {
+                                        if (c.durationMs > 0) Text(Music.fmt(c.durationMs), color = C.Sub, style = MaterialTheme.typography.labelSmall.merge(Type.num))
+                                        Text(if (c.source == "qq") "QQ 音乐" else "网易云", color = C.Faint, style = MaterialTheme.typography.labelSmall, fontSize = 10.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if (t.durationMs > 0) Text("这首时长 ${Music.fmt(t.durationMs)}，时长接近的更可能是同一个版本", color = C.Faint, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = Space.xs))
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭", color = C.Sub) } })
 }

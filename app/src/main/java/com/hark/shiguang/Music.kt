@@ -47,7 +47,20 @@ data class Track(
     val online: Boolean = false,     // online completion attempted
     /** 标签读取器版本（1.4.0 起为 [Music.TAG_VER]）；旧库没有这个字段时为 0。 */
     val tagVer: Int = 0,
+    /** 1.7.32：联网补全用的匹配规则版本（[Music.ONLINE_VER]）；旧库没有这个字段时为 0。只是多一个可选键，旧版本读到会忽略。 */
+    val onVer: Int = 0,
 ) {
+    /** 1.7.32：清洗后的歌名（去音轨号、「歌手 - 」、[FLAC] 等，见 [MusicName]）。只用于显示和联网匹配，[title] 保持原样。 */
+    private val parsed: MusicName.Parsed by lazy {
+        MusicName.clean(title.ifBlank { NameParser.stem(name) }, listOf(artist, albumArtist).filter { it.isNotBlank() }, trackNo, fromFileName = !tagged)
+    }
+    val cleanTitle: String get() = parsed.title.ifBlank { title.ifBlank { NameParser.stem(name) } }
+    /** 从歌名里拆出来的歌手（标签里没有歌手时用来显示和匹配）。 */
+    val parsedArtist: String get() = parsed.artist
+    /** 界面上显示的歌名：设置里「自动规范歌名」开着时是 [cleanTitle]，关掉时是原始标题。 */
+    val displayTitle: String get() = if (MusicPrefs.cleanNames) cleanTitle else title.ifBlank { name }
+    /** 联网匹配时用的歌手（标签歌手、专辑歌手、歌名里拆出的）。 */
+    val queryArtists: List<String> get() = listOf(artist, albumArtist, parsedArtist).filter { it.isNotBlank() }.distinct()
     /** 用户 2026-11-02 反馈：旧版本把有损的 WAV INFO（中文已变成 ??）存进了曲库。 */
     val garbled: Boolean get() = MusicTags.isGarbled(title) || MusicTags.isGarbled(artist) || MusicTags.isGarbled(album)
     /**
@@ -57,18 +70,18 @@ data class Track(
      */
     val staleTags: Boolean get() = scanned && tagVer < Music.TAG_VER && (garbled || (!tagged && artPath == null))
     val ext: String get() = NameParser.ext(name)
-    val displayArtist: String get() = artist.ifBlank { albumArtist }.ifBlank { "未知歌手" }
+    val displayArtist: String get() = artist.ifBlank { albumArtist }.ifBlank { parsedArtist }.ifBlank { "未知歌手" }
     val displayAlbum: String get() = album.ifBlank { "未知专辑" }
     val albumKey: String get() = (album.ifBlank { folder }) + "\u0001" + albumArtist.ifBlank { if (album.isBlank()) "" else artist }
-    val artists: List<String> get() = Music.splitArtists(artist.ifBlank { albumArtist })
+    val artists: List<String> get() = Music.splitArtists(artist.ifBlank { albumArtist }.ifBlank { parsedArtist })
 
     fun json(): JSONObject = JSONObject().put("id", id).put("p", path).put("n", name).put("s", size).put("m", mtime).put("t", title).put("ar", artist)
         .put("al", album).put("aa", albumArtist).put("y", year).put("tn", trackNo).put("dn", discNo).put("d", durationMs).put("c", codec)
-        .put("art", artPath ?: "").put("lrc", lrcPath ?: "").put("f", folder).put("tg", tagged).put("sc", scanned).put("on", online).put("tv", tagVer)
+        .put("art", artPath ?: "").put("lrc", lrcPath ?: "").put("f", folder).put("tg", tagged).put("sc", scanned).put("on", online).put("tv", tagVer).apply { if (onVer > 0) put("ov", onVer) }
     companion object {
         fun of(o: JSONObject) = Track(o.optString("id"), o.optString("p"), o.optString("n"), o.optLong("s"), o.optLong("m"), o.optString("t"),
             o.optString("ar"), o.optString("al"), o.optString("aa"), o.optInt("y"), o.optInt("tn"), o.optInt("dn"), o.optLong("d"), o.optString("c"),
-            o.optString("art").ifEmpty { null }, o.optString("lrc").ifEmpty { null }, o.optString("f"), o.optBoolean("tg"), o.optBoolean("sc"), o.optBoolean("on"), o.optInt("tv"))
+            o.optString("art").ifEmpty { null }, o.optString("lrc").ifEmpty { null }, o.optString("f"), o.optBoolean("tg"), o.optBoolean("sc"), o.optBoolean("on"), o.optInt("tv"), o.optInt("ov"))
     }
 }
 
@@ -178,7 +191,7 @@ class MusicLib(val sourceKey: String) {
         if (!force && System.currentTimeMillis() - lastPrune < 10 * 60_000L) return
         lastPrune = System.currentTimeMillis()
         pruneDir(artDir, ART_CAP, tracks.mapNotNull { it.artPath }.map { File(it).name }.toSet())
-        pruneDir(lyricsDir, LYRICS_CAP, tracks.flatMap { listOf("${it.id}.lrc", "${it.id}.none") }.toSet())
+        pruneDir(lyricsDir, LYRICS_CAP, tracks.flatMap { listOf("${it.id}.lrc", "${it.id}.net.lrc", "${it.id}.none") }.toSet())
     }
 
     private var lastPrune = 0L
@@ -336,18 +349,22 @@ class MusicLib(val sourceKey: String) {
                 // online completion: only what is missing, never overwrites tags; failures are silent
                 if (MusicPrefs.online) {
                     val nowOn = System.currentTimeMillis()
-                    val need = tracks.filter { !it.online && (!it.tagged || it.artPath == null || it.album.isBlank()) && book.eligible("on:" + it.id, manual, nowOn) }
+                    // 1.7.32：旧规则查过但没有封面的歌（多半是歌名带「07-」之类没对上），按新规则再查一次（onVer 记下，之后不再重复）
+                    val need = tracks.filter { Music.needsOnline(it) && book.eligible("on:" + it.id, manual, nowOn) }
                     if (need.isNotEmpty()) {
                         withContext(Dispatchers.Main) { total = need.size; done = 0; phase = "正在联网补全封面和信息" }
                         val g2 = Semaphore(2)
                         val albumArt = java.util.concurrent.ConcurrentHashMap<String, String>()
+                        val urlArt = java.util.concurrent.ConcurrentHashMap<String, String>()
+                        val artistArt = java.util.concurrent.ConcurrentHashMap<String, String>()
                         val b2 = Batch()
                         coroutineScope {
                             need.forEach { t ->
                                 launch {
                                     g2.withPermit {
                                         // 1.7.16：联网出异常时不记为「已补全」，下次扫描再试（查无结果才记）
-                                        val n = runCatching { MusicOnline.complete(this@MusicLib, t, albumArt) }.fold({ book.ok("on:" + t.id); it.copy(online = true) }, { book.fail("on:" + t.id); t })
+                                        val n = runCatching { MusicOnline.complete(this@MusicLib, t, albumArt, urlArt, artistArt) }
+                                            .fold({ book.ok("on:" + t.id); it.copy(online = true, onVer = Music.ONLINE_VER) }, { e -> book.fail("on:" + t.id); Diag.log("MUSIC", "online completion failed, retry after backoff: ${e.javaClass.simpleName} ${e.message?.take(80)}"); t })
                                         b2.add(n)
                                     }
                                 }
@@ -435,15 +452,9 @@ class MusicLib(val sourceKey: String) {
 
     /** Track from the file and folder name alone: "歌手 - 歌名", "01. 歌名", folder = album ("CD1" → parent). */
     private fun guess(e: FsEntry, folder: String): Track {
-        var stem = NameParser.stem(e.name).replace('_', ' ').trim()
-        var no = 0
-        Regex("^(\\d{1,3})\\s*[.\\-、)]?\\s+(.+)$").find(stem)?.let { m -> no = m.groupValues[1].toInt(); stem = m.groupValues[2] }
-            ?: Regex("^(\\d{1,3})[.\\-、](.+)$").find(stem)?.let { m -> no = m.groupValues[1].toInt(); stem = m.groupValues[2].trim() }
-        var artist = ""; var title = stem
-        val parts = stem.split(Regex("\\s+[-–—]\\s+|\\s*[–—－]\\s*"), limit = 2)
-        if (parts.size == 2 && parts[0].isNotBlank() && parts[1].isNotBlank()) {
-            if (parts[0].trim().all { it.isDigit() }) { no = parts[0].trim().toInt(); title = parts[1].trim() } else { artist = parts[0].trim(); title = parts[1].trim() }
-        }
+        // 1.7.32：文件名解析交给 MusicName（音轨号、「歌手 - 歌名」、[FLAC] / 320k 等杂项）
+        val p = MusicName.clean(NameParser.stem(e.name), fromFileName = true)
+        val no = p.trackNo; val artist = p.artist; val title = p.title
         val fName = folder.trimEnd('/').substringAfterLast('/')
         var disc = 0
         val discM = Regex("^(?:cd|disc|disk)\\s*(\\d+)$", RegexOption.IGNORE_CASE).find(fName.trim())
@@ -541,16 +552,58 @@ class MusicLib(val sourceKey: String) {
 
     // ---------------------------------------------------------------- lyrics
 
-    /** LRC text of [t]: cached → sidecar .lrc → online (when allowed). Null when there are none. */
+    /**
+     * [t] 的歌词文本。顺序（1.7.32）：内嵌 / 同目录 .lrc（读过后缓存在 <id>.lrc）→ 同目录 .lrc → 联网缓存 <id>.net.lrc → 联网（开关开着时）。
+     * 查无：写 <id>.none（内容 "v2"，7 天后再查；旧版写的空 .none 当作过期，按新规则再查一次）。网络出错不写 .none，下次打开再试。
+     */
     suspend fun lyrics(t: Track): String? = withContext(Dispatchers.IO) {
         val f = File(lyricsDir, "${t.id}.lrc")
         if (f.exists() && f.length() > 0) { runCatching { f.setLastModified(System.currentTimeMillis()) }; return@withContext f.readText() }
         t.lrcPath?.let { p -> runCatching { fs.bytes(p) }.getOrNull()?.let { MusicTags.decodeText(it) }?.takeIf { it.isNotBlank() }?.let { f.writeText(it); pruneCaches(); return@withContext it } }
+        val net = File(lyricsDir, "${t.id}.net.lrc")
+        if (net.exists() && net.length() > 0) { runCatching { net.setLastModified(System.currentTimeMillis()) }; return@withContext net.readText() }
         val none = File(lyricsDir, "${t.id}.none")
-        if (none.exists() && System.currentTimeMillis() - none.lastModified() < 7 * 86400_000L) return@withContext null
+        if (none.exists() && System.currentTimeMillis() - none.lastModified() < 7 * 86400_000L && runCatching { none.readText() }.getOrNull() == NONE_V) return@withContext null
         if (!MusicPrefs.online) return@withContext null
-        val l = runCatching { MusicOnline.lyrics(t) }.getOrNull()
-        if (l.isNullOrBlank()) { runCatching { none.writeText("") }; null } else { f.writeText(l); pruneCaches(); l }
+        val r = try { MusicOnline.lyrics(t) } catch (e: java.io.IOException) { Diag.log("MUSIC", "online lyrics failed (will retry next time): ${e.message?.take(80)}"); return@withContext null }
+            catch (e: Exception) { Diag.e("MUSIC", e); return@withContext null }
+        if (r == null || r.text.isBlank()) { runCatching { none.writeText(NONE_V) }; null }
+        else { runCatching { net.writeText(r.text) }; none.delete(); pruneCaches(); Diag.log("MUSIC", "online lyrics from ${r.from}, synced=${r.synced}"); r.text }
+    }
+
+    /** 把曲库里 [id] 这首换成 [n]（主线程），写盘。 */
+    private suspend fun replaceTrack(n: Track) {
+        withContext(Dispatchers.Main) { val i = tracks.indexOfFirst { it.id == n.id }; if (i >= 0) { tracks[i] = n; version++ } }
+        withContext(Dispatchers.IO) { saveLib() }
+    }
+
+    private fun dropOnlineLyrics(id: String) { File(lyricsDir, "$id.net.lrc").delete(); File(lyricsDir, "$id.none").delete() }
+
+    /**
+     * 1.7.32 歌曲菜单「重新匹配」：重读这首的标签（拿回内嵌封面 / 歌词），丢掉之前联网拿的封面和歌词，按现在的规则重新联网补全并取歌词。
+     * 不看退避。返回新的 Track；读不到文件、网络不通时抛出（界面提示）。
+     */
+    suspend fun rematch(t: Track): Track = withContext(Dispatchers.IO) {
+        dropOnlineLyrics(t.id)
+        File(lyricsDir, "${t.id}.lrc").delete()   // 内嵌 / 同目录歌词下面重读时会再写回来
+        val siblings = runCatching { fs.list(t.folder) }.getOrDefault(emptyList()).filter { !it.isDir }
+        var n = readTags(t.copy(artPath = null, online = false, onVer = 0), siblings, HashMap())
+        if (MusicPrefs.online) {
+            n = MusicOnline.complete(this@MusicLib, n, HashMap()).copy(online = true, onVer = Music.ONLINE_VER)
+            retryBook.ok("on:" + t.id); retryBook.save()
+        }
+        replaceTrack(n)
+        n
+    }
+
+    /** 1.7.32 歌曲菜单「手动搜索」：用户选定的结果——封面换成它的，歌词存为联网歌词（内嵌 / 同目录歌词仍优先）。 */
+    suspend fun applyPick(t: Track, c: MusicMatch.Cand): Track = withContext(Dispatchers.IO) {
+        val (n0, l) = MusicOnline.applyPick(this@MusicLib, t, c)
+        val n = n0.copy(online = true, onVer = Music.ONLINE_VER)
+        dropOnlineLyrics(t.id)
+        if (l != null && l.text.isNotBlank()) File(lyricsDir, "${t.id}.net.lrc").writeText(l.text) else File(lyricsDir, "${t.id}.none").writeText(NONE_V)
+        replaceTrack(n)
+        n
     }
 
     companion object {
@@ -558,6 +611,8 @@ class MusicLib(val sourceKey: String) {
         const val ART_CAP = 200L * 1024 * 1024
         /** 第 4 批：歌词缓存上限（见 [MusicLib.pruneCaches]）。 */
         const val LYRICS_CAP = 50L * 1024 * 1024
+        /** 1.7.32：<id>.none 的内容；旧版写的空文件视为过期（按新规则再查一次歌词）。 */
+        const val NONE_V = "v2"
     }
 }
 
@@ -566,7 +621,12 @@ object MusicPrefs {
     var gapless: Boolean
         get() = Store.getStr("music.gapless", "1") == "1"
         set(v) = Store.putStr("music.gapless", if (v) "1" else "0")
-    /** 联网补全（网易云音乐公开接口 + LRCLIB），设置里可关。 */
+    /** 1.7.32：自动规范歌名（去音轨号、「歌手 - 」、[FLAC] 等，只改显示），默认开。 */
+    private val cleanState by lazy { mutableStateOf(Store.getStr("music.cleanNames", "1") == "1") }   // Compose 读它，开关一改歌名立刻重画
+    var cleanNames: Boolean
+        get() = cleanState.value
+        set(v) { Store.putStr("music.cleanNames", if (v) "1" else "0"); cleanState.value = v }
+    /** 联网补全（网易云音乐、QQ 音乐公开接口 + LRCLIB），设置里可关。 */
     var online: Boolean
         get() = Store.getStr("music.online", "1") == "1"
         set(v) = Store.putStr("music.online", if (v) "1" else "0")
@@ -582,6 +642,16 @@ object Music {
      */
     fun keepCached(o: Track, size: Long, mtime: Long, rescrape: Boolean): Boolean =
         !rescrape && o.size == size && (mtime == 0L || o.mtime == 0L || o.mtime == mtime) && o.scanned && !o.staleTags
+
+    /** 1.7.32：联网匹配规则版本。2 = 歌名先清洗、加 QQ 音乐、翻唱封面规则。 */
+    const val ONLINE_VER = 2
+    /**
+     * 这首歌要不要联网补全：没查过、且缺封面 / 专辑 / 标签；或者旧规则查过却没拿到封面（升级后按新规则只再查一次）。
+     */
+    fun needsOnline(t: Track): Boolean {
+        val missing = !t.tagged || t.artPath == null || t.album.isBlank()
+        return if (!t.online) missing else t.onVer < ONLINE_VER && t.artPath == null
+    }
 
     const val TAG_VER = 3   // 3 = 1.7.16：读不到文件时不再记为已读；旧库里「没标签也没封面」的重读一次
     /** Extensions the scanner collects. */

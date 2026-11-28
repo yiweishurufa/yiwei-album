@@ -69,7 +69,7 @@ fun GlobalSearchScreen() {
             GlobalResults(
                 Hidden.visible(photosSrc.filter { GlobalSearch.photo(it.fileName, it.geo, ws) }).take(60),
                 GlobalSearch.rank(movies.filter { GlobalSearch.movie(it, ws) }, ws) { it.title }.take(40),
-                GlobalSearch.rank(tracks.filter { GlobalSearch.track(it, ws) }, ws) { it.title }.take(100),
+                GlobalSearch.rank(tracks.filter { GlobalSearch.track(it, ws) }, ws) { it.displayTitle }.take(100),
             )
         }
     }
@@ -122,7 +122,7 @@ fun GlobalSearchScreen() {
                             .padding(horizontal = Space.page, vertical = Space.s), verticalAlignment = Alignment.CenterVertically) {
                             MusicArt(t.artPath, Modifier.size(44.dp))
                             Column(Modifier.padding(start = Space.m).weight(1f)) {
-                                Text(t.title.ifBlank { t.name }, color = C.Text, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(t.displayTitle, color = C.Text, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text(listOf(t.displayArtist, t.album).filter { it.isNotBlank() }.joinToString(" · "), color = C.Sub, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                             Icon(KI.music(), null, tint = C.Faint, modifier = Modifier.size(18.dp))

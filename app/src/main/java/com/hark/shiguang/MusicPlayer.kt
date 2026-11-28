@@ -387,7 +387,7 @@ class MusicPlayer(private val ctx: Context) : SimpleBasePlayer(Looper.getMainLoo
     companion object {
         /** MediaItem for a track (metadata shows in the notification / lock screen). */
         fun item(sourceKey: String, t: Track): MediaItem {
-            val md = MediaMetadata.Builder().setTitle(t.title.ifBlank { NameParser.stem(t.name) }).setArtist(t.displayArtist).setAlbumTitle(t.album.ifBlank { null })
+            val md = MediaMetadata.Builder().setTitle(t.displayTitle).setArtist(t.displayArtist).setAlbumTitle(t.album.ifBlank { null })
                 .setAlbumArtist(t.albumArtist.ifBlank { null }).setTrackNumber(t.trackNo.takeIf { it > 0 }).setIsPlayable(true).setIsBrowsable(false)
                 .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
                 .setExtras(android.os.Bundle().apply { putLong("dur", t.durationMs) })

@@ -608,4 +608,6 @@ Copyright 2026 Josh Puckett；Copyright (c) 2016 The Inter Project Authors
 SIL Open Font License 1.1 — https://github.com/joshpuckett/allo
 
 播放：AndroidX Media3（Apache 2.0）、Jellyfin FFmpeg 解码扩展（LGPL 2.1+）
-图片：Coil（Apache 2.0）；网络：OkHttp（Apache 2.0）；地图：osmdroid（Apache 2.0）"""
+图片：Coil（Apache 2.0）；网络：OkHttp（Apache 2.0）；地图：osmdroid（Apache 2.0）
+
+音乐封面与歌词（联网补全，可在影音设置里关闭）：网易云音乐、QQ 音乐的公开网页接口（非官方，只在本机查询、仅供个人使用，内容版权归各平台与权利人）；LRCLIB 开放歌词库 — https://lrclib.net"""

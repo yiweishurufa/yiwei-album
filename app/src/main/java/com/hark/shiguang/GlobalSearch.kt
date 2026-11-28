@@ -16,7 +16,7 @@ object GlobalSearch {
     }
 
     fun movie(m: MovieItem, ws: List<String>): Boolean = hit(listOf(m.title, m.originalTitle, m.query) + m.cast.take(8).map { it.name }, ws)
-    fun track(t: Track, ws: List<String>): Boolean = hit(listOf(t.title, t.artist, t.album, t.albumArtist, t.name), ws)
+    fun track(t: Track, ws: List<String>): Boolean = hit(listOf(t.title, t.cleanTitle, t.artist, t.album, t.albumArtist, t.name), ws)
     fun photo(fileName: String, place: String, ws: List<String>): Boolean = hit(listOf(fileName, place), ws)
 
     /** Exact title matches first, then the rest in library order. */
