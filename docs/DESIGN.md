@@ -180,9 +180,17 @@
 | 底栏图标（1.7.26） | 按下 `PRESS_SCALE_ICON` 0.86；选中 `pop` | 与气泡 `liquid` 叠加；第一次组合不弹 |
 | 成功提示（1.7.27） | tween 360（延迟 80）+ `pop` | 「已…」提示前一笔画出勾（先短边后长边），画完轻弹；`SnackKind.isSuccess` 判定 |
 | 空状态入场（1.7.27） | `statePop()` + `enterRise(1/2)` | 图标 0.6→1 上浮 10dp 弹入，标题、按钮随后错开上浮；只播一次（rememberSaveable） |
+| 滑动切歌（1.7.34） | 跟手 + `settle`；飞出 tween `EXIT` 160 | 正在播放封面 / 迷你条：过宽度 30% 或 800dp/s 切（`SwipeMath`），方向上没歌时 0.35 阻尼回弹；旧封面飞出、等新歌换上从对侧 0.6 宽处落位。移除动画时直接切 |
+| 下拉收起正在播放（1.7.34） | 跟手 + `settle` | 整页下移、缩到 0.92、圆角 0→32，后面渐淡暗层；过 25% 屏高或 1200dp/s 收起。移除动画时只位移不缩放 |
+| 歌词换句（1.7.35） | 一次 `scrollBy` + 每行 `LyricMath.lag`（460ms 缓出三次方，延迟 32ms × 行距，最多 6 档） | 当前句停在视口 30%；跳得远 / 首显直接 `scrollToItem` + 120ms 淡入。透明度 1 / 0.55 / 0.45 / 0.4（浅色 1 / 0.65 / 0.55 / 0.52）`Motion.state()`；12+ 近 1–4 行 0.8–3dp 模糊。移除动画：不错开、不模糊、整句点亮 |
+| 逐字点亮（1.7.35） | 逐帧（只在当前句有逐字时间且在播） | 两层文字 + 每视觉行一条 DstIn 渐变（羽化半个字宽），只在 drawWithContent 读位置 |
+| 间奏点（1.7.35） | 跟随进度 + `state()` | ≥ 6 秒的间奏撑开三颗点依次亮（0.6→1、0.35→1），结束前 300ms 淡出。移除动画时静态 |
+| 封面 ⇄ 歌词 / 列表（1.7.36） | `Motion.zoom()` | 同一个封面在大框与左上 56dp 小框之间插值（`Modifier.layout`），歌名区与内容区交叉淡入。移除动画直接切 |
+| 迷你条 ⇄ 正在播放（1.7.36） | 展开 `Motion.expand()` = spring(0.86, 380)；收起 `Motion.collapse()` = 300ms Emphasized accelerate (0.3, 0, 0.8, 0.15) | `MiniHero`：页面裁切从胶囊矩形揭开到全屏（圆角 24→0），封面从迷你条小封面缩放平移到大封面；控件在进度 0.55 之后淡入（`ExpandMath.contentAlpha`）。不在首页上时走原来的下滑转场；移除动画 90ms |
+| 正在播放背景（1.7.36） | 帧推进、颜色 tween 600 | 3 个封面取色色块按 18 / 21 / 24 秒周期的李萨如曲线漂移（`StageMath.center`）；只在播放中 + 前台 + 设置开；暂停即停。移除动画时静止 |
 | 其余（按压缩放、大图共享元素、面板） | 沿用 v1 | 见 v1 §7（git 历史） |
 
-- **散落的弹簧不再手写**：新代码一律从 `Motion` 取（时长 FAST 120 / STATE 180 / ENTER 240 / PAGE 300 / BURST 520；缓动 EaseOut / EaseInOut；弹簧 pressIn / pressOut / move / sheet / page / zoom / liquid / materialize / pop / settle / breathe）。
+- **散落的弹簧不再手写**：新代码一律从 `Motion` 取（时长 FAST 120 / STATE 180 / ENTER 240 / PAGE 300 / BURST 520；缓动 EaseOut / EaseInOut；弹簧 pressIn / pressOut / move / sheet / page / zoom / liquid / materialize / pop / settle / breathe / expand；收起 collapse）。
   只有无限循环的装饰（扫光、转圈、播放小柱）可以就地写 tween，并且移除动画时必须不播。
 
 - **遵守系统「移除动画」**：弹簧改直接切换，视差 / 缩放关闭，光晕直接换色，按压只用透明度；页面转场只剩 90ms 淡入淡出、首页不缩放；
