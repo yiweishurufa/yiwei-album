@@ -570,6 +570,7 @@ fun MediaSettingsScreen() {
     var autoNext by remember { mutableStateOf(PlayPrefs.autoNext) }
     var bgAudio by remember { mutableStateOf(PlayPrefs.bgAudio) }
     var gapless by remember { mutableStateOf(MusicPrefs.gapless) }
+    var lyricBlur by remember { mutableStateOf(MusicPrefs.lyricBlur) }
     var fnQuality by remember { mutableStateOf(PlayPrefs.fnQualityRemember) }
     Page("影音设置", src?.let { "${if (it.kind == "dav") "WebDAV" else "飞牛"} · ${it.title}" } ?: "") {
         Column(Modifier.fillMaxSize().verticalScrollCompat().navigationBarsPadding().padding(bottom = 40.dp)) {
@@ -603,6 +604,12 @@ fun MediaSettingsScreen() {
                 // 优化 9 / 17：音乐预加载下一首 + 无缝播放
                 ToggleRow(LI.music(), "音乐无缝播放", on = gapless, info = "当前这首缓冲好后提前加载下一首，切歌不停顿，整张专辑连续播放没有空隙。会提前用掉一首歌的流量。") {
                     gapless = it; MusicPrefs.gapless = it
+                }
+                // 1.7.35 歌词 v2：近处几行轻模糊（只在 Android 12 及以上）
+                if (Glass.blurSupported) {
+                    Div()
+                    ToggleRow(LI.music(), "歌词柔焦", on = lyricBlur, info = "正在播放页的歌词里，离当前这句越远的几行越模糊一点，当前句始终清晰；手指滑动歌词时全部变清晰。" +
+                        "只模糊附近几行，不影响流畅度；如果你的手机上看着闪，可以关掉。系统「移除动画」打开时不模糊。") { lyricBlur = it; MusicPrefs.lyricBlur = it }
                 }
             }
             Section("资料补全（所有来源共用）")

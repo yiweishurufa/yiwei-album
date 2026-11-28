@@ -65,6 +65,7 @@ fun MusicNowPlayingScreen() {
     var showLyrics by remember { mutableStateOf(Store.getStr("music.showLyrics") == "1") }
     fun setLyrics(on: Boolean) { showLyrics = on; Store.putStr("music.showLyrics", if (on) "1" else "") }
     var queueOpen by remember { mutableStateOf(false) }
+    var manual by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { while (true) { pos = MusicState.position; delay(200) } }
     LaunchedEffect(MusicState.active) { if (!MusicState.active) { delay(400); if (!MusicState.active) Nav.pop() } }
     val dur = MusicState.duration.takeIf { it > 0 } ?: (t?.durationMs ?: 0L)
@@ -124,7 +125,7 @@ fun MusicNowPlayingScreen() {
                 else listOf(C.Bg.copy(alpha = 0.86f), C.Bg.copy(alpha = 0.95f), C.Bg))))
         }
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-            NowPlayingTopBar(t, sourceKey, lib)
+            NowPlayingTopBar(t, sourceKey, lib) { manual = true }
             // 中区：封面（左右滑切歌、上滑打开歌词、下拉收起）⇄ 歌词；点一下切换
             Box(Modifier.weight(1f).fillMaxWidth()
                 .mediaDrag(showLyrics, horizontal = !showLyrics, vertical = true,
@@ -144,7 +145,7 @@ fun MusicNowPlayingScreen() {
                 }, contentAlignment = Alignment.Center) {
                 androidx.compose.animation.Crossfade(showLyrics, animationSpec = Motion.enter(), label = "lyrics") { ly ->
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        if (ly) LyricsView(lyrics, pos) { MusicState.seek(it) }
+                        if (ly) LyricsView(lyrics, pos, MusicState.isPlaying, onSeek = { MusicState.seek(it) }, onManual = if (t != null && sourceKey != null) ({ manual = true }) else null)
                         else Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             val scale by animateFloatAsState(if (MusicState.isPlaying) 1f else 0.9f, Motion.breathe(), label = "art")
                             MusicArt(t?.artPath, Modifier.padding(horizontal = 28.dp).fillMaxWidth().aspectRatio(1f)
@@ -157,7 +158,7 @@ fun MusicNowPlayingScreen() {
                                     val s = scale * (1f - 0.06f * f); scaleX = s; scaleY = s
                                 }, corner = Radius.l, lifted = true)
                             // one current lyric line under the cover（没有时间轴的歌词 / 没有歌词时这一行不占位）
-                            val cur = lyrics?.let { l -> currentLine(l, pos) }?.let { lyrics?.getOrNull(it)?.text }
+                            val cur = lyrics?.let { l -> Lrc.current(l, pos) }?.let { lyrics?.getOrNull(it)?.text }
                             if (lyrics?.firstOrNull()?.let { it.ms >= 0 } == true)
                             // 1.7.32：旧的一句同时往上退出（以前原地淡出、新的一句从下面压上来，两行叠在一起有重影）；裁在这一行的高度里
                             androidx.compose.animation.AnimatedContent(cur ?: "", Modifier.clipToBounds(), transitionSpec = {
@@ -233,15 +234,14 @@ fun MusicNowPlayingScreen() {
     }
     }
     if (queueOpen) AppBottomSheet(onDismissRequest = { queueOpen = false }, containerColor = C.Surface) { QueueSheet() }
+    if (manual && t != null && sourceKey != null) MusicManualSearch(t, sourceKey) { manual = false }
 }
 
 /** 顶栏：收起 /「来自 专辑」/ ⋯。 */
 @Composable
-private fun NowPlayingTopBar(t: Track?, sourceKey: String?, lib: MusicLib?) {
+private fun NowPlayingTopBar(t: Track?, sourceKey: String?, lib: MusicLib?, onManual: () -> Unit) {
     val ctx = LocalContext.current
     var menu by remember { mutableStateOf(false) }
-    var manual by remember { mutableStateOf(false) }
-    if (manual && t != null && sourceKey != null) MusicManualSearch(t, sourceKey) { manual = false }
     Row(Modifier.padding(horizontal = Space.xs, vertical = Space.xs), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = { Nav.pop() }) { Icon(KI.down(), "收起", tint = C.Text, modifier = Modifier.size(28.dp)) }
         val album = t?.takeIf { it.cleanAlbum.isNotBlank() }
@@ -267,7 +267,7 @@ private fun NowPlayingTopBar(t: Track?, sourceKey: String?, lib: MusicLib?) {
                             .onFailure { failToast(ctx, it, "重新匹配失败") }
                     }
                 })
-                if (sourceKey != null) DropdownMenuItem(text = { Text("手动搜索封面和歌词", color = C.Text) }, onClick = { menu = false; manual = true })
+                if (sourceKey != null) DropdownMenuItem(text = { Text("手动搜索封面和歌词", color = C.Text) }, onClick = { menu = false; onManual() })
                 DropdownMenuItem(text = { Column { Text("文件信息", color = C.Text); Text("${t.ext.uppercase()} · ${t.codec} · ${"%.1f".format(t.size / 1048576.0)} MB", color = C.Sub, fontSize = 11.sp)
                     Text(t.path.removePrefix("fm:"), color = C.Sub, fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis) } }, onClick = { menu = false })
             }
@@ -327,45 +327,6 @@ private fun modeText(): String = when {
     MusicState.repeat == Player.REPEAT_MODE_ONE -> "单曲循环"
     MusicState.repeat == Player.REPEAT_MODE_ALL -> "列表循环"
     else -> "顺序播放"
-}
-
-private fun currentLine(l: List<Lrc.Line>, pos: Long): Int? {
-    if (l.isEmpty() || l.first().ms < 0) return null
-    var i = l.indexOfLast { it.ms <= pos + 300 }
-    if (i < 0) i = 0
-    return i
-}
-
-@Composable
-private fun LyricsView(lines: List<Lrc.Line>?, pos: Long, onSeek: (Long) -> Unit) {
-    when {
-        lines == null -> CircularProgressIndicator(color = C.Sub, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
-        lines.isEmpty() -> Text(if (MusicPrefs.online) "没有找到歌词" else "没有歌词（联网补全已关闭）", color = C.Sub, style = MaterialTheme.typography.bodyLarge)
-        else -> {
-            val st = rememberLazyListState()
-            val cur = currentLine(lines, pos)
-            // 1.6.6：当前行滚到视口约 40% 处（弹簧滚动，用户手动滑动时不抢）；字号固定，当前行靠颜色 + 缩放 1.0 / 0.94 区分，
-            // 换行时不重新排版（以前字号 16↔19 来回变会让整列跳一下）
-            val density = androidx.compose.ui.platform.LocalDensity.current
-            LaunchedEffect(cur) {
-                if (cur != null && !st.isScrollInProgress) {
-                    val off = -(st.layoutInfo.viewportSize.height * 0.4f).toInt() + with(density) { 120.dp.roundToPx() }
-                    if (Motion.reduced) st.scrollToItem(cur, off) else st.animateScrollToItem(cur, off)
-                }
-            }
-            LazyColumn(state = st, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 120.dp, horizontal = 26.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                itemsIndexed(lines) { i, l ->
-                    val on = i == cur
-                    val fg by androidx.compose.animation.animateColorAsState(if (on) C.Text else C.Sub.copy(alpha = 0.7f), Motion.state(), label = "lrcFg")
-                    val sc by animateFloatAsState(if (on) 1f else 0.94f, Motion.move(), label = "lrcScale")
-                    Column(Modifier.fillMaxWidth().graphicsLayer { scaleX = sc; scaleY = sc }.clip(RoundedCornerShape(Radius.s)).clickable(enabled = l.ms >= 0, onClickLabel = "从这句开始播放") { onSeek(l.ms) }.padding(vertical = Space.s), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(l.text.ifEmpty { "♪" }, color = fg, fontSize = 18.sp, lineHeight = 26.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal, textAlign = TextAlign.Center)
-                        if (l.sub.isNotEmpty()) Text(l.sub, color = C.Sub, fontSize = 13.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 2.dp))
-                    }
-                }
-            }
-        }
-    }
 }
 
 @Composable
