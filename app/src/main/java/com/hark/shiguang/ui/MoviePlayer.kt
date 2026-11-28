@@ -139,7 +139,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("这个格式暂时放不了", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                 Text("${NameParser.ext(queue[start].file.name).uppercase()} 光盘镜像需要转码，换个版本试试", color = Color(0xB3FFFFFF), fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
-                TextButton(onClick = { Nav.pop() }, modifier = Modifier.padding(top = 12.dp)) { Text("返回", color = C.Accent) }
+                TextButton(onClick = playerSafe("按钮 L142") { Nav.pop() }, modifier = Modifier.padding(top = 12.dp)) { Text("返回", color = C.Accent) }
             }
         }
         return
@@ -295,7 +295,7 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("播放器启动失败", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                 Text("已记录到诊断日志（设置 → 关于 → 反馈与帮助 → 导出诊断日志）", color = Color(0xB3FFFFFF), fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
-                TextButton(onClick = { Nav.pop() }, modifier = Modifier.padding(top = 12.dp)) { Text("返回", color = C.Accent) }
+                TextButton(onClick = playerSafe("按钮 L298") { Nav.pop() }, modifier = Modifier.padding(top = 12.dp)) { Text("返回", color = C.Accent) }
             }
         }
         return
@@ -851,10 +851,10 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
             GradientButton("用其他播放器打开", Modifier.fillMaxWidth()) { openExternal(extIdx) }
             Row(Modifier.padding(top = 8.dp)) {
                 val n = extIdx + 1
-                if (n < queue.size) TextButton(onClick = {
+                if (n < queue.size) TextButton(onClick = playerSafe("按钮 L854") {
                     if (needsExternal(queue[n])) extIdx = n else { extIdx = -1; player.seekTo(n, 0L); player.prepare(); player.play() }
                 }) { Text("下一集", color = Color.White) }
-                TextButton(onClick = { Nav.pop() }) { Text("返回", color = Color(0xCCFFFFFF)) }
+                TextButton(onClick = playerSafe("按钮 L857") { Nav.pop() }) { Text("返回", color = Color(0xCCFFFFFF)) }
             }
         }
         return
@@ -956,13 +956,13 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                         val playIx = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
                         // 1.7.16：回到 1.7.5 的播放键（半透明白圆 + 按下缩放），不再叠玻璃材质与液体形变
                         Box(Modifier.padding(horizontal = Space.s).size(60.dp).skeuoPressable(playIx, CircleShape, Color(0x33FFFFFF), scale = 0.92f, flat = true)
-                            .clickable(playIx, null, role = androidx.compose.ui.semantics.Role.Button) { tap {
+                            .clickable(playIx, null, role = androidx.compose.ui.semantics.Role.Button, onClick = playerSafe("播放 / 暂停") { tap {
                             if (player.isPlaying) player.pause() else {
                                 if (player.playbackState == Player.STATE_ENDED) player.seekTo(0L)
                                 if (player.playbackState == Player.STATE_IDLE) player.prepare()
                                 player.play()
                             }
-                        } }.semantics { contentDescription = if (playing) "暂停" else "播放" }, contentAlignment = Alignment.Center) {
+                        } }).semantics { contentDescription = if (playing) "暂停" else "播放" }, contentAlignment = Alignment.Center) {
                             PlayPauseIcon(playing, Color.White, 28.dp)
                         }
                         OverlayIcon(KI.fastFwd(), "前进 10 秒") { tap { seekGate.step(10_000, "button+") } }
@@ -990,15 +990,15 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
             title = { Text("定时关闭") },
             text = {
                 Column {
-                    PlayerHints.sleepChoices.forEach { m -> TextButton(onClick = { sleepDialog = false; setSleep(m, false) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("$m 分钟后暂停") } }
-                    if (isShow) TextButton(onClick = { sleepDialog = false; setSleep(0, true) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("本集播完后停止") }
-                    if (sleepMin > 0 || sleepEnd) TextButton(onClick = { sleepDialog = false; setSleep(0, false) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("关闭定时") }
+                    PlayerHints.sleepChoices.forEach { m -> TextButton(onClick = playerSafe("对话框按钮 L993") { sleepDialog = false; setSleep(m, false) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("$m 分钟后暂停") } }
+                    if (isShow) TextButton(onClick = playerSafe("对话框按钮 L994") { sleepDialog = false; setSleep(0, true) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("本集播完后停止") }
+                    if (sleepMin > 0 || sleepEnd) TextButton(onClick = playerSafe("对话框按钮 L995") { sleepDialog = false; setSleep(0, false) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("关闭定时") }
                 }
             },
-            confirmButton = { TextButton(onClick = { sleepDialog = false }) { Text("返回") } },
+            confirmButton = { TextButton(onClick = playerSafe("对话框按钮 L998") { sleepDialog = false }) { Text("返回") } },
         )
         if (gestureTip && !inPip && error == null) {
-            Column(Modifier.align(Alignment.Center).clickable(indication = null, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) { gestureTip = false }
+            Column(Modifier.align(Alignment.Center).clickable(indication = null, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, onClick = playerSafe("关闭手势提示") { gestureTip = false })
                 .playerGlass(androidx.compose.foundation.shape.RoundedCornerShape(Radius.l), text = true, highlight = 1f).padding(horizontal = 22.dp, vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("手势小提示", color = Color.White, style = MaterialTheme.typography.titleMedium.copy(color = Color.White, fontWeight = FontWeight.Bold))
@@ -1011,13 +1011,13 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                 .playerGlass(androidx.compose.foundation.shape.RoundedCornerShape(50), text = true, highlight = 1f).padding(start = 18.dp, end = 6.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 Text("下一集 $n 秒后播放", color = Color.White, fontSize = 14.sp)
-                TextButton(onClick = { cancelNext() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("取消", color = Color(0xCCFFFFFF)) }
-                TextButton(onClick = { playNextNow() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("立即播放", color = C.Accent) }
+                TextButton(onClick = playerSafe("对话框按钮 L1014") { cancelNext() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("取消", color = Color(0xCCFFFFFF)) }
+                TextButton(onClick = playerSafe("对话框按钮 L1015") { playNextNow() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("立即播放", color = C.Accent) }
             }
         }
         if (locked && !inPip) {
             Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { lockBtn = true } }) {
-                if (lockBtn) Row(Modifier.align(Alignment.CenterEnd).systemBarsPadding().padding(end = 16.dp).clickable { locked = false; lockBtn = false; hint = "已解锁"; controls = true }
+                if (lockBtn) Row(Modifier.align(Alignment.CenterEnd).systemBarsPadding().padding(end = 16.dp).clickable(onClick = playerSafe("解锁") { locked = false; lockBtn = false; hint = "已解锁"; controls = true })
                     .playerGlass(androidx.compose.foundation.shape.RoundedCornerShape(50), text = true, highlight = 1f).padding(horizontal = 18.dp, vertical = 13.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     Icon(KI.lock(), null, tint = Color.White, modifier = Modifier.size(22.dp))
@@ -1031,9 +1031,9 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                 .playerGlass(androidx.compose.foundation.shape.RoundedCornerShape(Radius.l), text = true, highlight = 1f).padding(horizontal = 18.dp, vertical = 14.dp)) {
                 Text(msg, color = Color.White, fontSize = 14.sp, lineHeight = 20.sp)
                 Row(Modifier.padding(top = 6.dp)) {
-                    TextButton(onClick = { openExternal(player.currentMediaItemIndex) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("用其他播放器打开", color = C.Accent) }
-                    if (isFn) TextButton(onClick = { panel = PlayerPanel.QUALITY; controls = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("选清晰度", color = Color.White) }
-                    TextButton(onClick = { videoIssue = null }, modifier = Modifier.heightIn(min = 48.dp)) { Text("只听声音", color = Color(0xB3FFFFFF)) }
+                    TextButton(onClick = playerSafe("对话框按钮 L1034") { openExternal(player.currentMediaItemIndex) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("用其他播放器打开", color = C.Accent) }
+                    if (isFn) TextButton(onClick = playerSafe("对话框按钮 L1035") { panel = PlayerPanel.QUALITY; controls = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("选清晰度", color = Color.White) }
+                    TextButton(onClick = playerSafe("对话框按钮 L1036") { videoIssue = null }, modifier = Modifier.heightIn(min = 48.dp)) { Text("只听声音", color = Color(0xB3FFFFFF)) }
                 }
             }
         }
@@ -1042,9 +1042,9 @@ fun MoviePlayerScreen(r: Route.MoviePlay) {
                 horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(e, color = Color.White, fontSize = 15.sp)
                 Row(Modifier.padding(top = 10.dp)) {
-                    TextButton(onClick = { error = null; PlayHttp.invalidate(urls[player.currentMediaItem?.mediaId].orEmpty()); player.prepare(); player.play() }) { Text("重试", color = C.Accent) }
-                    if (canExternal) TextButton(onClick = { openExternal(player.currentMediaItemIndex) }) { Text("用其他播放器打开", color = C.Accent) }
-                    if (player.hasNextMediaItem()) TextButton(onClick = { error = null; player.seekToNextMediaItem(); player.prepare(); player.play() }) { Text("下一集", color = Color.White) }
+                    TextButton(onClick = playerSafe("对话框按钮 L1045") { error = null; PlayHttp.invalidate(urls[player.currentMediaItem?.mediaId].orEmpty()); player.prepare(); player.play() }) { Text("重试", color = C.Accent) }
+                    if (canExternal) TextButton(onClick = playerSafe("对话框按钮 L1046") { openExternal(player.currentMediaItemIndex) }) { Text("用其他播放器打开", color = C.Accent) }
+                    if (player.hasNextMediaItem()) TextButton(onClick = playerSafe("对话框按钮 L1047") { error = null; player.seekToNextMediaItem(); player.prepare(); player.play() }) { Text("下一集", color = Color.White) }
                 }
             }
         }
@@ -1210,7 +1210,7 @@ private fun SpeedButton(player: ExoPlayer, showId: String, onOpen: () -> Unit = 
             listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f, 3f).forEach { s ->
                 DropdownMenuItem(text = { Text("${fmtSpeed(s)}×", color = if (s == speed) C.Accent else C.Text, fontWeight = if (s == speed) FontWeight.Medium else FontWeight.Normal) },
                     trailingIcon = if (s == speed) { { Icon(KI.check(), "当前", tint = C.Accent, modifier = Modifier.size(18.dp)) } } else null,
-                    onClick = { open = false; speed = s; player.setPlaybackSpeed(s); PlayPrefs.setSpeed(showId, s) })
+                    onClick = playerSafe("倍速 $s") { open = false; speed = s; player.setPlaybackSpeed(s); PlayPrefs.setSpeed(showId, s) })
             }
         }
     }
@@ -1252,7 +1252,7 @@ private const val LONG_PRESS_SPEED = 2f
 private fun OverlayIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, enabled: Boolean = true, onClick: () -> Unit) {
     val ix = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
     // 1.7.16：回到 1.7.5 的圆钮（48dp 触控区里 44dp 半透明黑圆，按下缩到 0.92），不再叠玻璃材质与液体形变
-    Box(Modifier.size(48.dp).clickable(ix, null, enabled = enabled, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick).semantics { contentDescription = label },
+    Box(Modifier.size(48.dp).clickable(ix, null, enabled = enabled, role = androidx.compose.ui.semantics.Role.Button, onClick = playerSafe(label, onClick)).semantics { contentDescription = label },
         contentAlignment = Alignment.Center) {
         Box(Modifier.size(44.dp).skeuoPressable(ix, CircleShape, Color(0x29000000), scale = 0.92f, flat = true), contentAlignment = Alignment.Center) {
             Icon(icon, null, tint = if (enabled) Color.White else Color(0x59FFFFFF), modifier = Modifier.size(24.dp))
@@ -1265,7 +1265,7 @@ private fun OverlayIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, l
 private fun TopTextButton(text: String, desc: String? = null, onClick: () -> Unit) {
     val ix = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
     Box(Modifier.heightIn(min = 48.dp).padding(end = Space.xs)
-        .clickable(ix, null, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
+        .clickable(ix, null, role = androidx.compose.ui.semantics.Role.Button, onClick = playerSafe(desc ?: text, onClick))
         .then(if (desc != null) Modifier.semantics { contentDescription = desc } else Modifier), contentAlignment = Alignment.Center) {
         Box(Modifier.height(36.dp).playerGlass(androidx.compose.foundation.shape.RoundedCornerShape(50), text = true).padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
             Text(text, color = Color.White, style = Type.badge.copy(fontSize = 14.sp, lineHeight = 18.sp), maxLines = 1)

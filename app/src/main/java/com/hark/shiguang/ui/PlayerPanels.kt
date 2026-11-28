@@ -111,6 +111,21 @@ internal fun hasVideoOverride(player: ExoPlayer) =
  * 播放页唯一的绘制层改动。找不到确定根因前，播放器回到 1.7.5 的做法：纯色半透明底 + 形状（不再画玻璃材质、噪点和高光边），
  * 布局和圆角保持 v2。透明度沿用 1.7.5：只有图标的圆钮 ≈ 40% 黑，带文字的气泡 / 胶囊 ≈ 70–80% 黑（白字 ≥ 7:1）。
  */
+/**
+ * 1.7.37 热修（用户 2026-11-29 00:10：看视频时点播放器上任何按钮都闪退，没有崩溃日志、静态排查找不到确定根因）：
+ * 播放器上所有按钮的点击都经过这里——先把「点了什么」立即落盘到诊断日志（[PLAYER] click …，闪退前最后一步一定留得下），
+ * 点击处理里抛出的异常就地接住，记完整调用栈（[PLAYER] click … failed）并提示「操作失败」，不再让整个 App 退出。
+ * 组合 / 绘制阶段的异常接不住，由 Diag 的全局崩溃记录兜底（[CRASH]），面包屑仍在它前面。
+ */
+internal fun playerSafe(label: String, f: () -> Unit): () -> Unit = {
+    com.hark.shiguang.Diag.logNow("PLAYER", "click $label")
+    try { f() } catch (e: Throwable) {
+        if (e is kotlinx.coroutines.CancellationException) throw e
+        com.hark.shiguang.Diag.logNow("PLAYER", "click $label failed: ${e.stackTraceToString().take(4000)}")
+        runCatching { toast(com.hark.shiguang.App.ctx, "操作失败，已记录到诊断日志") }
+    }
+}
+
 internal fun Modifier.playerGlass(shape: Shape, text: Boolean = false, @Suppress("UNUSED_PARAMETER") highlight: Float = 0.7f): Modifier =
     this.background(if (text) Color(0xB3000000) else Color(0x66000000), shape)
 
@@ -125,7 +140,7 @@ private val Note = Color(0xB3FFFFFF)
 @Composable
 internal fun SidePanel(title: String, onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     Box(Modifier.fillMaxSize().background(Color(0x40000000))
-        .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss)) {
+        .clickable(remember { MutableInteractionSource() }, indication = null, onClick = playerSafe("关闭面板", onDismiss))) {
         val shape = RoundedCornerShape(Radius.sheet)
         Column(Modifier.align(Alignment.CenterEnd).fillMaxHeight().systemBarsPadding().padding(12.dp).widthIn(min = 280.dp, max = 360.dp).fillMaxWidth(0.36f)
             .background(PanelBg, shape).clip(shape)
@@ -150,7 +165,7 @@ internal fun PanelRow(title: String, detail: String?, selected: Boolean, onClick
     val shape = RoundedCornerShape(18.dp)
     Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 1.dp).clip(shape)
         .background(if (selected) C.Accent.copy(alpha = 0.16f) else Color.Transparent)
-        .heightIn(min = 52.dp).clickable(onClick = onClick).semantics { this.selected = selected }
+        .heightIn(min = 52.dp).clickable(onClick = playerSafe(title, onClick)).semantics { this.selected = selected }
         .padding(start = 8.dp, end = 14.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.width(32.dp), contentAlignment = Alignment.Center) { if (selected) Icon(KI.check(), null, tint = C.Accent, modifier = Modifier.size(20.dp)) }

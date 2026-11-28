@@ -40,4 +40,28 @@ class PlayerSafetyTest {
             for (b in banned) assertTrue("$name 里不该再用 $b（播放器视频层上不叠玻璃，见 1.7.16）", !text.contains(b))
         }
     }
+
+    /** 1.7.37：播放器按钮点击里抛出的异常被接住（记诊断日志 + 提示），不再让 App 退出；取消异常照常往外抛。 */
+    @Test fun playerClickSwallowsExceptions() {
+        var ran = false
+        playerSafe("测试") { ran = true; throw IllegalStateException("boom") }()
+        assertTrue(ran)
+        val cancel = runCatching { playerSafe("取消") { throw kotlinx.coroutines.CancellationException("c") }() }.exceptionOrNull()
+        assertTrue(cancel is kotlinx.coroutines.CancellationException)
+    }
+
+    /** 1.7.37：播放器文件里每个点击处理都要经过 playerSafe（面包屑 + 接住异常），新加按钮时别漏掉。 */
+    @Test fun everyPlayerClickGoesThroughPlayerSafe() {
+        val root = listOf(File("src/main/java/com/hark/shiguang/ui"), File("app/src/main/java/com/hark/shiguang/ui")).first { it.isDirectory }
+        val bad = ArrayList<String>()
+        for (name in listOf("MoviePlayer.kt", "PlayerPanels.kt")) {
+            File(root, name).readLines().forEachIndexed { i, raw ->
+                val l = raw.trim()
+                if (l.startsWith("//") || l.startsWith("*") || l.startsWith("import ")) return@forEachIndexed
+                val clicky = l.contains("onClick = {") || l.contains(".clickable {") || (l.contains(".clickable(") && !l.contains("{ }"))
+                if (clicky && !l.contains("playerSafe(")) bad += "$name:${i + 1}"
+            }
+        }
+        assertEquals("这些点击没有经过 playerSafe：$bad", 0, bad.size)
+    }
 }
