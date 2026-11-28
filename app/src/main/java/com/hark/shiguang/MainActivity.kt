@@ -253,7 +253,6 @@ class MainActivity : ComponentActivity() {
                     val st = if (dark) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT) else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
                     enableEdgeToEdge(statusBarStyle = st, navigationBarStyle = st)
                 }
-                com.hark.shiguang.ui.Onboarding.Hook()   // 1.0.1 #9 first-run wizard
                 // B24: the persisted page could not be rebuilt — say so instead of silently landing on Home.
                 LaunchedEffect(Nav.restoredFallback) {
                     if (Nav.restoredFallback) {

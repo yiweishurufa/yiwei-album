@@ -146,8 +146,6 @@ fun SettingsScreen() {
             // 1.7.17：每个版本改了什么（随包附带的 CHANGELOG.md）
             NavRow(KI.feed(), "更新内容") { Nav.push(Route.X(ExtScreen.Changelog)) }
             Div()
-            NavRow(LI.sparkle(), "使用引导") { Onboarding.open(0) }
-            Div()
             NavRow(KI.mail(), "反馈与帮助", value = "邮件 · QQ 群 · 诊断日志") { helpOpen = true }
             Div()
             // 1.6.0：第三方图标 / 字体的许可（Kubai Icons MIT 要求附版权声明；Allo 是 SIL OFL 1.1）

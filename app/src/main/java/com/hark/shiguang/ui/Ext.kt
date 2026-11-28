@@ -31,8 +31,6 @@ sealed class ExtScreen(val dark: Boolean = false) {
     data object HiddenAlbum : ExtScreen()
     data class Map(val dav: Boolean) : ExtScreen()
     data class Edit(val photo: Photo) : ExtScreen(dark = true)
-    /** 1.0.1 #9 first-run wizard (ui/Onboarding.kt). */
-    data class Onboarding(val step: Int = 0) : ExtScreen()
     /** 1.0.1 */
     data object BgGuide : ExtScreen()
     /** 1.7.13 设置 → 存储空间（ui/Storage.kt）。 */
@@ -50,7 +48,6 @@ fun ExtHost(s: ExtScreen) {
         ExtScreen.HiddenAlbum -> HiddenAlbumScreen()
         is ExtScreen.Map -> PhotoMapScreen(s.dav)
         is ExtScreen.Edit -> EditScreen(s.photo)
-        is ExtScreen.Onboarding -> OnboardingScreen(s.step)
         ExtScreen.BgGuide -> BgGuideScreen()
         ExtScreen.Storage -> StorageScreen()
         ExtScreen.Changelog -> ChangelogScreen()
