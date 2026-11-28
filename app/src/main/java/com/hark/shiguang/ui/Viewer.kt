@@ -220,13 +220,11 @@ fun ViewerScreen(photosIn: List<Photo>, start: Int, slideshowStart: Boolean = fa
                         Column(Modifier.weight(1f, fill = false).semantics(mergeDescendants = true) {}) {
                             val (t, w) = dayTitle(p.day)
                             Text("$t $w", color = Color.White, style = MaterialTheme.typography.titleSmall, maxLines = 1)
-                            // 第 4 批：飞牛实况 type-1 的独立视频流映射未验证（FnExtra.motionVideo），这里标注「未验证」，不要宣称已验证。
-                            // WebDAV 的 MOV 配对也用 liveType=1，但 isCloud=true，不受影响。
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(p.time.drop(11).take(5), color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodySmall.merge(Type.num))
                                 if (p.isLive) {
                                     Icon(KI.live(), null, tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.padding(start = Space.s, end = Space.xxs).size(14.dp))
-                                    Text("实况" + (if (!p.isCloud && p.liveType == 1) "（未验证）" else ""), color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodySmall)
+                                    Text("实况", color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodySmall)
                                 }
                             }
                         }

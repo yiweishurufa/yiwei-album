@@ -177,7 +177,7 @@ object NasX {
      * before "ftypmp42" (type 2) or "ftypisom" (type 3). Other live types play the separate video stream (videoUrl);
      * which types take that branch is decided by a helper not traced here, so the type-1 -> videoUrl mapping is // UNVERIFIED.
      *
-     * 第 4 批：type-1 分支加验证日志 + [MotionSource.verified] = false（调用方在界面标注「未验证」）。
+     * 第 4 批：type-1 分支加验证日志。1.7.29 用户决定不再在大图上标「（未验证）」，播放不变。
      * 仍未验证：没有真机 + 飞牛实况 type-1 样张，无法确认 type-1 到底是独立视频流还是内嵌 MP4；
      * 这里只记日志、不改行为——日志里写清用的是 thumbnail.videoUrl 还是兜底的 /p/api/v1/stream/v/<id>，方便真机验证时对账。
      */
@@ -191,7 +191,7 @@ object NasX {
                 val fromThumb = p.video != null
                 val v = p.video ?: FnClient.absOf("/p/api/v1/stream/v/${p.id}") // UNVERIFIED for live type 1 without thumbnail.videoUrl
                 com.hark.shiguang.Diag.log("LIVE", "fn live type=$t id=${p.id} verified=false src=${if (fromThumb) "thumbnail.videoUrl" else "fallback /p/api/v1/stream/v/<id>"} (UNVERIFIED mapping)")
-                MotionSource(v, streamHeaders(v), false, verified = false)
+                MotionSource(v, streamHeaders(v), false)
             }
         }
     }

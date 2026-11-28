@@ -44,8 +44,8 @@ data class YearCount(val year: Int, val count: Int, val months: List<MonthCount>
 /** A URL plus the headers the NAS needs to serve it (accesstoken + authx). */
 data class DownloadSpec(val url: String, val headers: Map<String, String>)
 
-/** Live/motion photo video source. [embedded]=true means the MP4 sits inside [url]'s bytes after [marker]. [verified]=false means the type → stream mapping was never confirmed against a real device (第 4 批：目前只有飞牛实况 type-1 走这条分支，见 [NasX.motionVideo])，调用方应在界面上标注「未验证」，不要宣称已验证。 */
-data class MotionSource(val url: String, val headers: Map<String, String>, val embedded: Boolean, val marker: String? = null, val verified: Boolean = true)
+/** Live/motion photo video source. [embedded]=true means the MP4 sits inside [url]'s bytes after [marker]. 飞牛实况 type-1 → 独立视频流的映射仍未在真机上确认（见 [NasX.motionVideo] 的 [LIVE] 日志）。 */
+data class MotionSource(val url: String, val headers: Map<String, String>, val embedded: Boolean, val marker: String? = null)
 
 /** A photo-library root folder (photo/folder/list), also the upload target list. */
 data class LibraryFolder(val path: String, val isDefault: Boolean, val raw: JSONObject)
