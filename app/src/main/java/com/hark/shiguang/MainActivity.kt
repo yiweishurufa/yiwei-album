@@ -62,7 +62,7 @@ sealed class Route {
     data object AiSettings : Route()
     /** 用户 2026-10-23：设置 → 智能整理（WebDAV：AI / 人脸 / 图中文字 / 旅行相册）。 */
     data object SmartSettings : Route()
-    /** 用户 2026-10-23：设置 → 隐私与存储 → 高级（证书、彻底删除、系统定时整理）。 */
+    /** 用户 2026-10-23：设置 → 隐私与存储 → 高级（证书、彻底删除）。 */
     data object AdvancedSettings : Route()
     data class Upload(val uris: List<android.net.Uri>) : Route()
     data class MovieDetail(val sourceKey: String, val itemId: String) : Route()

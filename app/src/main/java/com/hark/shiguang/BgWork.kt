@@ -21,8 +21,8 @@ import java.util.concurrent.TimeUnit
  * [ScanPolicy]'s network and charging rules hold (the same two switches in 设置 → 后台整理).
  *
  * The runners themselves (Analyzer / Faces / AiRunner / BackupRunner) are unchanged: a worker only starts them and
- * keeps the process alive while they make progress. Switch: [Features.workManager] (off = old behaviour: backup via
- * JobScheduler, background analysis only while the app process lives).
+ * keeps the process alive while they make progress.
+ * 1.7.29：去掉「系统定时后台整理」开关，固定走 WorkManager（原来的默认值）；旧存储键 feat.workmanager 不再读取。
  */
 object BgWork {
     const val LIBRARY = "bg.library"
@@ -52,10 +52,6 @@ object BgWork {
     /** (Re)schedules everything from the current settings. Cheap and idempotent: call after any related setting changes. */
     fun schedule(c: Context) {
         val wm = wm(c) ?: return
-        if (!Features.workManager) {
-            wm.cancelUniqueWork(LIBRARY); wm.cancelUniqueWork(BACKUP); wm.cancelUniqueWork(LIBRARY_NOW)
-            return
-        }
         if (Dav.accounts.isNotEmpty()) {
             val req = PeriodicWorkRequestBuilder<LibraryWorker>(6, TimeUnit.HOURS)
                 .setConstraints(libraryConstraints())
@@ -75,7 +71,7 @@ object BgWork {
 
     /** One run as soon as the conditions hold (e.g. Wi-Fi / charger just came back). Replaces a pending one. */
     fun kick(c: Context) {
-        if (!Features.workManager || ScanPolicy.paused) return
+        if (ScanPolicy.paused) return
         val wm = wm(c) ?: return
         val req = OneTimeWorkRequestBuilder<LibraryWorker>().setConstraints(libraryConstraints()).build()
         wm.enqueueUniqueWork(LIBRARY_NOW, ExistingWorkPolicy.KEEP, req)
@@ -90,7 +86,7 @@ object BgWork {
 /** Incremental scan of the current WebDAV library, then local analysis + faces + AI labelling (same rules as the app). */
 class LibraryWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result {
-        if (!Features.workManager || ScanPolicy.paused) return Result.success()
+        if (ScanPolicy.paused) return Result.success()
         val lib = Dav.lib() ?: return Result.success()
         val started = System.currentTimeMillis()
         return try {
@@ -117,10 +113,10 @@ class LibraryWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
     }
 }
 
-/** Phone-gallery backup (replaces the 1.0.x JobScheduler job when [Features.workManager] is on). */
+/** Phone-gallery backup (replaces the 1.0.x JobScheduler job). */
 class BackupWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result {
-        if (!Features.workManager || !Store.backupOn) return Result.success()
+        if (!Store.backupOn) return Result.success()
         val r = try { BackupRunner.run(applicationContext, false) } catch (e: CancellationException) { throw e } catch (e: Exception) {
             Diag.log("WORK", "backup failed: ${e.javaClass.simpleName}"); null
         }

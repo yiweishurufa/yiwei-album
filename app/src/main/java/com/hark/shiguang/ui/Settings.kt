@@ -567,16 +567,14 @@ fun SmartSettingsScreen() {
 
 /**
  * 用户 2026-10-23 新二级页「高级」：低频、有风险或排障用的选项。
- * 存储键都不变（TlsTrust 主机列表、nas.deleteForever、feat.workmanager）。
+ * 存储键都不变（TlsTrust 主机列表、nas.deleteForever）。1.7.29 删掉「系统定时后台整理」开关（固定开）。
  */
 @Composable
 fun AdvancedSettingsScreen() {
-    val ctx = LocalContext.current
     val dav = HomeState.source == "dav"
     var caOpen by remember { mutableStateOf(false) }
     var forever by remember { mutableStateOf(Store.getStr("nas.deleteForever") == "1") }
     var davRecycle by remember { mutableStateOf(DavRecycle.enabled) }
-    var wmOn by remember { mutableStateOf(com.hark.shiguang.Features.workManager) }
     Page("高级") {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(bottom = 40.dp)) {
             Spacer(Modifier.height(8.dp))
@@ -595,11 +593,6 @@ fun AdvancedSettingsScreen() {
                         info = "打开时删除的网盘照片先移到网盘里的隐藏文件夹 .yiwei-recycle，30 天后自动彻底删除；服务器不支持移动时先在 App 里隐藏，30 天后再删除。入口：发现 → 工具 → 最近删除。") {
                         davRecycle = it; DavRecycle.enabled = it
                     }
-                }
-                Div()
-                ToggleRow(LI.clock(), "系统定时后台整理", on = wmOn,
-                    info = "由系统在满足「后台整理」的网络和充电条件时定时扫描新照片、整理和备份，重启手机后也会继续。只在排查问题时才需要关掉。") {
-                    wmOn = it; com.hark.shiguang.Features.workManager = it; BackupScheduler.schedule(ctx)
                 }
             }
             Text("一维相册是第三方应用，与飞牛官方无关", color = C.Faint, fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
